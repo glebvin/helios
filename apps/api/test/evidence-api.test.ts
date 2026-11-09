@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {publicContract,matchesContract,checkHttpContract} from './contract-check.js';
 import {randomUUID as id,createHash} from 'node:crypto';
 import test from 'node:test';
 import {mkdtemp,rm,readdir,readFile,writeFile,unlink,stat} from 'node:fs/promises';
@@ -22,9 +23,9 @@ const path=(file?:string)=>`/projects/${p}/evidence${file?`/${file}`:''}`;
 function reservation(bytes:Buffer=png,extra:any={}){return {requestId:id(),fileId:id(),employeeId:employee,filename:'доказательство.png',contentType:'image/png',sizeBytes:bytes.length,sha256:sha(bytes),...extra};}
 function headers(user:string=worker,t:string=tenant){return {authorization:`Bearer ${tokens.get(user)}`,'x-tenant-id':t};}
 async function req(url:string,body?:any,user:string=worker,method=body===undefined?'GET':'POST'){
- const r=await fetch(`${base}/api/v1${url}`,{method,headers:{...headers(user),'content-type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:r.status,body:r.headers.get('content-type')?.includes('application/json')?await r.json():Buffer.from(await r.arrayBuffer())};
+ const r=await fetch(`${base}/api/v1${url}`,{method,headers:{...headers(user),'content-type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});const result={status:r.status,body:r.headers.get('content-type')?.includes('application/json')?await r.json():Buffer.from(await r.arrayBuffer())};checkHttpContract('/api/v1'+url,method,r.status,result.body,r.headers);return result;
 }
-async function put(file:string,bytes:Buffer=png,user:string=worker){const r=await fetch(`${base}/api/v1${path(file)}/content`,{method:'PUT',headers:{...headers(user),'content-type':'application/octet-stream'},body:Uint8Array.from(bytes)});return {status:r.status,body:await r.json()};}
+async function put(file:string,bytes:Buffer=png,user:string=worker){const r=await fetch(`${base}/api/v1${path(file)}/content`,{method:'PUT',headers:{...headers(user),'content-type':'application/octet-stream'},body:Uint8Array.from(bytes)});const result={status:r.status,body:await r.json()};checkHttpContract('/api/v1'+path(file)+'/content','PUT',r.status,result.body,r.headers);return result;}
 async function reserve(b=reservation(),user:string=worker){const r=await req(path(),b,user);assert.equal(r.status,201,JSON.stringify(r));return b;}
 test.before(async()=>{
  const actual=(await admin.query(`SELECT current_database() db,current_user usr,inet_server_port() port,current_setting('data_directory') dir`)).rows[0];assert.equal(actual.db,'helios');assert.equal(actual.usr,'helios');assert.equal(actual.port,54339);assert.ok(actual.dir.endsWith('codex-api/.data/pg-54339'));
@@ -52,7 +53,7 @@ test('tracer: reserve raw binary upload download and immutable existing event at
  assert.equal((await admin.query(`SELECT count(*)::int n FROM private_evidence_attachments WHERE tenant_id=$1 AND file_id=$2`,[tenant,b.fileId])).rows[0].n,1);
 });
 const jpeg=Buffer.from('ffd8ffe000104a4649460001','hex'),pdf=Buffer.from('%PDF-1.7\nprivate evidence\n%%EOF');
-async function download(file:string,user:string=worker){const r=await fetch(`${base}/api/v1${path(file)}/content`,{headers:headers(user)});return {status:r.status,headers:r.headers,bytes:Buffer.from(await r.arrayBuffer())};}
+async function download(file:string,user:string=worker){const r=await fetch(`${base}/api/v1${path(file)}/content`,{headers:headers(user)});const result={status:r.status,headers:r.headers,bytes:Buffer.from(await r.arrayBuffer())};checkHttpContract('/api/v1'+path(file)+'/content','GET',r.status,r.status===200?result.bytes:JSON.parse(result.bytes.toString()),r.headers);return result;}
 async function ready(b=reservation(),user:string=worker,bytes:Buffer=png){await reserve(b,user);assert.equal((await put(b.fileId,bytes,user)).status,200);return b;}
 async function effects(file:string){return (await admin.query(`SELECT (SELECT count(*)::int FROM private_evidence_files WHERE tenant_id=$1 AND id=$2 AND state='ready') ready,(SELECT count(*)::int FROM audit_log WHERE tenant_id=$1 AND object_id=$2 AND action='evidence_ready') audits,(SELECT count(*)::int FROM private_evidence_attachments WHERE tenant_id=$1 AND file_id=$2) attachments`,[tenant,file])).rows[0];}
 async function temps(){return (await readdir(join(root,tenant)).catch(()=>[])).filter(f=>f.startsWith('.upload-'));}
@@ -244,4 +245,21 @@ test('attachment audit failure rolls back binding audit and receipt together; ex
  await admin.query(`CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.object_id='${b.fileId}' AND NEW.action='evidence_attached' THEN RAISE EXCEPTION 'injected attachment audit failure'; END IF; RETURN NEW; END $$`);
  try{await admin.query(`CREATE TRIGGER ${fn} BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION ${fn}()`);assert.equal((await req(path(b.fileId)+'/attachment',command)).status,500);assert.equal((await effects(b.fileId)).attachments,0);assert.equal((await admin.query(`SELECT count(*)::int n FROM people_command_receipts WHERE tenant_id=$1 AND actor_user_id=$2 AND request_id=$3`,[tenant,worker,command.requestId])).rows[0].n,0);}finally{await admin.query(`DROP TRIGGER IF EXISTS ${fn} ON audit_log`);await admin.query(`DROP FUNCTION ${fn}()`);}
  assert.equal((await req(path(b.fileId)+'/attachment',command)).status,201);assert.equal((await stat(join(root,tenant,b.fileId))).ino,before);assert.deepEqual((await download(b.fileId)).bytes,png);assert.equal((await effects(b.fileId)).attachments,1);
+});
+
+test('strict evidence contract covers reservation, both target forms, binary media and actual errors',async()=>{
+ const schemas=publicContract.components.schemas,contractRoot='/api/v1/projects/{p}/evidence';
+ const sample=reservation(png,{onBehalfReason:'Record evidence'});matchesContract(sample,schemas.EvidenceReservationInput);
+ for(const extra of [{actorUserId:worker},{sizeBytes:0},{sizeBytes:8388609},{sha256:'A'.repeat(64)},{contentType:'text/html'},{filename:'\u0001bad'},{filename:''}])assert.throws(()=>matchesContract({...sample,...extra},schemas.EvidenceReservationInput));
+ for(const key of ['requestId','fileId','employeeId','filename','contentType','sizeBytes','sha256']){const missing={...sample};delete missing[key];assert.throws(()=>matchesContract(missing,schemas.EvidenceReservationInput),key);}
+ const event=eventAttachment(),report={requestId:id(),target:{kind:'final_report',reportId:id()}};
+ for(const form of [event,report]){matchesContract(form,schemas.EvidenceAttachmentInput);assert.throws(()=>matchesContract({...form,target:{...form.target,forged:true}},schemas.EvidenceAttachmentInput));}
+ assert.throws(()=>matchesContract({...event,target:{...event.target,reportId:id()}},schemas.EvidenceAttachmentInput));
+ assert.equal(schemas.EvidenceTarget.oneOf.length,2);
+ const put=publicContract.paths[contractRoot+'/{file}/content'].put,get=publicContract.paths[contractRoot+'/{file}/content'].get;
+ assert.deepEqual(Object.keys(put.requestBody.content),['application/octet-stream']);assert.equal(put.requestBody.required,true);assert.equal(put.requestBody.content['application/octet-stream'].schema.maxLength,8388608);
+ assert.deepEqual(Object.keys(get.responses['200'].content).sort(),['application/pdf','image/jpeg','image/png']);
+ for(const op of [publicContract.paths[contractRoot].post,publicContract.paths[contractRoot].get,publicContract.paths[contractRoot+'/{file}'].get,put,get,publicContract.paths[contractRoot+'/{file}/attachment'].post])for(const code of ['400','401','403','404','500'])assert.ok(op.responses[code]);
+ for(const code of ['413','415','422','503'])assert.ok(put.responses[code]);
+ const response=await fetch(`${base}/api/v1/projects/${p}/evidence`);const body=await response.json();assert.equal(response.status,401);checkHttpContract('/api/v1/projects/'+p+'/evidence','GET',401,body,response.headers);
 });

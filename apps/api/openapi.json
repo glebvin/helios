@@ -1,9 +1,9 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "HELIOS API v1 — people, plans and managed execution",
-    "version": "1.3.0",
-    "description": "Scoped read, personnel and task preparation/publication slices; legacy execution remains limited to existing legacy fixtures. All protected routes require active tenant membership. Directors see their tenant, master/PTO need active project membership, workers additionally need own active employee assignment for projects/tasks. Own employee profile may be read without assignment. Details hide inaccessible rows with 404. Counts use authorized rows. Overview uses civil day in tenant timezone with half-open timestamp bounds. reviewedReportsForDay means accepted_quantity IS NOT NULL, including zero, not completed tasks. currentOpenShifts is current across days. Null acceptedQuantity means no report in the group has been reviewed. No mixed-unit sum. Unavailable metrics are intentional capability declarations. Phase02a adds director-only people commands with durable requestId replay, expectedVersion, immutable yes/no admission evidence, project assignments and crews. Document references are metadata only. Current admission requires latest attempt/template and exact active qualification id/version, inclusive tenant civil-date expiry. Phase02b adds project catalogs, strict managed drafts, immutable front checks and atomic director publication. Legacy create is retired410; managed tasks reject legacy sync/report mutations409 before replay/effects. 57 v1 operations plus one deprecated legacy creation route (58 total). Server03a adds ordered managed execution events, exact provisional civil-time reads and additive managedExecution overview. Browser queue/files/hour approval remain03b; acceptance/material/ID remain04; full pilot remains pending."
+    "title": "HELIOS API v1 — people, plans, execution, evidence and approved time",
+    "version": "1.4.0",
+    "description": "Scoped read, personnel and task preparation/publication slices; legacy execution remains limited to existing legacy fixtures. All protected routes require active tenant membership. Directors see their tenant, master/PTO need active project membership, workers additionally need own active employee assignment for projects/tasks. Own employee profile may be read without assignment. Details hide inaccessible rows with 404. Counts use authorized rows. Overview uses civil day in tenant timezone with half-open timestamp bounds. reviewedReportsForDay means accepted_quantity IS NOT NULL, including zero, not completed tasks. currentOpenShifts is current across days. Null acceptedQuantity means no report in the group has been reviewed. No mixed-unit sum. Unavailable metrics are intentional capability declarations. Phase02a adds director-only people commands with durable requestId replay, expectedVersion, immutable yes/no admission evidence, project assignments and crews. Document references are metadata only. Current admission requires latest attempt/template and exact active qualification id/version, inclusive tenant civil-date expiry. Phase02b adds project catalogs, strict managed drafts, immutable front checks and atomic director publication. Legacy create is retired410; managed tasks reject legacy sync/report mutations409 before replay/effects. 68 v1 operations plus one deprecated legacy creation route (69 total). Server03a adds ordered managed execution events, exact provisional civil-time reads and additive managedExecution overview. Server03b adds six private binary evidence routes and five revisioned exact-time/XLSX routes. Current private storage is local filesystem, with explicit separate FS/PG durability boundaries. Browser durable queue/UI integration/physical-phone acceptance remain03c; authority workflow/quality/material/ID remain04; operations/S3/AV/backups and full pilot acceptance remain pending."
   },
   "servers": [
     {
@@ -5491,6 +5491,1472 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{p}/evidence": {
+      "post": {
+        "operationId": "reserveEvidence",
+        "summary": "Reserve private file metadata",
+        "description": "Current access is checked again after waits: director tenant-wide; master/PTO need active project grant; worker needs own active linked employee, active project membership and assignment. Managers retain historical target reads without current target assignment/admission. Mutation: director or worker-own, master requires onBehalfReason when mutating another employee; PTO read-only. Hidden resources404, role403. Current authority is required on replay too. Unknown/repeated query fields rejected400. Metadata command shares tenant+actor+requestId namespace with people/tasks/execution/time. Exact normalized operation/body replay returns original201 response after fresh current authority; changed operation/payload409. Receipt, mutation and audit commit together. Client chooses fileId, exact size, lowercase SHA256 and allowed MIME. Immutable tenant-unique fileId may not change metadata. Master reason persists for later PUT.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed strict body/query, unknown or repeated query keys, invalid UUID/day/pagination/version/hash/size/totals, or interrupted upload. No successful effect.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership, role_denied, or required master on-behalf reason missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project/employee/file/target resource; worker current own active link, project grant and assignment required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Command conflict: idempotency_payload_mismatch, file_metadata_conflict, evidence_pending/evidence_already_attached, stale_approval_version, stale_source, approval_required or time_source_inconsistent as applicable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server/database failure; public body is {error:\"internal\"}. Failed metadata commands roll back receipt, mutation and audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceReservationInput"
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listEvidence",
+        "summary": "List visible private file metadata",
+        "description": "Current access is checked again after waits: director tenant-wide; master/PTO need active project grant; worker needs own active linked employee, active project membership and assignment. Managers retain historical target reads without current target assignment/admission. Mutation: director or worker-own, master requires onBehalfReason when mutating another employee; PTO read-only. Hidden resources404, role403. Current authority is required on replay too. Unknown/repeated query fields rejected400. Worker list contains only own files; explicit other employeeId fails closed. Order reservedAt,id ascending; default25/max100. No binary or path returned.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "employeeId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed strict body/query, unknown or repeated query keys, invalid UUID/day/pagination/version/hash/size/totals, or interrupted upload. No successful effect.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership, role_denied, or required master on-behalf reason missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project/employee/file/target resource; worker current own active link, project grant and assignment required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server/database failure; public body is {error:\"internal\"}. Failed metadata commands roll back receipt, mutation and audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/evidence/{file}": {
+      "get": {
+        "operationId": "getEvidence",
+        "summary": "Read private file metadata",
+        "description": "Current access is checked again after waits: director tenant-wide; master/PTO need active project grant; worker needs own active linked employee, active project membership and assignment. Managers retain historical target reads without current target assignment/admission. Mutation: director or worker-own, master requires onBehalfReason when mutating another employee; PTO read-only. Hidden resources404, role403. Current authority is required on replay too. Unknown/repeated query fields rejected400.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed strict body/query, unknown or repeated query keys, invalid UUID/day/pagination/version/hash/size/totals, or interrupted upload. No successful effect.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership, role_denied, or required master on-behalf reason missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project/employee/file/target resource; worker current own active link, project grant and assignment required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server/database failure; public body is {error:\"internal\"}. Failed metadata commands roll back receipt, mutation and audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/evidence/{file}/content": {
+      "put": {
+        "operationId": "uploadEvidence",
+        "summary": "Upload immutable private bytes",
+        "description": "Current access is checked again after waits: director tenant-wide; master/PTO need active project grant; worker needs own active linked employee, active project membership and assignment. Managers retain historical target reads without current target assignment/admission. Mutation: director or worker-own, master requires onBehalfReason when mutating another employee; PTO read-only. Hidden resources404, role403. Current authority is required on replay too. Unknown/repeated query fields rejected400. Raw bounded request stream; Content-Length optional for chunked transfer, must equal reserved size when supplied. Verifies JPEG/PNG/PDF magic, exact size and digest. PUT identity is fileId+registered bytes, no requestId JSON/receipt. Same-byte retry/concurrent PUT returns200 with one ready audit. Network/disk I/O holds no project/employee locks; freshly rechecks authority before ready commit. Local FS promotion precedes separate PostgreSQL ready transaction: rollback may leave private orphan, retry verifies/reuses it; never overwrite/delete another committed object. Aborted request stays pending/retryable; a disconnected client may receive no response. Invalid HTTP framing may be rejected by Node before routing, without an application JSON body.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "Content-Length",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]*)$"
+            },
+            "description": "Optional decimal byte count; exact registered size1..8388608. Chunked requests use a running bound."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed strict body/query, unknown or repeated query keys, invalid UUID/day/pagination/version/hash/size/totals, or interrupted upload. No successful effect.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership, role_denied, or required master on-behalf reason missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project/employee/file/target resource; worker current own active link, project grant and assignment required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Raw upload exceeds 8388608 bytes, including chunked running limit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "octet_stream_required: PUT requires exactly application/octet-stream (case insensitive, no parameters).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Business validation, exact size/digest/magic mismatch; time recorded/open/future/suspicious/totals restrictions, invalid_tenant_timezone or export row limit as applicable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server/database failure; public body is {error:\"internal\"}. Failed metadata commands roll back receipt, mutation and audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Private bytes missing/corrupt/unavailable or storage write/sync/promotion failed; public body is {error:\"internal\"}, no local path disclosure. Pending upload may be retried.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary",
+                "minLength": 1,
+                "maxLength": 8388608,
+                "description": "Actual immutable bytes, max8MiB; validated exact metadata size, SHA256 and allowed signature."
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "downloadEvidence",
+        "summary": "Download verified private bytes",
+        "description": "Current access is checked again after waits: director tenant-wide; master/PTO need active project grant; worker needs own active linked employee, active project membership and assignment. Managers retain historical target reads without current target assignment/admission. Mutation: director or worker-own, master requires onBehalfReason when mutating another employee; PTO read-only. Hidden resources404, role403. Current authority is required on replay too. Unknown/repeated query fields rejected400. Ready required; pending409. Verified bytes are buffered <=8MiB outside locks, then current ACL freshly checked before sending. Missing/corrupt storage fails503, no bytes/path leak.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Actual JPEG/PNG/PDF, safe attachment headers; MIME matches immutable metadata.",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "minLength": 1,
+                  "maxLength": 8388608,
+                  "description": "Actual immutable bytes, max8MiB; validated exact metadata size, SHA256 and allowed signature."
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "minLength": 1,
+                  "maxLength": 8388608,
+                  "description": "Actual immutable bytes, max8MiB; validated exact metadata size, SHA256 and allowed signature."
+                }
+              },
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "minLength": 1,
+                  "maxLength": 8388608,
+                  "description": "Actual immutable bytes, max8MiB; validated exact metadata size, SHA256 and allowed signature."
+                }
+              }
+            },
+            "headers": {
+              "Content-Disposition": {
+                "description": "Attachment only; ASCII fallback and RFC5987 UTF-8 filename, never a path.",
+                "schema": {
+                  "type": "string",
+                  "pattern": "^attachment; filename="
+                }
+              },
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "private, no-store"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "nosniff"
+                  ]
+                }
+              },
+              "Content-Security-Policy": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "sandbox; default-src 'none'"
+                  ]
+                }
+              },
+              "Content-Length": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^[1-9][0-9]*$"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed strict body/query, unknown or repeated query keys, invalid UUID/day/pagination/version/hash/size/totals, or interrupted upload. No successful effect.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership, role_denied, or required master on-behalf reason missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project/employee/file/target resource; worker current own active link, project grant and assignment required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Command conflict: idempotency_payload_mismatch, file_metadata_conflict, evidence_pending/evidence_already_attached, stale_approval_version, stale_source, approval_required or time_source_inconsistent as applicable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server/database failure; public body is {error:\"internal\"}. Failed metadata commands roll back receipt, mutation and audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Private bytes missing/corrupt/unavailable or storage write/sync/promotion failed; public body is {error:\"internal\"}, no local path disclosure. Pending upload may be retried.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/evidence/{file}/attachment": {
+      "post": {
+        "operationId": "attachEvidence",
+        "summary": "Attach ready evidence to existing execution record",
+        "description": "Current access is checked again after waits: director tenant-wide; master/PTO need active project grant; worker needs own active linked employee, active project membership and assignment. Managers retain historical target reads without current target assignment/admission. Mutation: director or worker-own, master requires onBehalfReason when mutating another employee; PTO read-only. Hidden resources404, role403. Current authority is required on replay too. Unknown/repeated query fields rejected400. Metadata command shares tenant+actor+requestId namespace with people/tasks/execution/time. Exact normalized operation/body replay returns original201 response after fresh current authority; changed operation/payload409. Receipt, mutation and audit commit together. Immutable one-target binding. Existing execution event uses actorUserId+requestId; final_report uses reportId. Target must match tenant/project/employee. Ready bytes verified outside locks, fresh authority and target checked before binding. Exact replay retains original result; second distinct attachment command409.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed strict body/query, unknown or repeated query keys, invalid UUID/day/pagination/version/hash/size/totals, or interrupted upload. No successful effect.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership, role_denied, or required master on-behalf reason missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project/employee/file/target resource; worker current own active link, project grant and assignment required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Command conflict: idempotency_payload_mismatch, file_metadata_conflict, evidence_pending/evidence_already_attached, stale_approval_version, stale_source, approval_required or time_source_inconsistent as applicable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server/database failure; public body is {error:\"internal\"}. Failed metadata commands roll back receipt, mutation and audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Private bytes missing/corrupt/unavailable or storage write/sync/promotion failed; public body is {error:\"internal\"}, no local path disclosure. Pending upload may be retried.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceAttachmentInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/time/employees/{employee}/days/{day}": {
+      "get": {
+        "operationId": "getTimeDay",
+        "summary": "Read reported source and current approval",
+        "description": "Current director tenant-wide or granted master/PTO may read historical target data; worker only current own active link+grant+assignment. Director alone approves/revokes until full authority matrix. No current admission required for historical manager reads or approval. Fresh scope after locks and on command replay. No unknown/repeated query keys. Civil date and timezone are server-derived. Current/stale/revoked/unapproved are explicit; source reported and confirmed totals stay separate.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "employee",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeDay"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed strict body/query, unknown or repeated query keys, invalid UUID/day/pagination/version/hash/size/totals, or interrupted upload. No successful effect.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership, role_denied, or required master on-behalf reason missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project/employee/file/target resource; worker current own active link, project grant and assignment required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Command conflict: idempotency_payload_mismatch, file_metadata_conflict, evidence_pending/evidence_already_attached, stale_approval_version, stale_source, approval_required or time_source_inconsistent as applicable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Business validation, exact size/digest/magic mismatch; time recorded/open/future/suspicious/totals restrictions, invalid_tenant_timezone or export row limit as applicable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server/database failure; public body is {error:\"internal\"}. Failed metadata commands roll back receipt, mutation and audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/time/employees/{employee}/days/{day}/history": {
+      "get": {
+        "operationId": "listTimeApprovalHistory",
+        "summary": "Read immutable time approval history",
+        "description": "Current director tenant-wide or granted master/PTO may read historical target data; worker only current own active link+grant+assignment. Director alone approves/revokes until full authority matrix. No current admission required for historical manager reads or approval. Fresh scope after locks and on command replay. No unknown/repeated query keys. Version descending, default50/max100; source/confirmed snapshots and reasons preserved. History does not recompute prior source.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "employee",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "Default50, max100."
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeApprovalHistory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed strict body/query, unknown or repeated query keys, invalid UUID/day/pagination/version/hash/size/totals, or interrupted upload. No successful effect.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership, role_denied, or required master on-behalf reason missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project/employee/file/target resource; worker current own active link, project grant and assignment required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server/database failure; public body is {error:\"internal\"}. Failed metadata commands roll back receipt, mutation and audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/time/employees/{employee}/days/{day}/approvals": {
+      "post": {
+        "operationId": "approveTimeDay",
+        "summary": "Approve or correct exact daily time",
+        "description": "Current director tenant-wide or granted master/PTO may read historical target data; worker only current own active link+grant+assignment. Director alone approves/revokes until full authority matrix. No current admission required for historical manager reads or approval. Fresh scope after locks and on command replay. No unknown/repeated query keys. Metadata command shares tenant+actor+requestId namespace with people/tasks/execution/time. Exact normalized operation/body replay returns original201 response after fresh current authority; changed operation/payload409. Receipt, mutation and audit commit together. expectedApprovalVersion is scoped to project/employee/day; stale version409. Source changes serialize with approval; valid late events remain accepted. Closed recorded zero-time days may be approved; empty source422. Default confirms source exactly; optional totals never rewrite execution. No electronic signature or payroll calculation.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "employee",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeDay"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed strict body/query, unknown or repeated query keys, invalid UUID/day/pagination/version/hash/size/totals, or interrupted upload. No successful effect.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership, role_denied, or required master on-behalf reason missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project/employee/file/target resource; worker current own active link, project grant and assignment required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Command conflict: idempotency_payload_mismatch, file_metadata_conflict, evidence_pending/evidence_already_attached, stale_approval_version, stale_source, approval_required or time_source_inconsistent as applicable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "recorded_time_required; open_intervals; future_day; suspicious_acknowledgment_required; invalid_confirmed_totals (categories sum/presence exceeds actual DST day); invalid_tenant_timezone.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server/database failure; public body is {error:\"internal\"}. Failed metadata commands roll back receipt, mutation and audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimeApprovalInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/time/employees/{employee}/days/{day}/revoke": {
+      "post": {
+        "operationId": "revokeTimeDay",
+        "summary": "Revoke latest approval without deleting history",
+        "description": "Current director tenant-wide or granted master/PTO may read historical target data; worker only current own active link+grant+assignment. Director alone approves/revokes until full authority matrix. No current admission required for historical manager reads or approval. Fresh scope after locks and on command replay. No unknown/repeated query keys. Metadata command shares tenant+actor+requestId namespace with people/tasks/execution/time. Exact normalized operation/body replay returns original201 response after fresh current authority; changed operation/payload409. Receipt, mutation and audit commit together. expectedApprovalVersion is scoped to project/employee/day; stale version409. Source changes serialize with approval; valid late events remain accepted. Closed recorded zero-time days may be approved; empty source422. Default confirms source exactly; optional totals never rewrite execution. No electronic signature or payroll calculation.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "employee",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeDay"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed strict body/query, unknown or repeated query keys, invalid UUID/day/pagination/version/hash/size/totals, or interrupted upload. No successful effect.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership, role_denied, or required master on-behalf reason missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project/employee/file/target resource; worker current own active link, project grant and assignment required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_approval_version; approval_required (no latest approved revision); idempotency_payload_mismatch; time_source_inconsistent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Business validation, exact size/digest/magic mismatch; time recorded/open/future/suspicious/totals restrictions, invalid_tenant_timezone or export row limit as applicable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server/database failure; public body is {error:\"internal\"}. Failed metadata commands roll back receipt, mutation and audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimeRevokeInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/time/export.xlsx": {
+      "get": {
+        "operationId": "exportApprovedTimeXlsx",
+        "summary": "Download complete approved time snapshot",
+        "description": "Current director tenant-wide or granted master/PTO may read historical target data; worker only current own active link+grant+assignment. Director alone approves/revokes until full authority matrix. No current admission required for historical manager reads or approval. Fresh scope after locks and on command replay. No unknown/repeated query keys. Worker403 even on empty range. Required inclusive civil from/to ordered<=31days, max10000 recorded employee/day rows. SAME recorded predicate as get/approval, including closed zero-time days and open rows. Every recorded row must have latest approved exact matching sourceHash, otherwise entire request409; no silent omissions/provisional leak. Empty range gives real header-only workbook with empty=true Snapshot metadata. One clock/timezone/source/revision captured under project→sorted employees→memberships/grants→heads locks; release all locks before rendering. Fresh current director/master/PTO access is checked after render. Source changes after capture are allowed: downloaded capturedAt/hash/revision remain attributable, never silently replaced. Time and Snapshot sheets include raw source/confirmed ms, hours half-up6decimals, IDs/labels/reason/actor/approval version/hash/capture time. Untrusted labels typed String, XML-safe, no formulas; aggregate overrides have no invented per-task allocation. Real OOXML ZIP, not renamed CSV; write-excel-file4.1.1 MIT. No rates, costing or1C.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "description": "Real XLSX ZIP with Time and Snapshot sheets. At most10000 recorded employee/day rows; raw millisecond strings authoritative."
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "private, no-store"
+                  ]
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "nosniff"
+                  ]
+                }
+              },
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string",
+                  "pattern": "^attachment; filename=\"time-[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{4}-[0-9]{2}-[0-9]{2}\\.xlsx\"$"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed strict body/query, unknown or repeated query keys, invalid UUID/day/pagination/version/hash/size/totals, or interrupted upload. No successful effect.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership, role_denied, or required master on-behalf reason missing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project/employee/file/target resource; worker current own active link, project grant and assignment required.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "time_export_incomplete:<JSON array> in Error.error, up to20 {employeeId,day,status} entries (unapproved/stale/revoked), or time_source_inconsistent. Whole export fails; no partial workbook.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "time_export_row_limit (>10000 recorded employee/day rows) or invalid_tenant_timezone.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server/database failure; public body is {error:\"internal\"}. Failed metadata commands roll back receipt, mutation and audit.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -10029,6 +11495,1027 @@
           "shiftStartSource"
         ],
         "additionalProperties": false
+      },
+      "EvidenceEventTarget": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "execution_event"
+            ]
+          },
+          "actorUserId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        "required": [
+          "kind",
+          "actorUserId",
+          "requestId"
+        ],
+        "additionalProperties": false,
+        "description": "Composite target identity is tenant + actorUserId + requestId; requestId alone is not globally unique."
+      },
+      "EvidenceReportTarget": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "final_report"
+            ]
+          },
+          "reportId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          }
+        },
+        "required": [
+          "kind",
+          "reportId"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceTarget": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/EvidenceEventTarget"
+          },
+          {
+            "$ref": "#/components/schemas/EvidenceReportTarget"
+          }
+        ]
+      },
+      "EvidenceReservationInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "fileId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[^\\u0000-\\u001f\\u007f\\ud800-\\udfff]+$",
+            "description": "Trimmed display name only, never an object key or filesystem path. Control characters and surrogate code units rejected."
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "application/pdf"
+            ]
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8388608
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "onBehalfReason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "\\S",
+            "description": "Trimmed nonempty explanation. Always required on approval/revoke; onBehalfReason required for master mutations on behalf of another employee."
+          }
+        },
+        "required": [
+          "requestId",
+          "fileId",
+          "employeeId",
+          "filename",
+          "contentType",
+          "sizeBytes",
+          "sha256"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceAttachmentInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "target": {
+            "$ref": "#/components/schemas/EvidenceTarget"
+          },
+          "onBehalfReason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "\\S",
+            "description": "Trimmed nonempty explanation. Always required on approval/revoke; onBehalfReason required for master mutations on behalf of another employee."
+          }
+        },
+        "required": [
+          "requestId",
+          "target"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceAttachment": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/EvidenceTarget"
+          },
+          "attachedBy": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "attachedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "onBehalfReason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "\\S",
+            "description": "Trimmed nonempty explanation. Always required on approval/revoke; onBehalfReason required for master mutations on behalf of another employee.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "target",
+          "attachedBy",
+          "attachedAt",
+          "onBehalfReason"
+        ],
+        "additionalProperties": false
+      },
+      "EvidenceFile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^[^\\u0000-\\u001f\\u007f\\ud800-\\udfff]+$",
+            "description": "Trimmed display name only, never an object key or filesystem path. Control characters and surrogate code units rejected."
+          },
+          "contentType": {
+            "type": "string",
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "application/pdf"
+            ]
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8388608
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "ready"
+            ]
+          },
+          "reservedBy": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "reservedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "readyBy": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            "nullable": true
+          },
+          "readyAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "onBehalfReason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "\\S",
+            "description": "Trimmed nonempty explanation. Always required on approval/revoke; onBehalfReason required for master mutations on behalf of another employee.",
+            "nullable": true
+          },
+          "attachment": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/components/schemas/EvidenceTarget"
+              },
+              "attachedBy": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              "attachedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "onBehalfReason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "pattern": "\\S",
+                "description": "Trimmed nonempty explanation. Always required on approval/revoke; onBehalfReason required for master mutations on behalf of another employee.",
+                "nullable": true
+              }
+            },
+            "required": [
+              "target",
+              "attachedBy",
+              "attachedAt",
+              "onBehalfReason"
+            ],
+            "additionalProperties": false,
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "employeeId",
+          "filename",
+          "contentType",
+          "sizeBytes",
+          "sha256",
+          "state",
+          "reservedBy",
+          "reservedAt",
+          "readyBy",
+          "readyAt",
+          "onBehalfReason",
+          "attachment"
+        ],
+        "additionalProperties": false,
+        "description": "Declared metadata is immutable. Pending has null readyBy/readyAt and no attachment; ready follows verified durable bytes. No storage paths, keys or public URLs are returned."
+      },
+      "EvidenceList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EvidenceFile"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "additionalProperties": false
+      },
+      "TimeTotals": {
+        "type": "object",
+        "properties": {
+          "presenceMs": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative integer milliseconds; canonical decimal string, no floating-point conversion."
+          },
+          "idleMs": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative integer milliseconds; canonical decimal string, no floating-point conversion."
+          },
+          "workMs": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative integer milliseconds; canonical decimal string, no floating-point conversion."
+          },
+          "breakMs": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative integer milliseconds; canonical decimal string, no floating-point conversion."
+          },
+          "downtimeMs": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative integer milliseconds; canonical decimal string, no floating-point conversion."
+          }
+        },
+        "required": [
+          "presenceMs",
+          "idleMs",
+          "workMs",
+          "breakMs",
+          "downtimeMs"
+        ],
+        "additionalProperties": false,
+        "description": "idleMs + workMs + breakMs + downtimeMs = presenceMs. Confirmed presence cannot exceed the actual civil day (23/24/25 hours)."
+      },
+      "TimeTaskAllocation": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "workMs": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative integer milliseconds; canonical decimal string, no floating-point conversion."
+          },
+          "downtimeMs": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative integer milliseconds; canonical decimal string, no floating-point conversion."
+          }
+        },
+        "required": [
+          "taskId",
+          "workMs",
+          "downtimeMs"
+        ],
+        "additionalProperties": false
+      },
+      "TimeSourceSegment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+            "nullable": true
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "work",
+              "break",
+              "downtime"
+            ]
+          },
+          "clippedStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "clippedEnd": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ms": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative integer milliseconds; canonical decimal string, no floating-point conversion."
+          },
+          "open": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "shiftId",
+          "taskId",
+          "mode",
+          "clippedStart",
+          "clippedEnd",
+          "ms",
+          "open"
+        ],
+        "additionalProperties": false
+      },
+      "TimeZeroMarker": {
+        "type": "object",
+        "properties": {
+          "segmentId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "openingVersion": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "closingVersion": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$",
+            "nullable": true
+          }
+        },
+        "required": [
+          "segmentId",
+          "openingVersion",
+          "closingVersion"
+        ],
+        "additionalProperties": false
+      },
+      "TimeIntervalFlags": {
+        "type": "object",
+        "properties": {
+          "delayed": {
+            "type": "boolean"
+          },
+          "future": {
+            "type": "boolean"
+          },
+          "geoTimeMismatch": {
+            "type": "boolean"
+          },
+          "suspicious": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "delayed",
+          "future",
+          "geoTimeMismatch",
+          "suspicious"
+        ],
+        "additionalProperties": false
+      },
+      "TimeIntervalEvent": {
+        "type": "object",
+        "properties": {
+          "tenantId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "actorUserId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "shift_start",
+              "segment_change",
+              "shift_end"
+            ]
+          },
+          "clippedOccurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "flags": {
+            "$ref": "#/components/schemas/TimeIntervalFlags"
+          }
+        },
+        "required": [
+          "tenantId",
+          "actorUserId",
+          "requestId",
+          "employeeId",
+          "version",
+          "shiftId",
+          "kind",
+          "clippedOccurredAt",
+          "flags"
+        ],
+        "additionalProperties": false
+      },
+      "TimeSource": {
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1
+          },
+          "tenantId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "day": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "timezone": {
+            "type": "string",
+            "minLength": 1
+          },
+          "civilStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "civilEnd": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "segments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeSourceSegment"
+            }
+          },
+          "zeroMarkers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeZeroMarker"
+            }
+          },
+          "totals": {
+            "$ref": "#/components/schemas/TimeTotals"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeTaskAllocation"
+            }
+          },
+          "intervalEvents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeIntervalEvent"
+            }
+          },
+          "hasOpenIntervals": {
+            "type": "boolean"
+          },
+          "suspicious": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "tenantId",
+          "projectId",
+          "employeeId",
+          "day",
+          "timezone",
+          "civilStart",
+          "civilEnd",
+          "segments",
+          "zeroMarkers",
+          "totals",
+          "tasks",
+          "intervalEvents",
+          "hasOpenIntervals",
+          "suspicious"
+        ],
+        "additionalProperties": false,
+        "description": "Canonical relevant clipped civil-day snapshot. Stable-key SHA256 covers segment IDs/modes/task/clipped instants/exact ms, ordered interval event identities/flags and zero markers. Includes carry-in and closing events. Excludes submit_volume, global employee stream version, capture clock and raw endpoints outside this day; unrelated days/projects do not stale approval."
+      },
+      "TimeApprovalRevision": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "previousVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991,
+            "nullable": true
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "revoked"
+            ]
+          },
+          "source": {
+            "$ref": "#/components/schemas/TimeSource"
+          },
+          "sourceHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "sourceTotals": {
+            "$ref": "#/components/schemas/TimeTotals"
+          },
+          "confirmedTotals": {
+            "$ref": "#/components/schemas/TimeTotals"
+          },
+          "overridden": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "\\S",
+            "description": "Trimmed nonempty explanation. Always required on approval/revoke; onBehalfReason required for master mutations on behalf of another employee."
+          },
+          "acknowledgedSuspicious": {
+            "type": "boolean"
+          },
+          "actorUserId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confirmedTaskAllocation": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeTaskAllocation"
+            },
+            "nullable": true
+          }
+        },
+        "required": [
+          "version",
+          "previousVersion",
+          "state",
+          "source",
+          "sourceHash",
+          "sourceTotals",
+          "confirmedTotals",
+          "overridden",
+          "reason",
+          "acknowledgedSuspicious",
+          "actorUserId",
+          "requestId",
+          "recordedAt",
+          "confirmedTaskAllocation"
+        ],
+        "additionalProperties": false,
+        "description": "Immutable revision. Revocation appends a new revision preserving prior source and totals. Manual aggregate override has null confirmedTaskAllocation, never invented task distribution. Version is scoped to project/employee/day, previousVersion null only on first approval."
+      },
+      "TimeDay": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "day": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "source": {
+            "$ref": "#/components/schemas/TimeSource"
+          },
+          "sourceHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "recorded": {
+            "type": "boolean"
+          },
+          "dayLengthMs": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$",
+            "description": "Exact nonnegative integer milliseconds; canonical decimal string, no floating-point conversion."
+          },
+          "future": {
+            "type": "boolean"
+          },
+          "capturedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "approvalVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "latest": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "previousVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991,
+                "nullable": true
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "approved",
+                  "revoked"
+                ]
+              },
+              "source": {
+                "$ref": "#/components/schemas/TimeSource"
+              },
+              "sourceHash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "sourceTotals": {
+                "$ref": "#/components/schemas/TimeTotals"
+              },
+              "confirmedTotals": {
+                "$ref": "#/components/schemas/TimeTotals"
+              },
+              "overridden": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "pattern": "\\S",
+                "description": "Trimmed nonempty explanation. Always required on approval/revoke; onBehalfReason required for master mutations on behalf of another employee."
+              },
+              "acknowledgedSuspicious": {
+                "type": "boolean"
+              },
+              "actorUserId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              "requestId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+              },
+              "recordedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "confirmedTaskAllocation": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TimeTaskAllocation"
+                },
+                "nullable": true
+              }
+            },
+            "required": [
+              "version",
+              "previousVersion",
+              "state",
+              "source",
+              "sourceHash",
+              "sourceTotals",
+              "confirmedTotals",
+              "overridden",
+              "reason",
+              "acknowledgedSuspicious",
+              "actorUserId",
+              "requestId",
+              "recordedAt",
+              "confirmedTaskAllocation"
+            ],
+            "additionalProperties": false,
+            "description": "Immutable revision. Revocation appends a new revision preserving prior source and totals. Manual aggregate override has null confirmedTaskAllocation, never invented task distribution. Version is scoped to project/employee/day, previousVersion null only on first approval.",
+            "nullable": true
+          },
+          "isCurrent": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "unapproved",
+              "current",
+              "stale",
+              "revoked"
+            ]
+          }
+        },
+        "required": [
+          "projectId",
+          "employeeId",
+          "day",
+          "source",
+          "sourceHash",
+          "recorded",
+          "dayLengthMs",
+          "future",
+          "capturedAt",
+          "approvalVersion",
+          "latest",
+          "isCurrent",
+          "status"
+        ],
+        "additionalProperties": false,
+        "description": "Source is reported time, not automatically approved. Closed recorded zero-time days are recorded=true; no source recorded=false. Current means latest approved and exact sourceHash matches. Late valid source events remain accepted and may make approval stale; prior revisions stay unchanged. Command replay returns its original response, whose capturedAt/source may be historical."
+      },
+      "TimeApprovalHistory": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeApprovalRevision"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "additionalProperties": false
+      },
+      "TimeApprovalInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "expectedApprovalVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740990
+          },
+          "sourceHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "\\S",
+            "description": "Trimmed nonempty explanation. Always required on approval/revoke; onBehalfReason required for master mutations on behalf of another employee."
+          },
+          "acknowledgeSuspicious": {
+            "type": "boolean"
+          },
+          "confirmedTotals": {
+            "$ref": "#/components/schemas/TimeTotals"
+          }
+        },
+        "required": [
+          "requestId",
+          "expectedApprovalVersion",
+          "sourceHash",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "Director only. expectedApprovalVersion=0 if no prior revision. Requires current sourceHash, recorded closed nonfuture source; suspicious flags require acknowledgeSuspicious=true. Optional complete confirmedTotals override preserves source, exact BigInt arithmetic and actual DST day bound."
+      },
+      "TimeRevokeInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "expectedApprovalVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740990
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "\\S",
+            "description": "Trimmed nonempty explanation. Always required on approval/revoke; onBehalfReason required for master mutations on behalf of another employee."
+          }
+        },
+        "required": [
+          "requestId",
+          "expectedApprovalVersion",
+          "reason"
+        ],
+        "additionalProperties": false,
+        "description": "Director only. Requires latest revision approved; appends immutable revoked revision."
       }
     }
   }

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {publicContract,matchesContract,checkHttpContract} from './contract-check.js';
 import {randomUUID as id,createHash} from 'node:crypto';
 import test from 'node:test';
 import {mkdtemp,rm,readdir,readFile,writeFile,unlink,stat} from 'node:fs/promises';
@@ -24,9 +25,9 @@ const path=(file?:string)=>`/projects/${p}/evidence${file?`/${file}`:''}`;
 function reservation(bytes:Buffer=png,extra:any={}){return {requestId:id(),fileId:id(),employeeId:employee,filename:'доказательство.png',contentType:'image/png',sizeBytes:bytes.length,sha256:sha(bytes),...extra};}
 function headers(user:string=worker,t:string=tenant){return {authorization:`Bearer ${tokens.get(user)}`,'x-tenant-id':t};}
 async function req(url:string,body?:any,user:string=worker,method=body===undefined?'GET':'POST'){
- const r=await fetch(`${base}/api/v1${url}`,{method,headers:{...headers(user),'content-type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});return {status:r.status,body:r.headers.get('content-type')?.includes('application/json')?await r.json():Buffer.from(await r.arrayBuffer())};
+ const r=await fetch(`${base}/api/v1${url}`,{method,headers:{...headers(user),'content-type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});const result={status:r.status,body:r.headers.get('content-type')?.includes('application/json')?await r.json():Buffer.from(await r.arrayBuffer())};checkHttpContract('/api/v1'+url,method,r.status,result.body,r.headers);return result;
 }
-async function put(file:string,bytes:Buffer=png,user:string=worker){const r=await fetch(`${base}/api/v1${path(file)}/content`,{method:'PUT',headers:{...headers(user),'content-type':'application/octet-stream'},body:Uint8Array.from(bytes)});return {status:r.status,body:await r.json()};}
+async function put(file:string,bytes:Buffer=png,user:string=worker){const r=await fetch(`${base}/api/v1${path(file)}/content`,{method:'PUT',headers:{...headers(user),'content-type':'application/octet-stream'},body:Uint8Array.from(bytes)});const result={status:r.status,body:await r.json()};checkHttpContract('/api/v1'+path(file)+'/content','PUT',r.status,result.body,r.headers);return result;}
 async function reserve(b=reservation(),user:string=worker){const r=await req(path(),b,user);assert.equal(r.status,201,JSON.stringify(r));return b;}
 test.before(async()=>{
  const actual=(await admin.query(`SELECT current_database() db,current_user usr,inet_server_port() port,current_setting('data_directory') dir`)).rows[0];assert.equal(actual.db,'helios');assert.equal(actual.usr,'helios');assert.equal(actual.port,54339);assert.ok(actual.dir.endsWith('codex-api/.data/pg-54339'));
@@ -365,4 +366,19 @@ test('XLSX exact10000 recorded-day boundary renders all approvals;10001 includin
  const expected=new Map(revisions.map(r=>[r.employee+'/'+r.day,r]));for(const row of x.records){const r=expected.get(row.employeeId+'/'+row.day);assert.ok(r);assert.equal(row.sourceHash,r.hash);assert.equal(row['source.presenceMs'],'86400000');assert.equal(row['confirmed.presenceMs'],'86400000');}
  await lifecycle('2026-03-31T12:00:00Z',[{at:'2026-03-31T12:00:00Z'}],{project,employee:otherEmployee,actor:director});
  const over=await req(exportPath('2026-03-01','2026-03-31',project),undefined,director);assert.equal(over.status,422);assert.equal(over.body.error,'time_export_row_limit');
+});
+
+test('strict time contract covers exact snapshots, immutable revisions, inputs and XLSX failures',async()=>{
+ const schemas=publicContract.components.schemas,root='/api/v1/projects/{p}/time',daily=root+'/employees/{employee}/days/{day}';
+ const form={requestId:id(),expectedApprovalVersion:0,sourceHash:'a'.repeat(64),reason:'Reviewed',acknowledgeSuspicious:true,confirmedTotals:zeroTotals};matchesContract(form,schemas.TimeApprovalInput);
+ for(const extra of [{tenantId:tenant},{expectedApprovalVersion:-1},{expectedApprovalVersion:Number.MAX_SAFE_INTEGER},{sourceHash:'A'.repeat(64)},{reason:' '},{reason:'a'.repeat(501)},{confirmedTotals:{...zeroTotals,workMs:'01'}},{confirmedTotals:{...zeroTotals,idleMs:'1.0'}},{confirmedTotals:{...zeroTotals,extra:'0'}},{confirmedTotals:{presenceMs:'0'}}])assert.throws(()=>matchesContract({...form,...extra},schemas.TimeApprovalInput));
+ for(const key of ['requestId','expectedApprovalVersion','sourceHash','reason']){const missing:any={...form};delete missing[key];assert.throws(()=>matchesContract(missing,schemas.TimeApprovalInput));}
+ const revoke={requestId:id(),expectedApprovalVersion:1,reason:'Withdraw'};matchesContract(revoke,schemas.TimeRevokeInput);assert.throws(()=>matchesContract({...revoke,sourceHash:form.sourceHash},schemas.TimeRevokeInput));
+ for(const name of ['TimeTotals','TimeTaskAllocation','TimeSourceSegment','TimeZeroMarker','TimeIntervalFlags','TimeIntervalEvent','TimeSource','TimeApprovalRevision','TimeDay','TimeApprovalHistory','TimeApprovalInput','TimeRevokeInput'])assert.equal(schemas[name].additionalProperties,false,name);
+ const current=await source();matchesContract(current,schemas.TimeDay);const history=await req(timePath()+'/history',undefined,director);matchesContract(history.body,schemas.TimeApprovalHistory);
+ assert.throws(()=>matchesContract({...current,latest:{...current.latest,forged:true}},schemas.TimeDay));
+ const exportOp=publicContract.paths[root+'/export.xlsx'].get,mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';assert.equal(exportOp.responses['200'].content[mime].schema.format,'binary');assert.deepEqual(exportOp.parameters.filter((p:any)=>p.in==='query').map((p:any)=>[p.name,p.required]),[['from',true],['to',true]]);
+ for(const code of ['400','401','403','404','409','422','500'])assert.ok(exportOp.responses[code]);assert.match(exportOp.responses['409'].description,/time_export_incomplete/);assert.match(exportOp.responses['422'].description,/10000/);
+ assert.equal(publicContract.paths[daily+'/approvals'].post.requestBody.required,true);assert.equal(publicContract.paths[daily+'/revoke'].post.requestBody.required,true);
+ const r=await fetch(`${base}/api/v1${timePath()}`);const b=await r.json();assert.equal(r.status,401);checkHttpContract('/api/v1'+timePath(),'GET',r.status,b,r.headers);
 });

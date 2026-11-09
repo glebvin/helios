@@ -1,6 +1,6 @@
 # HELIOS API v1 — handoff интерфейсу
 
-Срезы **02a: люди → квалификации → допуск → назначение → бригада** и **02b: каталоги → план → готовность фронта → согласование → публикация** сохраняют первый API чтения. Контракт `apps/api/openapi.json` доступен через `GET /api/v1/openapi.json`: **58 операций — 57 v1 (53 прежние операции плюс POST и четыре GET execution) и один retired legacy-create endpoint**. Защищённые v1-маршруты требуют действующей сессии и активного членства в кабинете. Это ещё не готовый пилот.
+Срезы **02a: люди → квалификации → допуск → назначение → бригада** и **02b: каталоги → план → готовность фронта → согласование → публикация** сохраняют первый API чтения. Контракт `apps/api/openapi.json` доступен через `GET /api/v1/openapi.json`: **69 операций — 68 v1 и один retired legacy-create endpoint: прежние58 сохранены, добавлены6 операций файлов и5 операций утверждения времени/Excel**. Защищённые v1-маршруты требуют действующей сессии и активного членства в кабинете. Это ещё не готовый пилот.
 
 ## Вход и кабинет
 
@@ -66,7 +66,7 @@ curl "http://127.0.0.1:4327/api/v1/overview?projectId=$PROJECT_ID&day=2026-11-01
 
 В v1 нет демонстрационных процентов/колец. Старый `/api/summary` остаётся явно учебным (`sample:true`), его нельзя выдавать за боевую сводку. Seed не выдаёт master/PTO/worker доступ ко всем проектам: директор управляет явными членствами через новый endpoint ниже. Назначения из существующих задач мигрировались один раз при 002; последующие legacy-записи не синхронизируют их автоматически. Прежние назначения сохранены с `admissionCheckId:null`, `currentAdmission.eligible:false` и причиной `no_check`; миграция не выдумывает успешный допуск.
 
-02a реализует квалификации, первый допуск yes/no и бригады. 02b реализует подготовку одноперсонных задач, готовность фронта и атомарную публикацию с текущим допуском; выполнение относится к следующему срезу03. Нет полных typed/photo/measurement чек-листов качества и замечаний, простоев, 14 маршрутов и реестра полномочий, входящих материалов, ИД/АОСР/hold points, загрузки файлов, MFA/backup/операционной приёмки. Телефонный offline и конкурентная legacy-синхронизация не доказаны этими HTTP-тестами.
+02a реализует квалификации, первый допуск yes/no и бригады;02b — подготовку одноперсонных задач, готовность фронта и атомарную публикацию;03a — смены, интервалы работы/перерывов/простоев и предварительный объём;03b-server — приватные вложения, утверждение часов и XLSX. Нет полного цикла typed/photo/measurement чек-листов качества и замечаний,14 маршрутов и реестра полномочий, входящих материалов, ИД/АОСР/hold points, MFA и операционной приёмки. Долговечная браузерная очередь, подключение UI и проверка offline на физических телефонах остаются03c. HTTP/PG-тесты сервера не подтверждают эти клиентские сценарии.
 
 Legacy `POST /api/tasks` возвращает **410 task_creation_retired** для любого авторизованного участника; прямой вызов сервиса также закрыт. Замена: `POST /api/v1/projects/:id/tasks`, затем front-checks/submit/publish. Managed02b задачи во всех состояниях отклоняют legacy shift_start, shift_end, submit_volume и приёмку отчёта с **409 workflow_not_supported** до event receipt/replay и эффектов. Отсутствующий/чужой task —404. Worker не получает право приёмки. Новых смен/отчётов/job/event/audit при отказе нет. Старые явно legacy строки сохраняют ограниченную совместимость для foundation fixture, без сертификации текущего допуска/offline/проектных прав. Managed lineage неизменяем; публикация не открывает legacy выполнение. Touched legacy desk/summary скрывают worker чужие/preparation task/shift/report IDs и counts; полный аудит прочих старых маршрутов остаётся отдельной работой.
 
@@ -225,13 +225,13 @@ POST /projects/${project}/tasks/${task}/publish
 {"requestId":"${r7}","expectedVersion":3}
 ```
 
-Последний запрос выполняет директор. Worker теперь видит только собственную published задачу, включая v1 overview и touched legacy counts. Legacy смена/отчёт по managed задаче закрыты409; новый серверный execution03a описан ниже. Достоверный browser offline, файлы, quality inspections, authority routes, реальный material/ID/AOSR/hold-point процесс, multiple executors, нормы, MFA/backup/load и полная приёмка пилота остаются впереди. Эти возможности не заменяются front yes/no или тестовыми legacy отчётами.
+Последний запрос выполняет директор. Worker теперь видит только собственную published задачу, включая v1 overview и touched legacy counts. Legacy смена/отчёт по managed задаче закрыты409; новый серверный execution03a описан ниже. Достоверный browser offline, quality inspections, authority routes, реальный material/ID/AOSR/hold-point процесс, multiple executors, нормы, MFA/backup/load и полная приёмка пилота остаются впереди. Серверный поток вложений добавлен в03b ниже. Эти возможности не заменяются front yes/no или тестовыми legacy отчётами.
 
 В текущем install layout отдельная команда domain `tsc --noEmit` не находит types/node (TS2688), хотя API typecheck и domain runtime tests проходят. Без установки/изменения зависимостей подтверждён вариант с уже установленными типами: `corepack pnpm --filter @helios/domain exec tsc --noEmit --typeRoots ../../apps/api/node_modules/@types`. Это ограничение локального resolution, не утверждение о прохождении исходной команды.
 
 ## Управляемое выполнение03a
 
-Контракт содержит58 операций: прежние53 сохранены, добавлены POST `/api/v1/execution/events` и четыре GET ниже. Legacy `/api/shifts/*` и `/api/work-reports` по-прежнему отвергают managed задачи409, legacy create410. Новые данные находятся только в managed таблицах; published/cancelled план и publication snapshot не меняются. Исполнение не означает приёмку.
+На checkpoint03a контракт вырос с53 до58 операций: добавлены POST `/api/v1/execution/events` и четыре GET ниже. Legacy `/api/shifts/*` и `/api/work-reports` по-прежнему отвергают managed задачи409, legacy create410. Новые данные находятся только в managed таблицах; published/cancelled план и publication snapshot не меняются. Исполнение не означает приёмку.
 
 POST body строго `{events:[...]}`,1–50 уникальных UUID requestId. Весь синтаксис проверяется до записи: неизвестное поле, невалидный instant/UUID/quantity или повтор requestId даёт400 без эффектов всего batch. Затем каждый item — отдельная транзакция в исходном порядке. HTTP200 `{results:[{requestId,outcome:"success"|"duplicate",status:201,result}|{requestId,outcome:"error",status,code,retryable}]}`. Неудача не отменяет уже успешные независимые items и не расходует version/receipt. RequestId одновременно идентификатор события; отдельного eventId нет.
 
@@ -276,4 +276,116 @@ Reports day и `overview.managedExecution.submittedReportsForDay` использ
 ]}
 ```
 
-Если сначала отправлен второй item, отсутствующий predecessor даёт409 `missing_dependency,retryable:true` без effects. Сохраните failed/pending items, отправьте первый и повторите **тот же** второй payload/requestId; получите success. Точное повторение успешного item — duplicate с исходным result. Unrelated receipt или event другого actor/employee/project зависимостью не является. При stale_version409 прочитайте shifts/day текущую version, покажите пользователю конфликт устройств и разрешите его явно; не повышайте версии автоматически и не удаляйте failed items. Retriable500 после rollback допускает точное повторение. Browser durable queue, files/photos, device checks, hours approval/Excel относятся к03b; quality acceptance/material/ID —04. Сервер03a не является полной phase03/приёмкой пилота.
+Если сначала отправлен второй item, отсутствующий predecessor даёт409 `missing_dependency,retryable:true` без effects. Сохраните failed/pending items, отправьте первый и повторите **тот же** второй payload/requestId; получите success. Точное повторение успешного item — duplicate с исходным result. Unrelated receipt или event другого actor/employee/project зависимостью не является. При stale_version409 прочитайте shifts/day текущую version, покажите пользователю конфликт устройств и разрешите его явно; не повышайте версии автоматически и не удаляйте failed items. Retriable500 после rollback допускает точное повторение. Серверные files/photos и hours approval/Excel добавлены в03b ниже. Browser durable queue, подключение UI и device checks остаются03c; quality acceptance/material/ID —04. Сервер03a/03b не является полной phase03/приёмкой пилота.
+
+## Приватные вложения03b-server
+
+Шесть защищённых операций под `/api/v1/projects/:p/evidence`:
+
+| Метод и путь | Результат |
+|---|---|
+| `POST /evidence` | Резервация неизменяемой метадаты,201 `EvidenceFile` |
+| `GET /evidence?employeeId=&limit=25&offset=0` | Видимые метаданные, paged `EvidenceList`; порядок reservedAt,id |
+| `GET /evidence/:file` | Одна метадата,200 `EvidenceFile` |
+| `PUT /evidence/:file/content` | Сырые байты,200 `EvidenceFile` с state=ready |
+| `GET /evidence/:file/content` | Проверенные JPEG/PNG/PDF как attachment; не JSON |
+| `POST /evidence/:file/attachment` | Неизменяемая привязка готового файла к существующему событию/отчёту,201 `EvidenceFile` |
+
+Worker работает только со своим текущим active employee при active tenant/project membership и assignment. Director работает в своём кабинете; master — в разрешённом проекте, для резервации/привязки за другого человека передаёт `onBehalfReason`. Для PUT используется причина из резервации. PTO читает разрешённый проект, без записи. Исторические чтения менеджера не требуют действующего допуска или назначения целевого сотрудника. Отмена задачи не удаляет вложения. Права заново проверяются после ожидания блокировок и после чтения/записи файла; отзыв доступа во время I/O запрещает выдачу байтов/новый эффект.
+
+Пример последовательности; ID, размер и SHA256 берутся из фактического файла. Для каждого metadata command создаётся новый UUID `requestId`, при повторе сохраняются исходные идентификаторы и тело:
+
+```json
+POST /api/v1/projects/${project}/evidence
+{"requestId":"${reserveRequest}","fileId":"${file}","employeeId":"${employee}","filename":"photo.png","contentType":"image/png","sizeBytes":12345,"sha256":"${lowercase64hex}"}
+
+POST /api/v1/projects/${project}/evidence/${file}/attachment
+{"requestId":"${attachRequest}","target":{"kind":"execution_event","actorUserId":"${eventActor}","requestId":"${eventRequest}"}}
+```
+
+Между этими запросами отправляются байты:
+
+```sh
+curl -X PUT "http://127.0.0.1:4327/api/v1/projects/$PROJECT_ID/evidence/$FILE_ID/content" \
+  -H "authorization: Bearer $TOKEN" -H "x-tenant-id: $TENANT_ID" \
+  -H 'content-type: application/octet-stream' --data-binary @photo.png
+curl "http://127.0.0.1:4327/api/v1/projects/$PROJECT_ID/evidence/$FILE_ID/content" \
+  -H "authorization: Bearer $TOKEN" -H "x-tenant-id: $TENANT_ID" -o downloaded.png
+```
+
+Альтернативный target — `{"kind":"final_report","reportId":"${report}"}`. Он ссылается на уже созданный managed final report. Один файл привязывается ровно к одному target; target обязан совпадать по кабинету, проекту и сотруднику. Идентичность события — **tenant+actorUserId+requestId**, а не один requestId. Идентичный retry attachment с прежним requestId возвращает исходный ответ; новая команда для уже привязанного файла —409. Оригинальный ответ reserve replay может оставаться pending, даже когда GET уже ready: replay не подменяет исторический результат команды.
+
+Резервация/attachment используют общий durable namespace tenant+actor+requestId вместе с людьми, задачами, execution и approvals. Изменение метода/пути/нормализованного тела с прежним ключом —409 `idempotency_payload_mismatch`. Резервация одного fileId с иной метадатой —409 `file_metadata_conflict`. PUT имеет другую модель: идентичность **fileId+зарегистрированные байты**, без JSON/base64 и без отдельного requestId. Повторная/конкурентная отправка тех же байтов возвращает200 с одним ready/audit; другие байты не перезаписывают файл.
+
+Файл:1…8388608 байт, только JPEG/PNG/PDF, нижний64hex SHA256. Сервер проверяет реальную сигнатуру MIME, точный размер и SHA256. Пустые/несовпадающие байты —422; превышение8MiB —413; Content-Type кроме `application/octet-stream` —415. Content-Length необязателен при chunked; если задан, равен зарегистрированному размеру. Поток имеет реальное ограничение буфера и running limit. Прерванная передача остаётся pending и повторяется теми же байтами. Некорректный HTTP framing может быть отклонён Node до маршрута, а при разрыве клиент не обязательно получает JSON-ответ. Обычные прикладные ошибки имеют `{error:string}`, серверные5xx — только `{error:"internal"}`.
+
+`EvidenceFile` включает заявленные поля, state pending/ready, reservedBy/reservedAt, readyBy/readyAt, onBehalfReason и attachment. Нет публичного URL, storage key или пути. Имя — отображаемая метадата, не путь. Скачивание имеет разрешённый Content-Type, `Content-Disposition: attachment` с безопасным ASCII и UTF-8 именем, `nosniff`, CSP sandbox и `private, no-store`. Pending download/attachment —409; отсутствующие или повреждённые ready-байты —503.
+
+**Граница хранения:** текущий адаптер — приватная локальная FS: `.data/evidence-54339` либо абсолютный `HELIOS_EVIDENCE_ROOT`, каталоги0700/файлы0600, UUID-ключи, эксклюзивный временный файл→fsync→атомарный no-clobber hard-link→fsync каталогов. Это не общая атомарная транзакция FS+PostgreSQL. Ready фиксируется в БД только после проверенных байтов. Сбой БД после promotion может оставить непубличный orphan; точный retry проверяет и переиспользует его, не удаляет уже общий destination. Временные файлы очищаются. Сетевой/дисковый I/O не держит project/employee locks. S3-адаптер, автоматическая уборка orphan, malware/AV и резервирование/восстановление файлов — отдельная эксплуатационная работа; они здесь не объявлены внедрёнными. MIME magic не является антивирусом.
+
+## Утверждение часов и табель03b-server
+
+Пять новых операций, без `/api/v1/projects/:p/time`:
+
+| Метод и путь | Результат |
+|---|---|
+| `GET /employees/:employee/days/:day` | `TimeDay`: исходные интервалы/точные итоги, sourceHash, последняя ревизия, approvalVersion и статус |
+| `GET /employees/:employee/days/:day/history?limit=50&offset=0` | Неизменяемые ревизии, version DESC; max100 |
+| `POST /employees/:employee/days/:day/approvals` | Первое/повторное утверждение или исправление итогов,201 `TimeDay` |
+| `POST /employees/:employee/days/:day/revoke` | Отзыв отдельной новой ревизией,201 `TimeDay` |
+| `GET /export.xlsx?from=YYYY-MM-DD&to=YYYY-MM-DD` | Настоящий XLSX целиком по утверждённому диапазону |
+
+Director утверждает/отзывает; master/PTO читают исторические дни разрешённого проекта; worker — только свои при текущем active link+grant+assignment. Историческому manager не нужен текущий допуск/назначение target. При replay заново проверяется действующее право директора, затем возвращается исходный результат, даже если позже появились ревизии/события. Полная матрица согласований относится к04. Утверждение здесь — запись решения в системе, без криптографической электронной подписи и расчёта зарплаты.
+
+`TimeDay.source` — исходное **заявленное** время. Пять категорий `presenceMs,idleMs,workMs,breakMs,downtimeMs` передаются каноническими целыми неотрицательными десятичными строками. Общая сумма категорий равна presence. Civil day рассчитывается по действительной timezone кабинета, с точным отсечением интервалов и длительностью23/24/25ч. `recorded:true` включает закрытую нулевую смену; отсутствие записей — `recorded:false`, не фиктивная подтверждённая нулевая смена.
+
+```json
+POST /api/v1/projects/${project}/time/employees/${employee}/days/2026-11-01/approvals
+{"requestId":"${approvalRequest}","expectedApprovalVersion":0,"sourceHash":"${hashFromGet}","reason":"Смена сверена мастером","acknowledgeSuspicious":true}
+
+POST /api/v1/projects/${project}/time/employees/${employee}/days/2026-11-01/approvals
+{"requestId":"${correctionRequest}","expectedApprovalVersion":1,"sourceHash":"${currentHash}","reason":"Исправлено время по журналу","confirmedTotals":{"presenceMs":"28800000","idleMs":"0","workMs":"25200000","breakMs":"3600000","downtimeMs":"0"}}
+
+POST /api/v1/projects/${project}/time/employees/${employee}/days/2026-11-01/revoke
+{"requestId":"${revokeRequest}","expectedApprovalVersion":2,"reason":"Отозвано для повторной сверки"}
+```
+
+Второй пример — отдельная optional операция, не обязательный шаг. Expected version берётся из текущего GET;0 только до первой ревизии. Required reason trim1…500; optional `confirmedTotals` — все пять полей, без дробей/экспонент/знака/leading zero. Сумма idle/work/break/downtime равна presence и не больше фактической civil-day длины. Без override подтверждаются точные sourceTotals. При override исходные интервалы и totals сохраняются, `overridden:true`, `confirmedTaskAllocation:null`: исправление общей суммы не выдумывает распределение по задачам. Принятый строительный объём не рассчитывается из утверждённых часов.
+
+Нужны непустой recorded source, отсутствие открытых contributing интервалов и не будущая civil date. Закрытая recorded zero-time смена допускает пять нулей. `delayed`, `future`, `geoTimeMismatch`, `suspicious` исходных interval events требуют `acknowledgeSuspicious:true` и причины. Нарушение —422 `recorded_time_required`, `open_intervals`, `future_day`, `suspicious_acknowledgment_required` или `invalid_confirmed_totals`. Version/hash конфликт —409 `stale_approval_version` / `stale_source`; повторный revoke без latest approved —409 `approval_required`. Ошибка согласованности интервалов и ledger —409 `time_source_inconsistent`, без попытки угадать часы.
+
+Source SHA256 вычисляет сервер из canonical JSON с сортированными ключами, exact clipped interval IDs/time/mode/task/ms, zero markers и определяющими interval events/flags. Равные timestamps упорядочиваются numeric employee version; identity event включает actor. Учитываются carry-in и закрывающие события; временные точки за пределами дня отсекаются. Hash не содержит transient capturedAt/asOf, глобальную stream version, unrelated day/project events или submit_volume. Поэтому валидные поздние03a события принимаются дальше, меняют только затронутый source и делают соответствующую ревизию `stale`, не переписывая утверждение. Непричастный новый день/проект/отчёт не отзывает часы.
+
+`status` — unapproved/current/stale/revoked. `isCurrent:true` только при latest approved и совпадении hash. Каждая ревизия хранит source, sourceTotals, confirmedTotals, hash, actor/request/time/reason, previousVersion и acknowledgment. Revoke сохраняет snapshot и добавляет следующую revoked revision. Закрытые часы не редактируются в той же строке, оригинальные03a данные не меняются.
+
+## XLSX: целостный снимок и права
+
+Включительный диапазон от1 до31 civil days; максимум10000 recorded employee/day строк. Director или current granted master/PTO; worker получает403 даже для пустого диапазона. **Каждая** recorded строка должна иметь latest approved revision с текущим sourceHash. Иначе весь запрос409, без молчаливого пропуска или выгрузки предварительных часов. В `Error.error` возвращается строка `time_export_incomplete:<JSON array>`: до20 `{employeeId,day,status}` для исправления. Более10000 строк —422 `time_export_row_limit`. Пустой recorded диапазон — header-only `Time` и явное `empty=true` на `Snapshot`.
+
+```sh
+curl "http://127.0.0.1:4327/api/v1/projects/$PROJECT_ID/time/export.xlsx?from=2026-11-01&to=2026-11-07" \
+  -H "authorization: Bearer $TOKEN" -H "x-tenant-id: $TENANT_ID" -o approved-time.xlsx
+```
+
+При success проверьте HTTP200/XLSX MIME, не сохраняйте JSON-ошибку как книгу. Файл — настоящий OOXML ZIP с листами `Time` и `Snapshot`. Он содержит project/employee ID и имя, civil date/timezone, source/confirmed пять категорий в **точных integer-ms String** и часах Number, actor/request/recordedAt, reason, version/hash/capturedAt и override. Часы округляются BigInt half-up до6 знаков; исходные ms авторитетны. Пользовательские имена/причины — типизированные String, включая начальные=,+,-,@; XML-недопустимые управляющие символы удаляются. Нет формул из пользовательского текста, предварительных объёмов, ставок, payroll или1С. MIME `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`; attachment с фиксированным ASCII именем, private/no-store/nosniff.
+
+Один server clock/timezone и весь source+revision snapshot захватываются под упорядоченными locks project→employees→memberships/grants→heads. Перед ZIP-render locks освобождаются; после render право доступа проверяется вновь. Новое событие после capture может сделать актуальные часы stale; скачанный файл всё равно относится к **своим** capturedAt/hash/revision. Данные не подменяются новой версией во время рендера. Отозванное во время render право запрещает выдачу байтов.
+
+Writer: exact **write-excel-file4.1.1**, MIT, Node>=18; используется Node API `.toBuffer()`. Официальные источники: [репозиторий](https://github.com/catamphetamine/write-excel-file), [документация](https://catamphetamine.gitlab.io/write-excel-file/). Установлена только API-зависимость через `corepack pnpm --filter @helios/api add --save-exact --ignore-scripts write-excel-file@4.1.1` и её transitive fflate; без parser в production. В тестах скачанный файл независимо читается Python3 stdlib zipfile/XML, включая CRC, relationship/sheet/cell types, raw ms и отсутствие formula nodes. Реально скачивается и разбирается книга на10000 строк;10001, в том числе нулевая, отклоняется.
+
+## Проверка03b и оставшиеся границы
+
+Новые HTTP/PG suites проверяют реальные байты, scoped composite FKs/RLS/grants/immutability, replay, rollback и current ACL после фактических PG waits и пауз I/O/render. Отдельно проверяются точные source/confirmed ревизии, relevant stale, zero/open/no-data, равные timestamps/actor identity, DST23/25ч, optimistic concurrency и оба порядка event/approval/export. OpenAPI описывает69 операций; сохранены все прежние58 и их формы/проверки. Все JSON успехи/ошибки новых suites сопоставляются со схемами по реальному HTTP status/MIME, скачивания — с binary content и headers.
+
+Из этого worktree, только с указанными выше explicit DATABASE_URL/ADMIN_DATABASE_URL/HELIOS_DB_PORT/API_PORT:
+
+```sh
+corepack pnpm db:migrate
+corepack pnpm db:migrate
+corepack pnpm test
+corepack pnpm --filter @helios/api exec tsx --test --test-concurrency=1 test/evidence-api.test.ts test/time-api.test.ts test/execution-api.test.ts
+corepack pnpm --filter @helios/api exec tsc --noEmit
+corepack pnpm --filter @helios/domain exec tsc --noEmit --typeRoots ../../apps/api/node_modules/@types
+```
+
+Обычный domain `tsc --noEmit` по-прежнему имеет прежний TS2688: локальный `@types/node` не разрешается; явный existing-typeRoots fallback указан отдельно. Это не объявляется исправленным. Тесты не заменяют физическую проверку iPhone/Android, durable client queue, S3/AV/backup/restore, нагрузочную/UX/полную приёмку пилота. UI-интеграция/очередь/телефоны —03c; матрица полномочий, quality, материалы и ИД —04; эксплуатация и комплексная приёмка —последующие работы. Раздел не меняет scope или коммерческие договорённости.

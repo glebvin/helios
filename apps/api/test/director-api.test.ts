@@ -263,7 +263,7 @@ test("public OpenAPI is the checked-in contract and preserves ten old plus twent
   const spec = await response.json();
   assert.deepEqual(spec, JSON.parse(await readFile(new URL("../openapi.json", import.meta.url), "utf8")));
   assert.equal(spec.openapi, "3.0.3");
-  assert.equal(Object.values(spec.paths).reduce((n: number, path: any) => n + Object.keys(path).length, 0), 58);
+  assert.equal(Object.values(spec.paths).reduce((n: number, path: any) => n + Object.keys(path).length, 0), 69);
   for (const path of ["/api/v1/me", "/api/v1/projects", "/api/v1/projects/{id}", "/api/v1/projects/{id}/tasks", "/api/v1/employees", "/api/v1/employees/{id}", "/api/v1/overview", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/openapi.json"]) assert.ok(spec.paths[path], path);
   const inventory = [
     ['post','/employees'],['put','/employees/{id}'],['get','/employees/{id}/qualifications'],['post','/employees/{id}/qualifications'],['put','/employees/{id}/qualifications/{qid}'],
