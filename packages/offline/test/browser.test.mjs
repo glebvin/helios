@@ -14,7 +14,7 @@ if (!process.env.HELIOS_OFFLINE_TEST_CHILD) {
 }
 const suite = process.env.HELIOS_OFFLINE_SUITE;
 // Incomplete suites fail explicitly until their sequential task adds its assertions.
-assert.equal(suite, 'tracer', `Suite ${suite} is not implemented yet (Task2/3 pending); no scenarios skipped`);
+assert.ok(['tracer','mechanics'].includes(suite), `Suite ${suite} is not implemented yet (Task3 pending); no scenarios skipped`);
 const modulePath = process.env.HELIOS_PLAYWRIGHT_MODULE;
 assert.ok(modulePath, 'HELIOS_PLAYWRIGHT_MODULE must point to an existing Playwright runtime');
 assert.ok(process.env.PLAYWRIGHT_BROWSERS_PATH, 'PLAYWRIGHT_BROWSERS_PATH is required');
@@ -25,6 +25,15 @@ const temporary = await mkdtemp(join(tmpdir(), 'helios-offline-tracer-'));
 const journal = [];
 const wrongIds = new Set();
 const receipts = new Map();
+const actions = new Map();
+let meAction = null;
+let activeSends = 0, maxActiveSends = 0;
+function barrier() {
+  let enter, release;
+  const entered = new Promise(resolve=>{enter=resolve;});
+  const released = new Promise(resolve=>{release=resolve;});
+  return {entered,release,async wait(){enter();await released;}};
+}
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const actorUserId = '22222222-2222-4222-8222-222222222222';
 const token = 'a'.repeat(64);
@@ -36,6 +45,7 @@ function event(n) {
 }
 function resultFor(command) {
   return {...Object.fromEntries(['requestId','employeeId','projectId','shiftId','kind','occurredAt'].map(k=>[k,command[k]])),
+    ...(command.kind==='submit_volume'?{taskId:command.taskId,reportId:command.reportId,submittedQuantity:Number(command.submittedQuantity).toFixed(3),provisional:true,acceptedQuantity:null}:{}),
     version:command.expectedVersion+1, occurredAt:new Date(command.occurredAt).toISOString(), receivedAt:'2027-01-15T06:00:01.000Z',
     reviewFlags:{delayed:false,future:false,suspicious:false,geoTimeMismatch:false,abovePlannedQuantity:false}};
 }
@@ -50,20 +60,32 @@ const server = createServer(async (req,res) => {
       assert.equal(req.headers.authorization, `Bearer ${token}`);
       assert.equal(req.headers['x-tenant-id'],tenantId);
       if (req.method==='GET' && req.url==='/api/v1/me') {
+        if (meAction?.gate) await meAction.gate.wait();
+        if (meAction?.status) {res.statusCode=meAction.status;res.end(meAction.raw??'');return;}
+        if (meAction?.body) {res.end(JSON.stringify(meAction.body));return;}
         res.setHeader('Content-Type','application/json');res.end(JSON.stringify({userId:actorUserId,tenantId}));return;
       }
       assert.equal(req.url,'/api/v1/execution/events');assert.equal(req.method,'POST');
       const body = JSON.parse(raw);assert.equal(body.events.length,1);
       const command = body.events[0];
+      activeSends++;maxActiveSends=Math.max(maxActiveSends,activeSends);
+      let finished=false;const finish=()=>{if(!finished){finished=true;activeSends--;}};
+      res.once('close',finish);res.once('finish',finish);
       const previous = receipts.get(command.requestId);
       if (previous) assert.deepEqual(command,previous);
       receipts.set(command.requestId,command);
+      const action=actions.get(command.requestId);
+      if (action?.gate) await action.gate.wait();
+      if (action?.drop) {res.writeHead(200,{'Content-Type':'application/json','Content-Length':'10000'});res.write('{"results":[',()=>req.socket.destroy());return;}
+      if (action?.status) {res.statusCode=action.status;if(action.retryAfter)res.setHeader('Retry-After',action.retryAfter);res.end(action.raw??'');return;}
+      if (action?.raw!==undefined) {res.end(action.raw);return;}
+      if (action?.body) {res.end(JSON.stringify(action.body(command)));return;}
       const requestId = wrongIds.has(command.requestId) ? '99999999-9999-4999-8999-999999999999' : command.requestId;
       res.setHeader('Content-Type','application/json');
       res.end(JSON.stringify({results:[{requestId,outcome:previous?'duplicate':'success',status:201,result:resultFor(command)}]}));return;
     }
     if (req.url==='/') {res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>Native offline queue tests</title>');return;}
-    if (/^\/(index|store)\.js$/.test(req.url)) {
+    if (/^\/(index|store|transport|evidence)\.js$/.test(req.url)) {
       res.setHeader('Content-Type','text/javascript');res.end(await readFile(join(compiled,req.url.slice(1))));return;
     }
     res.statusCode=404;res.end();
@@ -81,6 +103,13 @@ async function openPage(engine, profile, origin) {
   return {page,context};
 }
 async function closeContext(context) {await context.close();contexts.delete(context);}
+async function addPage(context,origin) {
+  const page=await context.newPage();await page.goto(origin);
+  await page.evaluate(async ({tenantId,actorUserId,token})=>{
+    const {openOfflineQueue}=await import('/index.js');globalThis.session={token,tenantId,actorUserId,generation:1};
+    globalThis.queue=await openOfflineQueue({audience:`${location.origin}/api/v1`,tenantId,actorUserId,getSession:()=>globalThis.session});
+  },{tenantId,actorUserId,token});return page;
+}
 const tests = [
   ['native save survives persistent reopen and validated HTTP acknowledgement', async (engine,profile,origin,n) => {
     const command = event(n);const start=journal.length;
@@ -137,6 +166,161 @@ const tests = [
     assert.notEqual(retained.state,'synced');assert.deepEqual(retained.event,command);await closeContext(reopened.context);
   }],
 ];
+if(suite==='mechanics') tests.push(
+  ['four exact shapes, explicit external predecessor, immutable idempotence and retained acknowledgement',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin);const first={...event(n),expectedVersion:7,previousEventId:crypto.randomUUID()};
+    assert.equal(await page.evaluate(c=>queue.enqueueEvent(c).then(()=>true,()=>false),first),true,'explicit initial external predecessor must save unchanged');
+    const commands=[first,
+      {...first,requestId:crypto.randomUUID(),kind:'segment_change',mode:'work',taskId:crypto.randomUUID(),expectedVersion:8,previousEventId:first.requestId},
+      {...first,requestId:crypto.randomUUID(),kind:'shift_end',expectedVersion:9},
+      {...first,requestId:crypto.randomUUID(),kind:'submit_volume',taskId:crypto.randomUUID(),reportId:crypto.randomUUID(),submittedQuantity:'00001.20',expectedVersion:10}];
+    commands[2].previousEventId=commands[1].requestId;commands[3].previousEventId=commands[2].requestId;
+    for(const command of commands.slice(1))await page.evaluate(c=>queue.enqueueEvent(c),command);
+    assert.equal(await page.evaluate(c=>queue.enqueueEvent(c).then(r=>r.event.expectedVersion),first),7);
+    assert.equal(await page.evaluate(c=>queue.enqueueEvent({...c,occurredAt:'2027-01-15T09:01:00+03:00'}).then(()=>null,e=>e.code),first),'local_identity_conflict');
+    await page.evaluate(async()=>{const rows=await queue.list();rows[0].event.expectedVersion=999;});
+    assert.deepEqual(await page.evaluate(id=>queue.get(id).then(r=>r.event),first.requestId),first);
+    await page.evaluate(()=>queue.flush());
+    assert.deepEqual(await page.evaluate(()=>queue.list().then(rows=>rows.map(r=>r.state))),['synced','synced','synced','synced']);
+    await page.evaluate(ids=>queue.cleanupAcknowledged(ids),commands.map(c=>c.requestId));
+    assert.equal((await page.evaluate(()=>queue.list())).length,0);
+    const replay=await page.evaluate(c=>queue.enqueueEvent(c),first);assert.equal(replay.state,'synced');assert.deepEqual(replay.event,first);
+    assert.equal((await page.evaluate(()=>queue.list())).length,0,'idempotent acknowledgement must not reinsert cleaned work');
+    assert.equal(await page.evaluate(c=>queue.enqueueEvent({...c,requestId:crypto.randomUUID(),previousEventId:undefined}).then(()=>null,e=>e.code),first),'invalid_object');
+    const next={...first,requestId:crypto.randomUUID(),expectedVersion:11,previousEventId:commands[3].requestId};
+    await page.evaluate(c=>queue.enqueueEvent(c),next);
+    assert.equal(await page.evaluate(c=>queue.enqueueEvent(c).then(()=>null,e=>e.code),{...next,requestId:crypto.randomUUID(),expectedVersion:0}),'local_stream_conflict');
+  }],
+  ['atomic cross-tab project tail race and blocked employee head',async(engine,profile,origin,n)=>{
+    const {page,context}=await openPage(engine,profile,origin);const second=await addPage(context,origin);const a=event(n),b={...a,requestId:crypto.randomUUID(),projectId:crypto.randomUUID()};
+    const results=await Promise.all([page.evaluate(c=>queue.enqueueEvent(c).then(()=>true,e=>e.code),a),second.evaluate(c=>queue.enqueueEvent(c).then(()=>true,e=>e.code),b)]);
+    assert.equal(results.filter(x=>x===true).length,1);assert.ok(results.includes('local_stream_conflict'));
+    const winner=results[0]===true?a:b,loser=results[0]===true?b:a;
+    await second.evaluate(c=>queue.enqueueEvent(c),{...loser,expectedVersion:1});
+    const third={...winner,requestId:crypto.randomUUID(),expectedVersion:2,previousEventId:winner.requestId};await page.evaluate(c=>queue.enqueueEvent(c),third);
+    const independent=event(n+10000);await page.evaluate(c=>queue.enqueueEvent(c),independent);
+    actions.set(winner.requestId,{body:c=>({results:[{requestId:c.requestId,outcome:'error',status:409,code:'stale_version',retryable:false}]})});
+    const start=journal.length;await page.evaluate(()=>queue.flush());
+    const calls=journal.slice(start).filter(x=>x.method==='POST').map(x=>JSON.parse(x.raw).events[0].requestId);
+    assert.deepEqual(calls.toSorted(),[winner.requestId,independent.requestId].toSorted());
+    const rows=await page.evaluate(()=>queue.list());assert.equal(rows.find(r=>r.id===winner.requestId).lastError,'stale_version');assert.equal(rows.find(r=>r.id===third.requestId).state,'pending');
+    assert.equal(await page.evaluate(id=>queue.cleanupAcknowledged([id]).then(()=>null,e=>e.code),winner.requestId),'cleanup_requires_acknowledgement');
+    assert.deepEqual(rows.find(r=>r.id===winner.requestId).event,winner);
+    await page.evaluate(id=>queue.retry(id),winner.requestId);assert.deepEqual(await page.evaluate(id=>queue.get(id).then(r=>r.event),winner.requestId),winner);
+  }],
+  ['HTTP status before optional JSON, bounded Retry-After and exact retry exhaustion',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin);const command=event(n);await page.evaluate(c=>queue.enqueueEvent(c),command);
+    meAction={status:401,raw:'expired'};await page.evaluate(()=>queue.flush().catch(()=>null));meAction=null;
+    assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),command.requestId),'auth-required','non-JSON /me 401 must retain auth-required');
+    await page.evaluate(id=>queue.retry(id),command.requestId);actions.set(command.requestId,{status:401,raw:'expired'});await page.evaluate(()=>queue.flush());
+    assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),command.requestId),'auth-required','non-JSON event 401 must retain auth-required');
+    await page.evaluate(id=>queue.retry(id),command.requestId);await page.evaluate(()=>{globalThis.clock=2000000000000;Date.now=()=>globalThis.clock;});
+    actions.set(command.requestId,{status:429,raw:'rate limited',retryAfter:'9999'});
+    await page.evaluate(()=>queue.flush());let row=await page.evaluate(id=>queue.get(id),command.requestId);
+    assert.equal(row.nextAttemptAt,2000000060000);assert.equal(row.lastError,'http_429');
+    const start=journal.length;await page.evaluate(()=>queue.flush());assert.equal(journal.slice(start).filter(x=>x.method==='POST').length,0);
+    actions.set(command.requestId,{status:500,raw:'not json'});
+    for(let attempt=2;attempt<=5;attempt++){
+      await page.evaluate(()=>{clock+=60001;});await page.evaluate(()=>queue.flush());row=await page.evaluate(id=>queue.get(id),command.requestId);
+      assert.equal(row.attemptCount,attempt);assert.equal(row.state,attempt===5?'blocked':'retry_wait');
+      if(attempt<5)assert.equal(row.nextAttemptAt,2000000000000+(attempt-1)*60001+1000*2**(attempt-1));
+    }
+    assert.equal(row.lastError,'blocked_retry_exhausted');assert.deepEqual(row.event,command);
+    const before=journal.length;await page.evaluate(()=>queue.flush());assert.equal(journal.length,before);
+    await page.evaluate(id=>queue.retry(id),command.requestId);actions.delete(command.requestId);await page.evaluate(()=>queue.flush());assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),command.requestId),'synced');
+  }],
+  ['ambiguous replies and permanent business errors never acknowledge',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin);
+    const variants=[{raw:'{bad'},
+      {body:c=>({results:[]})},
+      {body:c=>({results:[{requestId:c.requestId,outcome:'success',status:200,result:resultFor(c)}]})},
+      ...['employeeId','projectId','shiftId','kind','version','occurredAt','receivedAt','reviewFlags'].map(field=>({body:c=>({results:[{requestId:c.requestId,outcome:'duplicate',status:201,result:{...resultFor(c),[field]:field==='version'?99:field==='reviewFlags'?{}:'wrong'}}]})})),
+      {body:c=>({results:[{requestId:c.requestId,outcome:'error',status:500,code:'temporary',retryable:true,result:resultFor(c)}]})},
+      {body:c=>({results:[{requestId:c.requestId,outcome:'error',status:409,code:'missing_dependency',retryable:true}]})},
+      {status:403,raw:'denied'}];
+    for(let i=0;i<variants.length;i++){
+      const command=event(n+1000+i);await page.evaluate(c=>queue.enqueueEvent(c),command);actions.set(command.requestId,variants[i]);await page.evaluate(()=>queue.flush());
+      const row=await page.evaluate(id=>queue.get(id),command.requestId);assert.notEqual(row.state,'synced');assert.deepEqual(row.event,command);
+      if(i===variants.length-2){assert.equal(row.state,'blocked');assert.equal(row.lastError,'missing_dependency');}
+      if(i===variants.length-1){assert.equal(row.state,'blocked');assert.equal(row.lastError,'http_403');}
+    }
+  }],
+  ['delayed identity and event completion obey current session and handle lifecycle',async(engine,profile,origin,n)=>{
+    for(const stage of ['identity','event'])for(const change of ['token','generation','actorUserId','tenantId','logout','close']){
+      const {page,context}=await openPage(engine,`${profile}-${stage}-${change}`,origin);
+      const command={...event(n),requestId:crypto.randomUUID()},successor={...event(n),requestId:crypto.randomUUID(),expectedVersion:1,previousEventId:command.requestId};
+      await page.evaluate(async cs=>{for(const c of cs)await queue.enqueueEvent(c);},[command,successor]);
+      const gate=barrier();if(stage==='identity')meAction={gate};else actions.set(command.requestId,{gate});
+      const start=journal.length;const flushing=page.evaluate(()=>queue.flush().then(()=>true,()=>false));await gate.entered;
+      await page.evaluate(change=>{if(change==='logout')session=null;else if(change==='close')queue.close();else session={...session,[change]:change==='generation'?2:'99999999-9999-4999-8999-999999999999'};},change);
+      gate.release();assert.equal(await flushing,false);meAction=null;actions.delete(command.requestId);
+      assert.equal(journal.slice(start).filter(x=>x.method==='POST').length,stage==='identity'?0:1,'no successor after session transition');
+      await page.reload();await page.evaluate(async ({tenantId,actorUserId,token})=>{const {openOfflineQueue}=await import('/index.js');session={token,tenantId,actorUserId,generation:3};queue=await openOfflineQueue({audience:`${location.origin}/api/v1`,tenantId,actorUserId,getSession:()=>session});},{tenantId,actorUserId,token});
+      assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),command.requestId),'pending','stale completion must not commit');await closeContext(context);
+    }
+  }],
+  ['actual Web Lock contention and crashed tab exact receipt replay',async(engine,profile,origin,n)=>{
+    const {page,context}=await openPage(engine,profile,origin);const second=await addPage(context,origin);assert.equal(await page.evaluate(()=>!!navigator.locks),true);
+    const command=event(n);await page.evaluate(c=>queue.enqueueEvent(c),command);const gate=barrier();actions.set(command.requestId,{gate});maxActiveSends=0;
+    const flushing=page.evaluate(()=>queue.flush()).catch(()=>null);await gate.entered;
+    assert.equal((await second.evaluate(()=>queue.flush())).state,'busy');assert.equal(maxActiveSends,1);
+    await page.close();await flushing;actions.delete(command.requestId);gate.release();
+    await second.evaluate(async()=>{const scope=JSON.stringify([`${location.origin}/api/v1`,session.tenantId,session.actorUserId]);await navigator.locks.request(`helios-offline:${scope}`,()=>{});});
+    await second.evaluate(()=>queue.flush());assert.equal(await second.evaluate(id=>queue.get(id).then(r=>r.state),command.requestId),'synced');
+    const copies=journal.filter(x=>x.method==='POST'&&JSON.parse(x.raw).events[0].requestId===command.requestId);assert.equal(copies.length,2);assert.equal(copies[0].raw,copies[1].raw);
+  }],
+  ['lost committed HTTP response reopens with exact command and duplicate acknowledgement',async(engine,profile,origin,n)=>{
+    let {page,context}=await openPage(engine,profile,origin);const command=event(n);await page.evaluate(c=>queue.enqueueEvent(c),command);actions.set(command.requestId,{drop:true});await page.evaluate(()=>queue.flush());
+    assert.notEqual(await page.evaluate(id=>queue.get(id).then(r=>r.state),command.requestId),'synced');await closeContext(context);actions.delete(command.requestId);
+    ({page,context}=await openPage(engine,profile,origin));await page.evaluate(id=>queue.retry(id),command.requestId);await page.evaluate(()=>queue.flush());
+    assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),command.requestId),'synced');const copies=journal.filter(x=>x.method==='POST'&&JSON.parse(x.raw).events[0].requestId===command.requestId);assert.equal(copies.length,2);assert.equal(copies[0].raw,copies[1].raw);
+  }],
+  ['persisted authEpoch fences another tab without BroadcastChannel delivery',async(engine,profile,origin,n)=>{
+    const {page,context}=await openPage(engine,profile,origin);const second=await context.newPage();await second.goto(origin);
+    await second.evaluate(async ({tenantId,actorUserId,token})=>{globalThis.BroadcastChannel=undefined;const {openOfflineQueue}=await import('/index.js');session={tenantId,actorUserId,token,generation:1};queue=await openOfflineQueue({audience:`${location.origin}/api/v1`,tenantId,actorUserId,getSession:()=>session});},{tenantId,actorUserId,token});
+    const command=event(n);await second.evaluate(c=>queue.enqueueEvent(c),command);await page.evaluate(()=>queue.closeSession());
+    assert.equal(await second.evaluate(()=>queue.list().then(()=>null,e=>e.code)),'session_invalidated');const before=journal.length;
+    assert.equal(await second.evaluate(()=>queue.flush().then(()=>null,e=>e.code)),'session_invalidated');assert.equal(journal.length,before);
+    const fresh=await addPage(context,origin);assert.deepEqual(await fresh.evaluate(id=>queue.get(id).then(r=>r.event),command.requestId),command);
+  }],
+  ['scope isolation, current identity on all public data methods and no stored token',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin);const command=event(n);await page.evaluate(c=>queue.enqueueEvent(c),command);
+    const result=await page.evaluate(async ({command,tenantId,actorUserId,token})=>{
+      const {openOfflineQueue}=await import('/index.js');const old=queue;
+      const snapshots=[];for(const change of [{actorUserId:crypto.randomUUID()},{tenantId:crypto.randomUUID()}]){
+        session={...session,...change,generation:session.generation+1};queue=await openOfflineQueue({audience:`${location.origin}/api/v1`,tenantId:session.tenantId,actorUserId:session.actorUserId,getSession:()=>session});snapshots.push((await queue.list()).length);queue.close();session={token,tenantId,actorUserId,generation:session.generation+1};
+      }
+      queue=await openOfflineQueue({audience:`${location.origin}/another/api/v1`,tenantId,actorUserId,getSession:()=>session});snapshots.push((await queue.list()).length);queue.close();queue=old;
+      const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('helios-managed-offline');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+      const stored=await new Promise((resolve,reject)=>{const tx=db.transaction(['events','evidence','meta']);const rows=[];for(const name of ['events','evidence','meta']){const r=tx.objectStore(name).getAll();r.onsuccess=()=>rows.push(...r.result);}tx.oncomplete=()=>resolve(JSON.stringify(rows));tx.onabort=()=>reject(tx.error);});db.close();
+      session=null;const errors=[];for(const fn of [()=>old.list(),()=>old.get(command.requestId),()=>old.enqueueEvent(command),()=>old.flush(),()=>old.retry(command.requestId),()=>old.cleanupAcknowledged([command.requestId]),()=>old.storageInfo()])errors.push(await fn().then(()=>null,e=>e.code));return {snapshots,stored,errors};
+    },{command,tenantId,actorUserId,token});assert.deepEqual(result.snapshots,[0,0,0]);assert.equal(result.stored.includes(token),false);assert.ok(result.errors.every(x=>x==='auth_required'));
+  }],
+  ['native quota boundary, strict fallback, versionchange and explicit storage capabilities',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin);const command=event(n);
+    const result=await page.evaluate(async command=>{
+      const add=IDBObjectStore.prototype.add;IDBObjectStore.prototype.add=function(...args){if(this.name==='events')throw new DOMException('injected boundary quota','QuotaExceededError');return add.apply(this,args);};let quota;
+      try{await queue.enqueueEvent(command);}catch(e){quota=e.name;}finally{IDBObjectStore.prototype.add=add;}
+      const absent=await queue.get(command.requestId);const transaction=IDBDatabase.prototype.transaction;let strict=0;
+      IDBDatabase.prototype.transaction=function(...args){if(args[2]){strict++;throw new TypeError('injected unsupported durability');}return transaction.apply(this,args);};
+      try{await queue.enqueueEvent(command);}finally{IDBDatabase.prototype.transaction=transaction;}
+      const info=await queue.storageInfo({requestPersistence:true});const storage=navigator.storage;
+      const originals={persisted:storage.persisted,estimate:storage.estimate,persist:storage.persist};Object.assign(storage,{persisted:async()=>true,estimate:async()=>({usage:123,quota:456}),persist:async()=>false});
+      const explicit=await queue.storageInfo({requestPersistence:true});storage.estimate=async()=>{throw new Error('private diagnostic');};const failure=await queue.storageInfo();Object.assign(storage,originals);
+      await new Promise((resolve,reject)=>{const r=indexedDB.open('helios-managed-offline',2);r.onsuccess=()=>{r.result.close();resolve();};r.onerror=()=>reject(r.error);r.onblocked=()=>reject(new Error('versionchange did not release connection'));});
+      const closed=await queue.list().then(()=>null,e=>e.code);return {quota,absent,strict,info,explicit,failure,closed};
+    },command);assert.equal(result.quota,'QuotaExceededError');assert.equal(result.absent,null);assert.equal(result.strict,1);assert.equal(result.info.indexedDB,true);assert.equal(result.info.webLocks,true);assert.deepEqual(result.explicit.estimate,{usage:123,quota:456});assert.equal(result.explicit.persisted,true);assert.equal(result.explicit.persistenceGranted,false);assert.equal(result.failure.error,'storage_info_failed');assert.equal(result.closed,'storage_closed');
+  }],
+  ['unsupported lock, unsupported storage, controlled 30s timeout and native event count cap',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin);const command=event(n);await page.evaluate(c=>queue.enqueueEvent(c),command);
+    const lock=await page.evaluate(async()=>{Object.defineProperty(navigator,'locks',{value:undefined,configurable:true});const result=await queue.flush();delete navigator.locks;return result;});assert.equal(lock.state,'unsupported_lock');
+    const unsupported=await page.evaluate(async()=>{const original=indexedDB;Object.defineProperty(globalThis,'indexedDB',{value:undefined,configurable:true});try{const {NativeStore}=await import('/store.js');return await NativeStore.open().then(()=>null,e=>e.code);}finally{Object.defineProperty(globalThis,'indexedDB',{value:original,configurable:true});}});assert.equal(unsupported,'unsupported_storage');
+    const gate=barrier();actions.set(command.requestId,{gate});await page.evaluate(()=>{globalThis.originalTimeout=setTimeout;globalThis.setTimeout=(fn,ms,...args)=>{if(ms===30000){globalThis.expireRequest=fn;return 0;}return originalTimeout(fn,ms,...args);};});
+    const flushing=page.evaluate(()=>queue.flush());await gate.entered;await page.evaluate(()=>expireRequest());await flushing;gate.release();actions.delete(command.requestId);await page.evaluate(()=>{globalThis.setTimeout=originalTimeout;});
+    assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.lastError),command.requestId),'network_error');
+    const cap=await page.evaluate(async command=>{for(let i=1;i<1000;i++)await queue.enqueueEvent({...command,requestId:crypto.randomUUID(),employeeId:crypto.randomUUID()});const overflow={...command,requestId:crypto.randomUUID(),employeeId:crypto.randomUUID()};return {code:await queue.enqueueEvent(overflow).then(()=>null,e=>e.code),count:(await queue.list()).length};},command);assert.deepEqual(cap,{code:'capacity_exceeded',count:1000});
+  }],
+);
 let failed=0;
 try {
   compiled=join(temporary,'compiled');
