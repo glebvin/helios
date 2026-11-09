@@ -157,7 +157,7 @@ export class PeopleService {
       await this.audit(c,a,b.requestId,'admission_template',p,before??null,after);return after;
     });
   }
-  private async civilDate(c:PoolClient) { return (await c.query(`SELECT to_char(now() AT TIME ZONE timezone,'YYYY-MM-DD') AS day FROM tenants`)).rows[0].day as string; }
+  private async civilDate(c:PoolClient) { return (await c.query(`SELECT to_char(clock_timestamp() AT TIME ZONE timezone,'YYYY-MM-DD') AS day FROM tenants`)).rows[0].day as string; }
   private async evidence(c:PoolClient,id:string,codes:string[]) {
     return (await c.query(`SELECT id,code,version,valid_until::text AS "validUntil",status FROM employee_qualifications WHERE employee_id=$1 AND code=ANY($2::text[]) AND status='active' ORDER BY code,id`,[id,codes])).rows;
   }

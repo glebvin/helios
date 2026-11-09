@@ -29,7 +29,7 @@ test.after(async () => {
   try { await app?.close(); }
   finally {
     try {
-      for (const table of ["employee_project_assignments", "project_memberships", "shifts", "work_reports", "daily_tasks", "employees", "memberships", "projects", "organizations", "audit_log"]) {
+      for (const table of ["crew_members", "crews", "employee_project_assignments", "employee_admission_checks", "admission_template_versions", "admission_templates", "employee_qualifications", "people_command_receipts", "project_memberships", "shifts", "work_reports", "daily_tasks", "employees", "memberships", "projects", "organizations", "audit_log"]) {
         await admin.query(`DELETE FROM ${table} WHERE tenant_id = ANY($1::uuid[])`, [[tenant, foreign]]);
       }
       await admin.query("DELETE FROM tenants WHERE id = ANY($1::uuid[])", [[tenant, foreign]]);
@@ -257,14 +257,23 @@ test("invalid/expired sessions are 401 and logout revokes only the presented ses
   assert.equal((await request("/api/v1/me")).status, 200);
 });
 
-test("public OpenAPI is the checked-in contract and describes all ten operations", async () => {
+test("public OpenAPI is the checked-in contract and preserves ten old plus twenty people operations", async () => {
   const response = await fetch(`${base}/api/v1/openapi.json`);
   assert.equal(response.status, 200);
   const spec = await response.json();
   assert.deepEqual(spec, JSON.parse(await readFile(new URL("../openapi.json", import.meta.url), "utf8")));
   assert.equal(spec.openapi, "3.0.3");
-  assert.equal(Object.values(spec.paths).reduce((n: number, path: any) => n + Object.keys(path).length, 0), 10);
+  assert.equal(Object.values(spec.paths).reduce((n: number, path: any) => n + Object.keys(path).length, 0), 30);
   for (const path of ["/api/v1/me", "/api/v1/projects", "/api/v1/projects/{id}", "/api/v1/projects/{id}/tasks", "/api/v1/employees", "/api/v1/employees/{id}", "/api/v1/overview", "/api/v1/auth/login", "/api/v1/auth/logout", "/api/v1/openapi.json"]) assert.ok(spec.paths[path], path);
+  const inventory = [
+    ['post','/employees'],['put','/employees/{id}'],['get','/employees/{id}/qualifications'],['post','/employees/{id}/qualifications'],['put','/employees/{id}/qualifications/{qid}'],
+    ['get','/projects/{p}/admission-template'],['get','/projects/{p}/admission-template/versions'],['post','/projects/{p}/admission-template'],['put','/projects/{p}/admission-template'],
+    ['get','/employees/{id}/admission-checks'],['get','/employees/{id}/admission-checks/{check}'],['post','/employees/{id}/admission-checks'],
+    ['get','/projects/{p}/memberships'],['put','/projects/{p}/memberships/{user}'],['get','/projects/{p}/assignments'],['put','/projects/{p}/assignments/{e}'],
+    ['get','/projects/{p}/crews'],['get','/projects/{p}/crews/{crew}'],['post','/projects/{p}/crews'],['put','/projects/{p}/crews/{crew}/members/{e}'],
+  ];
+  for(const [method,path] of inventory) assert.ok(spec.paths[`/api/v1${path}`]?.[method!],`${method} ${path}`);
+  for(const schema of ['E','Q','T','C','A','M','CurrentAdmission'])assert.ok(spec.components.schemas[schema],schema);
   function matches(value: any, schema: any, at: string): void {
     if (schema.$ref) return matches(value, spec.components.schemas[schema.$ref.split("/").pop()], at);
     if (value === null && schema.nullable) return;

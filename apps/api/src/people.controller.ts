@@ -1,10 +1,17 @@
-import { Body,Controller,Get,Inject,Param,Post,Put,Query,Req,Res,UseGuards } from '@nestjs/common';
+import { Body,Controller,Get,Inject,Param,Post,Put,Query,Req,Res,UseGuards,type CanActivate,type ExecutionContext } from '@nestjs/common';
 import { actorOf,TenantGuard,type ActorRequest } from './auth.service.js';
 import { page,queryInput,uuid } from './api-input.js';
 import { PeopleService } from './people.service.js';
 type Response = { status(n:number): Response; json(body:unknown): unknown };
+class PeopleCommandQueryGuard implements CanActivate {
+  canActivate(context:ExecutionContext) {
+    const request=context.switchToHttp().getRequest();
+    if(request.method!=='GET')queryInput(request.query,[]);
+    return true;
+  }
+}
 @Controller('api/v1')
-@UseGuards(TenantGuard)
+@UseGuards(TenantGuard,PeopleCommandQueryGuard)
 export class PeopleController {
   constructor(@Inject(PeopleService) private readonly people: PeopleService) {}
   private async send(response:Response,result:ReturnType<PeopleService['createEmployee']>) {const r=await result;return response.status(r.status).json(r.body);}

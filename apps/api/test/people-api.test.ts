@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {randomUUID as id} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
 import test from 'node:test';
 import {NestFactory} from '@nestjs/core';
 import type {INestApplication} from '@nestjs/common';
@@ -230,4 +231,114 @@ test('real qualification/publication races reject stale activation and preserve 
   const publish=req(`/projects/${p2}/admission-template`,command({expectedVersion:1,title:'Published v2',items,requiredQualificationCodes:[]}),director,'PUT');await waitBlocked(gp.pid);
   const stale=req(`/projects/${p2}/assignments/${e.id}`,command({expectedVersion:0,status:'active',admissionCheckId:simple.id}),director,'PUT');await waitBlocked(gp.pid,2);await gp.release();
   assert.deepEqual((await Promise.all([publish,stale])).map(r=>r.status),[200,422]);
+});
+test('all command roles and strict invalid bodies/queries/dates/answers are controlled 4xx; foreign references cannot leak',async()=>{
+  const e=await ok('/employees',command({fullName:'Validation',organizationId:org}));
+  const q=await ok(`/employees/${e.id}/qualifications`,command({code:'safety',title:'Safety'}));
+  const ch=await ok(`/employees/${e.id}/admission-checks`,command({projectId:p1,templateVersion:2,answers}));
+  const cases:[string,any,string][]=[
+    ['/employees',command({fullName:'No role',organizationId:org}),'POST'],
+    [`/employees/${e.id}`,command({expectedVersion:1,fullName:e.fullName,organizationId:org,phone:null,userId:null,status:'active'}),'PUT'],
+    [`/employees/${e.id}/qualifications`,command({code:'q',title:'q'}),'POST'],
+    [`/employees/${e.id}/qualifications/${q.id}`,command({expectedVersion:1,title:'q',documentReference:null,validUntil:null,status:'active'}),'PUT'],
+    [`/projects/${p1}/admission-template`,command({code:'x',title:'x',items,requiredQualificationCodes:[]}),'POST'],
+    [`/projects/${p1}/admission-template`,command({expectedVersion:2,title:'x',items,requiredQualificationCodes:[]}),'PUT'],
+    [`/employees/${e.id}/admission-checks`,command({projectId:p1,templateVersion:2,answers}),'POST'],
+    [`/projects/${p1}/memberships/${worker}`,command({expectedVersion:1,status:'active'}),'PUT'],
+    [`/projects/${p1}/assignments/${e.id}`,command({expectedVersion:0,status:'active',admissionCheckId:ch.id}),'PUT'],
+    [`/projects/${p1}/crews`,command({name:'Denied'}),'POST'],
+    [`/projects/${p1}/crews/${crew.id}/members/${e.id}`,command({expectedVersion:0,status:'active'}),'PUT'],
+  ];
+  for(const u of [worker,master,pto])for(const [path,b,method] of cases)assert.equal((await req(path,b,u,method)).status,403,`${method} ${path} ${u}`);
+  const badChecks=[{answers:[]},{answers:[answers[0]]},{answers:[...answers,answers[0]]},{answers:[answers[0],{itemId:'unknown',value:true}]},{answers:[answers[0],{itemId:'note',value:'true'}]},{passed:true},{checkedAt:'now'},{qualificationEvidence:[]}];
+  for(const bad of badChecks)assert.equal((await req(`/employees/${e.id}/admission-checks`,command({projectId:p1,templateVersion:2,answers,...bad}))).status,400,JSON.stringify(bad));
+  for(const bad of [{items:[]},{items:[items[0],items[0]]},{items:[{...items[0],critical:1}]},{requiredQualificationCodes:['x','x']},{code:'changed'}])assert.equal((await req(`/projects/${p1}/admission-template`,command({expectedVersion:2,title:'Bad',items,requiredQualificationCodes:[],...bad}),director,'PUT')).status,400,JSON.stringify(bad));
+  for(const bad of [{expectedVersion:-1},{expectedVersion:0.1},{expectedVersion:'1'},{role:'worker'},{status:true}])assert.equal((await req(`/projects/${p1}/memberships/${worker}`,command({expectedVersion:1,status:'active',...bad}),director,'PUT')).status,400);
+  for(const bad of [{validUntil:'0000-01-01'},{validUntil:'2026-13-01'},{validUntil:5},{code:'cannot-change'}])assert.equal((await req(`/employees/${e.id}/qualifications/${q.id}`,command({expectedVersion:1,title:'Bad',documentReference:null,validUntil:null,status:'active',...bad}),director,'PUT')).status,400);
+  assert.equal((await req('/employees?unexpected=1',command({fullName:'Bad query',organizationId:org}))).status,400);
+  for(const path of [`/employees/${e.id}/qualifications?foo=1`,`/employees/${e.id}/admission-checks?projectId=bad`,`/projects/${p1}/crews?limit=101`,`/projects/${p1}/admission-template?foo=1`])assert.equal((await req(path)).status,400,path);
+  const invalidJson=await fetch(`${base}/api/v1/employees`,{method:'POST',headers:{authorization:`Bearer ${tokens.get(director)}`,'x-tenant-id':tenant,'content-type':'application/json'},body:'{broken'});assert.equal(invalidJson.status,400);
+  assert.equal((await req(`/projects/${fp}/admission-template`)).status,404);
+  assert.equal((await req(`/projects/${p2}/memberships/${outsider}`,command({expectedVersion:0,status:'active'}),director,'PUT')).status,422);
+  assert.equal((await req(`/employees/${e.id}/admission-checks`,command({projectId:fp,templateVersion:1,answers}))).status,404);
+  const other=await ok('/employees',command({fullName:'Other check owner',organizationId:org}));
+  assert.equal((await req(`/projects/${p1}/assignments/${other.id}`,command({expectedVersion:0,status:'active',admissionCheckId:ch.id}),director,'PUT')).status,422);
+  assert.equal((await req(`/employees/${other.id}/admission-checks/${ch.id}`)).status,404);
+});
+test('durable replay survives business invalidation, rejects changed operation and reauthorizes revoked actor',async()=>{
+  const b=command({fullName:'Replay actor',organizationId:org}),e=await ok('/employees',b);
+  await ok(`/employees/${e.id}`,command({expectedVersion:1,fullName:e.fullName,organizationId:org,phone:null,userId:null,status:'archived'}),director,'PUT');
+  assert.deepEqual(await ok('/employees',b),e);
+  assert.equal((await req(`/projects/${p1}/crews`,{requestId:b.requestId,name:'Changed operation'})).status,409);
+  await admin.query(`UPDATE memberships SET role='master' WHERE tenant_id=$1 AND user_id=$2`,[tenant,director]);
+  try{assert.equal((await req('/employees',b)).status,403);}finally{await admin.query(`UPDATE memberships SET role='director' WHERE tenant_id=$1 AND user_id=$2`,[tenant,director]);}
+  await admin.query(`UPDATE memberships SET status='revoked' WHERE tenant_id=$1 AND user_id=$2`,[tenant,director]);
+  try{assert.equal((await req('/employees',b)).status,403);}finally{await admin.query(`UPDATE memberships SET status='active' WHERE tenant_id=$1 AND user_id=$2`,[tenant,director]);}
+  assert.deepEqual(await ok('/employees',b),e);
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM audit_log WHERE tenant_id=$1 AND details->>'requestId'=$2`,[tenant,b.requestId])).rows[0].n,1);
+});
+test('legacy lineage remains no_check, nonworker assignment grants no membership; archive cascades all audit/version effects',async()=>{
+  const legacy=await ok('/employees',command({fullName:'Legacy assignment',organizationId:org}));
+  await admin.query(`INSERT INTO employee_project_assignments(tenant_id,project_id,employee_id) VALUES($1,$2,$3)`,[tenant,p2,legacy.id]);
+  const old=(await ok(`/projects/${p2}/assignments`)).items.find((a:any)=>a.employeeId===legacy.id);assert.equal(old.admissionCheckId,null);assert.equal(old.currentAdmission.eligible,false);assert.ok(old.currentAdmission.reasons.includes('no_check'));
+  const employeeMaster=await ok('/employees',command({fullName:'Master employee',organizationId:org,userId:master}));
+  const ch=await ok(`/employees/${employeeMaster.id}/admission-checks`,command({projectId:p2,templateVersion:2,answers}));
+  const activate=command({expectedVersion:0,status:'active',admissionCheckId:ch.id});
+  await ok(`/projects/${p2}/assignments/${employeeMaster.id}`,activate,director,'PUT');
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM project_memberships WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3`,[tenant,p2,master])).rows[0].n,0);
+  assert.equal((await req(`/projects/${p2}`,undefined,master)).status,404);
+  const c=await ok(`/projects/${p2}/crews`,command({name:'Archive active crew'}));
+  await ok(`/projects/${p2}/crews/${c.id}/members/${employeeMaster.id}`,command({expectedVersion:0,status:'active'}),director,'PUT');
+  const b=command({expectedVersion:1,fullName:employeeMaster.fullName,organizationId:org,phone:null,userId:master,status:'archived'});
+  const archived=await ok(`/employees/${employeeMaster.id}`,b,director,'PUT');assert.equal(archived.version,2);
+  const state=(await ok(`/projects/${p2}/crews/${c.id}`)).members[0];assert.equal(state.status,'revoked');assert.equal(state.version,2);
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM audit_log WHERE tenant_id=$1 AND details->>'requestId'=$2`,[tenant,b.requestId])).rows[0].n,3);
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM people_command_receipts WHERE tenant_id=$1 AND request_id=$2 AND status=200`,[tenant,b.requestId])).rows[0].n,1);
+  assert.equal((await req(`/projects/${p2}/crews/${c.id}/members/${employeeMaster.id}`,command({expectedVersion:2,status:'active'}),director,'PUT')).status,422);
+  assert.equal((await ok(`/employees/${employeeMaster.id}/admission-checks/${ch.id}`)).passed,true);
+});
+test('new table FORCE RLS/limited grants and composite tenant FKs; migration rerun preserves exact ledger and backend data directory',async()=>{
+  const db=(await admin.query(`SELECT current_setting('port') AS port,current_setting('data_directory') AS directory`)).rows[0];assert.equal(db.port,'54339');assert.match(db.directory,/codex-api\/\.data\/pg-54339$/);
+  const tables=['employee_qualifications','people_command_receipts','admission_templates','admission_template_versions','employee_admission_checks','crews','crew_members'];
+  const security=(await admin.query(`SELECT relname,relrowsecurity,relforcerowsecurity FROM pg_class WHERE relname=ANY($1::text[])`,[tables])).rows;assert.equal(security.length,tables.length);security.forEach(r=>{assert.equal(r.relrowsecurity,true);assert.equal(r.relforcerowsecurity,true);});
+  for(const t of tables)assert.equal((await restricted.query(`SELECT has_table_privilege(current_user,$1,'DELETE') AS allowed`,[t])).rows[0].allowed,false,t);
+  await assert.rejects(withTenant(restricted,tenant,director,c=>c.query(`UPDATE people_command_receipts SET command_hash='forged' WHERE actor_user_id=$1`,[director])),(e:any)=>e.code==='42501');
+  await assert.rejects(admin.query(`INSERT INTO employee_qualifications(tenant_id,employee_id,code,title) VALUES($1,$2,'foreign','Foreign')`,[foreign,employee.id]),(e:any)=>e.code==='23503');
+  const emptyCrew=await ok(`/projects/${p1}/crews`,command({name:'Composite FK probe'}));
+  await assert.rejects(admin.query(`INSERT INTO crew_members(tenant_id,project_id,crew_id,employee_id,status) VALUES($1,$2,$3,$4,'revoked')`,[tenant,p2,emptyCrew.id,employee.id]),(e:any)=>e.code==='23503');
+  const before=(await admin.query(`SELECT * FROM schema_migrations ORDER BY filename`)).rows;
+  for(let n=0;n<2;n++)execFileSync(process.execPath,['--import','tsx','src/migrate.ts'],{cwd:new URL('..',import.meta.url),env:process.env});
+  assert.deepEqual((await admin.query(`SELECT * FROM schema_migrations ORDER BY filename`)).rows,before);
+  assert.ok(before.some(r=>r.filename==='003_people_admission.sql'));assert.ok(before.some(r=>r.filename==='004_admission_crews.sql'));
+});
+test('all named people schemas and paged HTTP responses match public30-operation OpenAPI',async()=>{
+  const spec=await (await fetch(`${base}/api/v1/openapi.json`)).json();
+  assert.equal(Object.values(spec.paths).reduce((n:number,p:any)=>n+Object.keys(p).length,0),30);
+  function matches(value:any,schema:any,at:string):void {
+    if(schema.$ref)return matches(value,spec.components.schemas[schema.$ref.split('/').pop()],at);
+    if(value===null && schema.nullable)return;
+    if(schema.enum)assert.ok(schema.enum.includes(value),at);
+    if(schema.type==='object'){
+      assert.ok(value && typeof value==='object' && !Array.isArray(value),at);
+      for(const key of schema.required??[])assert.ok(key in value,`${at}.${key} required`);
+      for(const [key,child] of Object.entries(value)){
+        if(schema.additionalProperties===false)assert.ok(key in schema.properties,`${at}.${key} unexpected`);
+        if(schema.properties[key])matches(child,schema.properties[key],`${at}.${key}`);
+      }
+    }else if(schema.type==='array'){
+      assert.ok(Array.isArray(value),at);if(schema.minItems!==undefined)assert.ok(value.length>=schema.minItems,at);if(schema.maxItems!==undefined)assert.ok(value.length<=schema.maxItems,at);
+      value.forEach((item:any,i:number)=>matches(item,schema.items,`${at}[${i}]`));
+    }else if(schema.type==='integer'){
+      assert.ok(Number.isSafeInteger(value),at);if(schema.minimum!==undefined)assert.ok(value>=schema.minimum,at);
+    }else{
+      assert.equal(typeof value,schema.type,at);if(schema.pattern)assert.match(value,new RegExp(schema.pattern),at);
+    }
+  }
+  for(const [schema,value] of [['E',employee],['Q',qualification],['T',template],['C',passed],['CreatedCrew',crew]])matches(value,spec.components.schemas[schema as string],schema as string);
+  const routes=[
+    [`/employees/${employee.id}/qualifications`,'QualificationList'],[`/employees/${employee.id}/admission-checks`,'CheckList'],
+    [`/projects/${p1}/admission-template`,'T'],[`/projects/${p1}/admission-template/versions`,'TemplateList'],
+    [`/projects/${p1}/memberships`,'MembershipList'],[`/projects/${p1}/assignments`,'AssignmentList'],[`/projects/${p1}/crews`,'CrewList'],[`/projects/${p1}/crews/${crew.id}`,'Crew'],
+  ];
+  for(const [path,schema] of routes)matches(await ok(path!),spec.components.schemas[schema!],schema!);
 });
