@@ -2,7 +2,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {constants} from 'node:fs';
 import {open,mkdir,chmod,link,unlink} from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
-import {isAbsolute,resolve,join} from 'node:path';
+import {isAbsolute,resolve,join,dirname} from 'node:path';
 import type {IncomingMessage} from 'node:http';
 import {fileURLToPath} from 'node:url';
 import {httpError} from './errors.js';
@@ -23,11 +23,11 @@ export async function readEvidenceRequest(req:IncomingMessage,d:BlobDeclaration)
  if(length!==undefined&&Number(length)!==d.sizeBytes)throw httpError(422,'evidence_size_mismatch');
  // data listeners let us stop buffering on overflow without destroying the response socket.
  const bytes=await new Promise<Buffer>((resolve,reject)=>{
-  let size=0,settled=false;const chunks:Buffer[]=[];
+  let size=0,settled=false;const buffered=Buffer.alloc(d.sizeBytes);
   const cleanup=()=>{req.off('data',data);req.off('end',end);req.off('aborted',abort);req.off('error',error);};
-  const fail=(e:unknown)=>{if(settled)return;settled=true;cleanup();chunks.length=0;req.resume();reject(e);};
-  const data=(chunk:Buffer)=>{size+=chunk.length;if(size>MAX_EVIDENCE_BYTES){fail(httpError(413,'evidence_too_large'));return;}chunks.push(chunk);};
-  const end=()=>{if(settled)return;settled=true;cleanup();resolve(Buffer.concat(chunks,size));};
+  const fail=(e:unknown)=>{if(settled)return;settled=true;cleanup();req.resume();reject(e);};
+  const data=(chunk:Buffer)=>{const start=size;size+=chunk.length;if(size>MAX_EVIDENCE_BYTES){fail(httpError(413,'evidence_too_large'));return;}if(size>d.sizeBytes){fail(httpError(422,'evidence_size_mismatch'));return;}chunk.copy(buffered,start);};
+  const end=()=>{if(settled)return;settled=true;cleanup();resolve(buffered.subarray(0,size));};
   const abort=()=>fail(httpError(400,'upload_aborted'));const error=()=>fail(httpError(400,'upload_interrupted'));
   req.on('data',data);req.once('end',end);req.once('aborted',abort);req.once('error',error);
   if(req.aborted)abort();else if(req.readableEnded)end();
@@ -40,9 +40,9 @@ export class EvidenceStorage {
  constructor(){const configured=process.env.HELIOS_EVIDENCE_ROOT;if(configured&&!isAbsolute(configured))throw new Error('HELIOS_EVIDENCE_ROOT must be absolute');this.root=configured??resolve(fileURLToPath(new URL('../../../.data/evidence-54339',import.meta.url)));}
  private key(tenant:string,file:string){return join(this.root,uuid(tenant).toLowerCase(),uuid(file).toLowerCase());}
  // Small method seams allow tests to inject actual filesystem-stage failures without replacing the adapter.
- async write(handle:FileHandle,bytes:Buffer){await handle.writeFile(bytes);}
- async sync(handle:FileHandle){await handle.sync();}
- async promote(temp:string,destination:string){await link(temp,destination);}
+ private async write(handle:FileHandle,bytes:Buffer){await handle.writeFile(bytes);}
+ private async sync(handle:FileHandle){await handle.sync();}
+ private async promote(temp:string,destination:string){await link(temp,destination);}
  async get(tenant:string,file:string,d:BlobDeclaration):Promise<Buffer>{
   try{const h=await open(this.key(tenant,file),constants.O_RDONLY|constants.O_NOFOLLOW);try{const stat=await h.stat();if(!stat.isFile()||stat.size!==d.sizeBytes||stat.size>MAX_EVIDENCE_BYTES)throw new Error('invalid evidence');const bytes=Buffer.alloc(d.sizeBytes);let read=0;while(read<bytes.length){const n=await h.read(bytes,read,bytes.length-read,read);if(!n.bytesRead)throw new Error('short evidence');read+=n.bytesRead;}verifyEvidence(bytes,d);return bytes;}finally{await h.close();}}catch{throw httpError(503,'evidence_unavailable');}
  }
@@ -53,7 +53,8 @@ export class EvidenceStorage {
    handle=await open(temp,'wx',0o600);await this.write(handle,bytes);await this.sync(handle);await handle.close();handle=undefined;
    try{await this.promote(temp,destination);}catch(e:any){if(e.code!=='EEXIST')throw e;}
    await this.get(tenant,file,d);
-   const dir=await open(directory,'r');try{await this.sync(dir);}finally{await dir.close();}
+   // Persist the destination entry and newly created storage directories as well.
+   for(const directoryToSync of [directory,this.root,dirname(this.root)]){const dir=await open(directoryToSync,'r');try{await this.sync(dir);}finally{await dir.close();}}
   }catch{throw httpError(503,'evidence_storage_failed');}
   finally{await handle?.close().catch(()=>{});await unlink(temp).catch(e=>{if(e.code!=='ENOENT')throw httpError(503,'evidence_storage_failed');});}
  }
