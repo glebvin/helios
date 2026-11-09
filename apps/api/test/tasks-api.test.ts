@@ -184,3 +184,18 @@ test('draft views hide current-day preparation counts and controlled preexisting
     await admin.query(`DELETE FROM shifts WHERE tenant_id=$1 AND id=$2`,[tenant,shift]);await admin.query(`DELETE FROM work_reports WHERE tenant_id=$1 AND id=$2`,[tenant,report]);await admin.query(`DELETE FROM daily_tasks WHERE tenant_id=$1 AND id=$2`,[tenant,t.id]);
   }
 });
+
+test('front lifecycle: immutable complete attempts and director-only atomic publication',async()=>{
+  const template=await ok(`/projects/${p}/front-template`,command({code:'front',title:'Front',items:[{id:'access',label:'Access ready',critical:true},{id:'tidy',label:'Tidy',critical:false}]}));
+  assert.equal(template.version,1);
+  const t=await ok(taskPath,command(plan({title:'Publish lifecycle'})),master);
+  const check=await ok(`${taskPath}/${t.id}/front-checks`,command({expectedVersion:1,templateVersion:1,answers:[{itemId:'access',value:true},{itemId:'tidy',value:false}]}),master);
+  assert.equal(check.passed,true);assert.deepEqual(check.warnings,['noncritical_failed:tidy']);assert.equal(check.planRevision,1);
+  const submitted=await req(`${taskPath}/${t.id}/submit`,command({expectedVersion:2}),master);assert.equal(submitted.status,200);assert.equal(submitted.body.status,'pending_approval');
+  assert.equal((await req(`${taskPath}/${t.id}/publish`,command({expectedVersion:3}),master)).status,403);
+  const b=command({expectedVersion:3});const results=await Promise.all([req(`${taskPath}/${t.id}/publish`,b),req(`${taskPath}/${t.id}/publish`,b)]);
+  for(const r of results)assert.equal(r.status,200,JSON.stringify(r));assert.deepEqual(results[0],results[1]);
+  assert.equal(results[0].body.status,'published');assert.ok(results[0].body.publicationSnapshotId);assert.deepEqual(await effects(b.requestId),{receipts:1,audits:1});
+  const visible=await ok(`${taskPath}/${t.id}`,undefined,worker);assert.equal(visible.status,'published');
+  assert.equal((await req(`${taskPath}/${t.id}`,command({...plan(),expectedVersion:4}),master,'PUT')).status,409);
+});
