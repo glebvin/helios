@@ -1,0 +1,12 @@
+{
+  "task": "2 approval subcheckpoint",
+  "baseline": "ea0daa9",
+  "red_commit": "0695183",
+  "command": "h03b corepack pnpm --filter @helios/api exec tsx --test --test-concurrency=1 test/time-api.test.ts",
+  "exit_code": 1,
+  "expected_status": 200,
+  "actual_status": 404,
+  "actual_error": "Cannot GET /api/v1/projects/<fixture UUID>/time/employees/<fixture UUID>/days/2026-11-01",
+  "semantic_assessment": "Authenticated fixture setup and login succeeded; the new time day route was absent. The exact tool response before implementation reported 1 test, 0 pass, 1 fail with 404 !== 200. This small artifact transcribes that actual tool result; it is not a raw captured TAP file.",
+  "green_commit": "4f95eef"
+}

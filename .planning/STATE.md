@@ -1,10 +1,18 @@
+---
+gsd_state_version: "1.0"
+current_phase: 03b-server — private evidence files, revisioned hour approval and coherent XLSX exports.
+status: "backend03b-server independently verified (6/6 must-haves) at source 7b3610a. Next: 03c durable browser queue, UI integration and physical-phone verification; Phase03 is not complete."
+last_updated: "2026-11-09T20:56:21.353Z"
+state_head: 7b3610a92c4fd6664349aab402d825ac71641f9a
+---
+
 # Backend state
 
 Date: 2026-11-09
 Branch: codex-api
 Base: b2ddc9f
-Current phase: 03a — server-managed shifts, time segments, provisional volumes and ordered event ingestion.
-Status: backend03a independently verified (6/6 must-haves) at source cfcfcf2. Next: 03b browser queue/files/photos/hour approval and physical-phone verification; Phase03 is not complete.
+Current phase: 03b-server — private evidence files, revisioned hour approval and coherent XLSX exports.
+Status: backend03b-server independently verified (6/6 must-haves) at source 7b3610a. Next: 03c durable browser queue, UI integration and physical-phone verification; Phase03 is not complete.
 UI worktree is independent. Avoid edits there and main.
 
 ## Quick Tasks Completed
@@ -15,16 +23,25 @@ UI worktree is independent. Avoid edits there and main.
 | 261109-bkb | People/qualifications, immutable admission/current evidence, assignment/crews; OpenAPI30; independently verified 5/5, domain10/API26 + people14 repeat + tsc passed | 2026-11-09 | f1717a4 | quick/261109-bkb-people-qualifications-admission-checks-c |
 | 261109-cdb | Real catalogs/drafts, versioned front checks, atomic admission-gated publication, interval conflict checks and legacy fences; independently verified 6/6, domain10/API51 + tasks25 repeat + API tsc | 2026-11-09 | f2d63e2 | quick/261109-cdb-daily-task-drafts-readiness-and-safe-pub |
 | 261109-nqz | Managed execution events/shifts/segments/final provisional volumes, current authority and real races, exact day/DST reads and OpenAPI58; independently verified 6/6, domain10/API74 + execution23 repeat + API tsc | 2026-11-09 | cfcfcf2 | quick/261109-nqz-managed-task-execution-shifts-downtime-v |
+| 261109-qu2 | Private evidence, revisioned exact hours and coherent XLSX; OpenAPI69; independently verified6/6, full130 plus time28 and isolated race1 after fixture fix | 2026-11-09 | 7b3610a | [261109-qu2-private-evidence-files-revisioned-time-a](./quick/261109-qu2-private-evidence-files-revisioned-time-a/) |
 
 ## Confirmed decisions
 
 - Backend uses isolated PostgreSQL54339, `.data/pg-54339`, API4327. Original UI defaults retained.
 - Workers require active project membership plus actual employee assignment for project/task reads; own employee profile stays available without assignment.
 - Missing quality/downtime/ID metrics are explicit unavailable/null. Legacy write limitations remain documented.
-- No UI edits, main merge, deployment or complete-pilot readiness claim. Next: UI integration and03b durable browser queue, files/photos, hour approval and physical-phone testing.
+- No UI edits, main merge, deployment or complete-pilot readiness claim. Next:03c durable browser queue, UI integration and physical-phone testing. Server evidence/hour approval/XLSX are complete within the locked03b scope.
 - Backend02a uses durable atomic receipt/audit commands and ordered NO KEY UPDATE locks; current eligibility requires latest attempt/template and exact active qualification id/version on tenant civil date. Backend02b adds current+workDate evidence checks at publication. Legacy creation is retired (410), and legacy execution rejects all managed tasks before replay/effects; legacy fixture execution remains uncertified.
 - API4327 started from cfcfcf2; live health/OpenAPI58, seeded director login/projects/execution shifts/reports, additive provisional exact-string overview, malformed empty batch400 and logout smoke passed after independent verification. Isolated PG54339 retained.
 - 03a execution uses separate presence/work/break/downtime intervals, shared durable receipts, provisional final task/shift volume and immutable event ledger. All reported time/volume stays unapproved; no complete client offline/files/quality acceptance claim. Plain domain tsc retains baselineTS2688; explicit existing-typeRoots fallback passes.
+
+## Backend03b-server independent verification and runtime closure — 2026-11-09
+
+The earlier03a and implementation checkpoint notes below are historical. Quick261109-qu2 completed all three sequential implementation tasks: private evidence6routes, immutable hour approval/history/revoke4routes and real XLSX1route, strict OpenAPI69 preserving the old58 operations/schemas. Source7b3610a (production21626a0 plus isolated test fixture fix). Independent verifier passed6/6 with actual SQL/source/runtime evidence. Full regression130=domain10/API120 independently repeated, affected69 passed before the test-only fix; final time28 and independently filtered XLSX race1 passed afterward. APItsc and explicit-typeRoots domain fallback pass; plain domainTS2688 remains. Initial fresh008/009 application was not independently repeated; retained migrations/data/grants/FKs and repeat idempotency were exercised.
+
+Files are private JPEG/PNG/PDF up to8MiB, immutable verified local FS bytes with fresh post-I/O authority and safe retry across separate FS/PG commit boundaries; private orphans may remain. Production S3/AV/backups/orphan operations are deferred. Source/confirmed exact-ms values and revision history are separate; relevant late events stale approvals. XLSX requires every recorded row in a <=31day/10000row snapshot to be current approved; one missing/stale/revoked day blocks export. Locks release before rendering, current authority is checked afterward, captured hash/revision/time remain attributable. Current approval commands are director-only; full matrix is04.
+
+Parent started API4327 from7b3610a (Node49890/session83065), retained PG54339. Live health/spec69, login/me, evidence list, empty-day/history, actual empty XLSX, strict-query400, unauthenticated401 and logout smoke passed; downloaded OOXML independently parsed. No UI/main/merge/deploy or full-pilot claim. Remaining03c client queue/phones,04 quality/materials/routes/ID/AOSR and05 operational acceptance stay pending.
 
 ## Backend02b implementation checkpoint — 2026-11-09
 
