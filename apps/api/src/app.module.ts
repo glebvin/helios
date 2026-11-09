@@ -82,17 +82,8 @@ class WorkforceController {
   }
 
   @Post("tasks")
-  createTask(
-    @Req() request: ActorRequest,
-    @Body() body: { title?: string; employeeId?: string; plannedQuantity?: string; unit?: string; workDate?: string },
-  ) {
-    return this.workforce.createTask(actorOf(request), {
-      title: body.title ?? "",
-      employeeId: body.employeeId ?? "",
-      plannedQuantity: body.plannedQuantity ?? "",
-      unit: body.unit ?? "",
-      workDate: body.workDate ?? "",
-    });
+  createTask(@Req() request:ActorRequest,@Body() body:unknown) {
+    return this.workforce.createTask(actorOf(request),body);
   }
 
   @Post("sync/events")

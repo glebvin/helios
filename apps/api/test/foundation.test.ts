@@ -4,6 +4,7 @@ import test from "node:test";
 import { NestFactory } from "@nestjs/core";
 import {
   EMPLOYEE_A,
+  PROJECT_A,
   EMPLOYEE_B,
   FILE_B,
   TENANT_A,
@@ -62,7 +63,7 @@ test("кабинет A не видит человека, файл и связь 
       workDate: "2026-11-07",
     }),
   });
-  assert.equal(crossTask.status, 422);
+  assert.equal(crossTask.status, 410);
   const desk = (await (await fetch(`${base}/desk`, { headers: headers(director.token, TENANT_A) })).json()) as {
     employees: { full_name: string; phone: string }[];
   };
@@ -87,19 +88,9 @@ test("пул не сохраняет контекст кабинета", async (
 
 test("откат записи не оставляет задачу, повтор worker не удваивает эффект", async () => {
   const master = await login("master@pilot.helios", "pilot-master");
-  const created = await fetch(`${base}/tasks`, {
-    method: "POST",
-    headers: headers(master.token, TENANT_A),
-    body: JSON.stringify({
-      title: "Облицовка стен",
-      employeeId: EMPLOYEE_A,
-      plannedQuantity: "40",
-      unit: "м2",
-      workDate: "2026-11-07",
-    }),
-  });
-  const task = (await created.json()) as { id: string };
-  assert.equal(created.status, 201, JSON.stringify(task));
+  const task={id:randomUUID()};
+  await withTenant(pool,TENANT_A,USER_MASTER,c=>c.query(`INSERT INTO daily_tasks(tenant_id,project_id,id,title,work_date,planned_quantity,unit,assignee_employee_id,workflow_kind) VALUES($1,$2,$3,'Controlled legacy fixture','2026-11-07',40,'м2',$4,'legacy')`,[TENANT_A,PROJECT_A,task.id,EMPLOYEE_A]));
+  try {
 
   const workforce = app.get(WorkforceService);
   const actor: Actor = {
@@ -109,7 +100,7 @@ test("откат записи не оставляет задачу, повтор
     name: "Павел Орлов",
     email: "master@pilot.helios",
   };
-  const rolled = await workforce.recordAndMaybeRollback(actor, "2", true);
+  const rolled = await workforce.recordAndMaybeRollback(actor, "2", true,task.id);
   const leftover = await pool.query(`SELECT count(*)::int AS n FROM pgboss.job WHERE data->>'reportId' = $1`, [
     rolled.reportId,
   ]);
@@ -161,6 +152,18 @@ test("откат записи не оставляет задачу, повтор
     }),
   });
   assert.equal(foreign.status, 403);
+  } finally {
+    // Restricted app cannot delete histories; admin cleanup is tenant/task scoped.
+    const cleanup=createPool(process.env.ADMIN_DATABASE_URL);
+    try {
+      await cleanup.query(`DELETE FROM pgboss.job WHERE data->>'reportId' IN (SELECT id::text FROM work_reports WHERE tenant_id=$1 AND task_id=$2)`,[TENANT_A,task.id]);
+      await cleanup.query(`DELETE FROM report_effects WHERE tenant_id=$1 AND report_id IN (SELECT id FROM work_reports WHERE tenant_id=$1 AND task_id=$2)`,[TENANT_A,task.id]);
+      await cleanup.query(`DELETE FROM client_events WHERE tenant_id=$1 AND result->>'reportId' IN (SELECT id::text FROM work_reports WHERE tenant_id=$1 AND task_id=$2)`,[TENANT_A,task.id]);
+      await cleanup.query(`DELETE FROM audit_log WHERE tenant_id=$1 AND object_id IN (SELECT id FROM work_reports WHERE tenant_id=$1 AND task_id=$2)`,[TENANT_A,task.id]);
+      await cleanup.query(`DELETE FROM work_reports WHERE tenant_id=$1 AND task_id=$2`,[TENANT_A,task.id]);
+      await cleanup.query(`DELETE FROM daily_tasks WHERE tenant_id=$1 AND id=$2`,[TENANT_A,task.id]);
+    } finally {await cleanup.end();}
+  }
 });
 
 test.after(async () => {

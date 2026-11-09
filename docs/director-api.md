@@ -1,6 +1,6 @@
 # HELIOS API v1 — handoff интерфейсу
 
-Это серверный срез **02a: люди → квалификации → допуск → назначение → бригада**, с сохранением первого API чтения. Контракт: `apps/api/openapi.json`, публично доступен через `GET /api/v1/openapi.json`: 30 операций (10 прежних + 20 новых). Другие v1-маршруты, кроме входа, требуют действующей сессии и активного членства в выбранном кабинете. Это ещё не готовый пилот.
+Срезы **02a: люди → квалификации → допуск → назначение → бригада** и **02b: каталоги → план → готовность фронта → согласование → публикация** сохраняют первый API чтения. Контракт `apps/api/openapi.json` доступен через `GET /api/v1/openapi.json`: **53 операции — 52 v1 (30 прежних + 22 новых) и один retired legacy-create endpoint**. Защищённые v1-маршруты требуют действующей сессии и активного членства в кабинете. Это ещё не готовый пилот.
 
 ## Вход и кабинет
 
@@ -66,17 +66,20 @@ curl "http://127.0.0.1:4327/api/v1/overview?projectId=$PROJECT_ID&day=2026-11-01
 
 В v1 нет демонстрационных процентов/колец. Старый `/api/summary` остаётся явно учебным (`sample:true`), его нельзя выдавать за боевую сводку. Seed не выдаёт master/PTO/worker доступ ко всем проектам: директор управляет явными членствами через новый endpoint ниже. Назначения из существующих задач мигрировались один раз при 002; последующие legacy-записи не синхронизируют их автоматически. Прежние назначения сохранены с `admissionCheckId:null`, `currentAdmission.eligible:false` и причиной `no_check`; миграция не выдумывает успешный допуск.
 
-02a реализует квалификации, первый допуск yes/no и бригады. Готовность и создание ежедневных задач с обязательным допуском — **02b, ещё не реализованы**. Нет полных typed/photo/measurement чек-листов качества и замечаний, простоев, 14 маршрутов и реестра полномочий, входящих материалов, ИД/АОСР/hold points, загрузки файлов, MFA/backup/операционной приёмки. Телефонный offline и конкурентная legacy-синхронизация не доказаны этими HTTP-тестами.
+02a реализует квалификации, первый допуск yes/no и бригады. 02b реализует подготовку одноперсонных задач, готовность фронта и атомарную публикацию с текущим допуском; выполнение относится к следующему срезу03. Нет полных typed/photo/measurement чек-листов качества и замечаний, простоев, 14 маршрутов и реестра полномочий, входящих материалов, ИД/АОСР/hold points, загрузки файлов, MFA/backup/операционной приёмки. Телефонный offline и конкурентная legacy-синхронизация не доказаны этими HTTP-тестами.
 
-Legacy-запись (`/api/tasks`, `/api/sync/events`, `/api/reports/:id/accept`) сохраняет известные ограничения: неполная проверка проектных полномочий, фиксированный проект при создании задачи, неполная валидация/конкурентность offline. Эти записи **не обеспечивают новый допуск**, могут обходить workflow 02a и не сертифицированы как безопасный процесс готовности задач. Старый desk/summary и файловые маршруты не получили общего v1 ACL; в touched legacy employee-list/detail закрыта конкретная утечка чужих людей для worker. Не связывайте новые возможности с обещанием защищённых legacy-записей.
+Legacy `POST /api/tasks` возвращает **410 task_creation_retired** для любого авторизованного участника; прямой вызов сервиса также закрыт. Замена: `POST /api/v1/projects/:id/tasks`, затем front-checks/submit/publish. Managed02b задачи во всех состояниях отклоняют legacy shift_start, shift_end, submit_volume и приёмку отчёта с **409 workflow_not_supported** до event receipt/replay и эффектов. Отсутствующий/чужой task —404. Worker не получает право приёмки. Новых смен/отчётов/job/event/audit при отказе нет. Старые явно legacy строки сохраняют ограниченную совместимость для foundation fixture, без сертификации текущего допуска/offline/проектных прав. Managed lineage неизменяем; публикация не открывает legacy выполнение. Touched legacy desk/summary скрывают worker чужие/preparation task/shift/report IDs и counts; полный аудит прочих старых маршрутов остаётся отдельной работой.
 
 Backend API запускается на 4327, исходный UI использует 4317. Proxy/CORS для параллельной UI-копии — согласованный следующий шаг; `apps/web` этим срезом не меняется. Существующий CORS разрешает 5173 на localhost/127.0.0.1. OpenAPI servers указывает локальный backend4327.
 
 ## Проверка
 
-Из корня репозитория после `db:up`, `db:migrate` и `db:seed` с URL из PASSPORT:
+Из codex-api после начальных db:up/migrate/seed, только с изолированным PG54339 и явным окружением. Перед migrate/test проверьте port54339 и data_directory `codex-api/.data/pg-54339`. API4327 перезапускает родительский агент после независимой проверки источников.
 
 ```sh
+export DATABASE_URL=postgres://helios_app:helios_app@127.0.0.1:54339/helios
+export ADMIN_DATABASE_URL=postgres://helios:helios@127.0.0.1:54339/helios
+export HELIOS_DB_PORT=54339 API_PORT=4327
 corepack pnpm test
 corepack pnpm --filter @helios/api exec tsx --test test/director-api.test.ts
 corepack pnpm --filter @helios/api exec tsx --test test/people-api.test.ts
@@ -147,3 +150,81 @@ PUT /projects/${project}/memberships/${existingMasterUser}
 Теперь worker видит назначенный проект; директор видит currentAdmission в GET assignments/crews. Для обновления сотрудника отправьте все поля с nullable phone/userId и текущим expectedVersion. Для отзыва Q используйте его PUT/status revoked; для новой версии T — PUT без code. Для отзыва назначения/участия отправьте PUT `{requestId,expectedVersion,status:"revoked"}`. При следующей failed-проверке старый passed ID уже не даёт активировать assignment. UI может показать исторический passed рядом с `currentAdmission.eligible:false`; это разные факты.
 
 Сервер блокирует project → employee → tenant membership → assignment → project membership → crew member (receipt перед ними); каждая группа упорядочена по ключу. NO KEY UPDATE совместима с неявными FK KEY SHARE, исключая обратные повышения блокировок при вставке дочерних строк. HTTP/PG suite проверяет реальные очереди конкурирующих link/archive/qualification/template и implicit/explicit grant, а не обещает нагрузочную/production готовность.
+
+## Задачи02b: доступ и каталоги
+
+| Возможность | Director | Master с активным project membership | PTO с активным project membership | Worker |
+|---|---|---|---|---|
+| Каталоги и front-template, версии | чтение/изменение | чтение | чтение | нет |
+| Draft/pending/cancelled планы, front history/readiness | чтение/подготовка | чтение/подготовка | чтение | скрыты |
+| Submit/reopen | да | да | нет | нет |
+| Reject/publish | да | нет | нет | нет |
+| Cancel draft/pending | да | да | нет | нет |
+| Cancel published | да | нет | нет | нет |
+| Published managed task | чтение | чтение | чтение | только собственная с активным employee assignment и project membership |
+
+Все пути ниже имеют префикс `/api/v1`. Коллекции используют прежние `{items,total,limit,offset}`; неизвестные query/body поля, повторные query, массивы вместо скаляров, поддельные passed/status/snapshot/actor/time отвергаются400. Идентификаторы tenant/project проверяются сервером, UUID нормализуются в lowercase. Каждая мутация требует requestId, правка существующей записи/действие — expectedVersion. POST создания/попытки —201, PUT и POST lifecycle —200, включая replay.
+
+| Путь | Форма помимо requestId |
+|---|---|
+| `GET/POST /projects/:p/zones`; `PUT /projects/:p/zones/:z` | POST `{name}`, PUT `{expectedVersion,name,status:active\|archived}` |
+| `GET/POST /projects/:p/work-types`; `PUT /projects/:p/work-types/:w` | `{name,unit,requiresRd,requiresMaterialControl,requiresPredecessorAcceptance,requiresId}`, PUT добавляет expectedVersion/status |
+| `GET /projects/:p/tasks` | `day` или `workDate` (вместе400), status из известных legacy/managed состояний, limit/offset |
+| `GET /projects/:p/tasks/:t` | прежние camelCase поля + workflowKind, planRevision, zoneId, workTypeId, responsibleUserId, rdReference, plannedStart/End, publicationSnapshotId |
+| `POST /projects/:p/tasks`; `PUT /projects/:p/tasks/:t` | полная плановая форма ниже; PUT добавляет expectedVersion, только draft |
+| `POST /projects/:p/tasks/:t/submit` | `{expectedVersion}`: draft → pending_approval; структура обязательна, readiness может быть неполной |
+| `POST .../:t/reject`, `POST .../:t/reopen` | `{expectedVersion,reason}`: pending_approval → draft; reject только director |
+| `POST .../:t/cancel` | `{expectedVersion,reason}`: терминальный cancelled; сохранённые plan/evidence не удаляются |
+| `POST .../:t/publish` | `{expectedVersion}`: pending_approval → published, полный атомарный recheck |
+| `GET/POST/PUT /projects/:p/front-template`; `GET .../versions` | POST `{code,title,items:[{id,label,critical}]}`, PUT `{expectedVersion,title,items}`; stable code, неизменяемые версии |
+| `GET/POST /projects/:p/tasks/:t/front-checks`; `GET .../:check` | POST `{expectedVersion,templateVersion,answers:[{itemId,value:boolean}]}` |
+| `GET /projects/:p/tasks/:t/readiness` | `{ready,reasons,warnings}`, информационное текущее вычисление для director/master/PTO |
+
+Zone/WorkType возвращают id/projectId/name/version/status, WorkType также unit и четыре requirement flags. Это настоящие каталоги проекта с составными tenant/project FK. Архив или новая версия каталога инвалидируют readiness; нормативов/стоимостей/эффективности нет.
+
+План: `{zoneId,workTypeId,title,workDate,plannedQuantity,assigneeEmployeeId,responsibleUserId,plannedStart,plannedEnd,rdReference}`. Один сотрудник на задачу. Unit выводится из текущего work type, не принимается от клиента. Ответственный — активный same-tenant director или master, назначенный на проект. Draft допускает ещё не связанного с user сотрудника; публикация требует связь и активные членства. Наличие человека в бригаде не означает несколько исполнителей задачи.
+
+Quantity — строго положительная JSON **строка** до11 целых цифр и3 дробных для numeric(14,3). Сервер не округляет и не использует Number/parseFloat: `"0012.340" → "12.340"`, `"0.000"`, numeric12, exponent/sign/NaN/infinity/переполнение/лишняя точность —400. WorkDate — реальная дата0001…9999. Интервалы — реальные RFC3339 instants с явным Z или offset и точностью не выше миллисекунд; запрещены отсутствующий offset, неправильная календарная дата/время/offset и лишние дробные секунды. Start<end; обе даты после перевода в действительную сохранённую timezone tenant должны совпадать с workDate. Нет fallback на Moscow. Переход через tenant-civil полночь отклоняется. RD — bounded nonblank текстовая метадата или null; при requiresRd=true обязателен. Это не проверка наличия файла/реестра РД.
+
+## Готовность фронта и публикация
+
+Одна семья front-template на проект,1…100 уникальных yes/no items. Director PUT публикует новую неизменяемую версию. Полные ответы принимаются только для draft/pending, ID каждого item ровно один раз, никаких дополнительных/пропущенных/повторных. Critical false сохраняет failed attempt; noncritical false сохраняет warning. Последняя попытка определяется sequence, включая failed. Сохранённый FrontCheck включает id/sequence/taskId/projectId/planRevision/templateCode/templateVersion/templateSnapshot/zoneVersion/workTypeVersion/answers/passed/reasons/warnings/checkedBy/checkedAt. Server вычисляет passed и время/автора. Запись попытки повышает task.version, плановая правка — version и planRevision; старый front после правки плана больше не подходит.
+
+Публикация требует активный assignment и его точный текущий admissionCheckId; применяется **тот же PeopleService evaluator на том же PoolClient**, включая latest attempt/template и точные активные qualification id/version. ValidUntil включительно сравнивается и с сегодняшней tenant-civil датой, и с task.workDate: действующий сегодня документ с истечением до будущего workDate блокирует задачу. Нельзя обойти failed/новую проверку старым passed ID. Актуальны linked employee user, tenant membership, для linked worker project membership, полномочия ответственного и его project link, активные каталоги/совпадающий unit, последняя passed front attempt и её plan/template/catalog bindings.
+
+RequiresMaterialControl / requiresPredecessorAcceptance / requiresId дают причины `material_control_unsupported` / `predecessor_acceptance_unsupported` / `id_unsupported`. Ответы фронта yes не заменяют отсутствующие записи материалов/предшественников/ИД. Это ограниченная готовность02b, полное TZ6.2 не принято. RD отсутствие даёт `rd_required`.
+
+Другие readiness reasons: `front_missing`, `front_failed`, `front_template_changed`, `front_plan_changed`, `front_catalog_changed`, `assignment_inactive`, `employee_archived`, `employee_unlinked`, `employee_member_inactive`, `employee_project_inactive`, `responsible_inactive`, `zone_inactive`, `work_type_inactive`, `work_type_unit_changed`, `invalid_tenant_timezone`, `invalid_interval`, `admission:<причина02a>`, `qualification_expired_on_work_date:<code>`. Публикация unready —422 `task_not_ready`, stale expectedVersion —409 `stale_version`, устаревший front template —409 `template_changed`; смотрите отдельное GET readiness для причин. Ошибки сохраняют общий `{error:string}` envelope, failed-команда не оставляет receipt/audit/snapshot/business эффектов и может быть повторена с тем же requestId после устранения причины.
+
+Для одного employee проверяются **все tenant проекты**: интервалы `[start,end)` конфликтуют при newStart<existingEnd и newEnd>existingStart с уже published managed задачами; точное соседство допустимо, конфликт409 `assignment_overlap`. Cancelled снимает занятость, сохраняя доказательства. Legacy строки без интервалов не объявлены проверенными на пересечение.
+
+Публикация атомарно сохраняет task_publication_snapshots: полный опубликованный план (старые и новые поля, exact quantity, revision), timezone, employee/link/member/assignment, admission/check/qualification evidence, front/template/catalog versions, responsible/current actor и время. В ответе Task+publicationSnapshotId+`readiness:{ready:true,reasons:[],warnings}`. Snapshot хранится в БД и описан в OpenAPI `TaskPublicationSnapshot`; отдельного public export/read endpoint для него нет. Истории имеют FORCE RLS и SELECT/INSERT-only app grants; UPDATE/DELETE запрещены. План/lineage/snapshot reference после публикации защищены триггером. Каталоги и документы могут изменяться без переписывания истории; published plan не редактируется/не reopen. Только director cancellation меняет status/version с audit, сохраняя plan/snapshot.
+
+Порядок task-команд: shared receipt reservation → target project NO KEY UPDATE → сортированные old/new employee IDs → свежие employee links → сортированные tenant memberships и project memberships → task/assignments. Hint task до employee lock не является полномочием; после ожиданий отдельные READ COMMITTED SELECT заново проверяют version/assignee/responsible и текущий ACL. Изменившийся hint прекращает команду409 без позднего обратного захвата employee lock. Overlap читает другие проекты без их project/task locks: employee lock сериализует публикацию между проектами. NO KEY UPDATE совместим с FK KEY SHARE. Поддерживаемые personnel/catalog/front/membership изменения используют совместимый порядок; archive не берёт project locks.
+
+Replay имеет отдельную ветку: project → актуальные actor tenant/project memberships → исходный receipt body/status. Эта ветка не берёт employee/task/assignment locks и не оценивает повторно expectedVersion/front/admission/catalog. RequestId namespace общий с02a; тот же UUID в другой people/task операции или с другим payload даёт409. Обычные GET под READ COMMITTED информационны: totals/items/readiness в нескольких SQL не являются согласованным межзапросным snapshot и могут измениться между чтением и командой. Только publish даёт атомарное решение.
+
+## Пример ежедневной задачи
+
+Предполагаются готовые02a employee/admission/active assignment, связанные user и master/project membership. Отдельные requestId и текущие versions берите из ответов. Префикс `/api/v1`, auth/tenant headers как выше.
+
+```json
+POST /projects/${project}/zones
+{"requestId":"${r1}","name":"Этаж 2"}
+POST /projects/${project}/work-types
+{"requestId":"${r2}","name":"Бетонирование","unit":"м3","requiresRd":true,"requiresMaterialControl":false,"requiresPredecessorAcceptance":false,"requiresId":false}
+POST /projects/${project}/front-template
+{"requestId":"${r3}","code":"front","title":"Готовность фронта","items":[{"id":"access","label":"Доступ подготовлен","critical":true}]}
+POST /projects/${project}/tasks
+{"requestId":"${r4}","zoneId":"${zone}","workTypeId":"${workType}","title":"Плита этажа 2","workDate":"2027-01-15","plannedQuantity":"12.340","assigneeEmployeeId":"${employee}","responsibleUserId":"${master}","plannedStart":"2027-01-15T09:00:00+03:00","plannedEnd":"2027-01-15T10:00:00+03:00","rdReference":"РД-24"}
+POST /projects/${project}/tasks/${task}/front-checks
+{"requestId":"${r5}","expectedVersion":1,"templateVersion":1,"answers":[{"itemId":"access","value":true}]}
+POST /projects/${project}/tasks/${task}/submit
+{"requestId":"${r6}","expectedVersion":2}
+POST /projects/${project}/tasks/${task}/publish
+{"requestId":"${r7}","expectedVersion":3}
+```
+
+Последний запрос выполняет директор. Worker теперь видит только собственную published задачу, включая v1 overview и touched legacy counts. Смена/отчёт по managed задаче пока закрыты409: phase03 execution, достоверный offline, файлы, quality inspections, authority routes, реальный material/ID/AOSR/hold-point процесс, multiple executors, нормы, MFA/backup/load и полная приёмка пилота остаются впереди. Эти возможности не заменяются front yes/no или тестовыми legacy отчётами.
+
+В текущем install layout отдельная команда domain `tsc --noEmit` не находит types/node (TS2688), хотя API typecheck и domain runtime tests проходят. Без установки/изменения зависимостей подтверждён вариант с уже установленными типами: `corepack pnpm --filter @helios/domain exec tsc --noEmit --typeRoots ../../apps/api/node_modules/@types`. Это ограничение локального resolution, не утверждение о прохождении исходной команды.

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import {randomUUID as id} from 'node:crypto';
+import {randomUUID as id,createHash} from 'node:crypto';
+import {stableEventBody} from '@helios/domain';
+import {WorkforceService,type Actor} from '../src/workforce.service.js';
 import test from 'node:test';
 import {execFileSync} from 'node:child_process';
 import {NestFactory} from '@nestjs/core';
@@ -10,7 +12,7 @@ import {hashPassword} from '../src/password.js';
 import {AllExceptionsFilter} from '../src/http.js';
 const admin=createPool(adminUrl),restricted=createPool();
 const tenant=id(),foreign=id(),org=id(),foreignOrg=id(),p=id(),p2=id(),fp=id();
-const director=id(),master=id(),worker=id(),pto=id(),outsider=id(),worker2=id();
+const director=id(),master=id(),worker=id(),pto=id(),outsider=id(),worker2=id(),foreignEmployee=id();
 const users=[director,master,worker,pto,outsider,worker2],tokens=new Map<string,string>();
 let app:INestApplication|undefined,base:string,employee:any,zone:any,workType:any,draft:any;
 const command=(b:any)=>({requestId:id(),...b});
@@ -32,6 +34,7 @@ test.before(async()=>{
   for(const [u,role] of [[director,'director'],[master,'master'],[worker,'worker'],[worker2,'worker'],[pto,'pto']])await admin.query(`INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,$3)`,[tenant,u,role]);
   await admin.query(`INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,'director')`,[foreign,outsider]);
   await admin.query(`INSERT INTO organizations(tenant_id,id,kind,name) VALUES($1,$2,'own','Own'),($3,$4,'own','Foreign')`,[tenant,org,foreign,foreignOrg]);
+  await admin.query(`INSERT INTO employees(tenant_id,id,organization_id,full_name) VALUES($1,$2,$3,'Foreign employee')`,[foreign,foreignEmployee,foreignOrg]);
   await admin.query(`INSERT INTO projects(tenant_id,id,name) VALUES($1,$2,'P1'),($1,$3,'P2'),($4,$5,'Foreign')`,[tenant,p,p2,foreign,fp]);
   app=await NestFactory.create(AppModule,{logger:false});app.useGlobalFilters(new AllExceptionsFilter());
   const server=await app.listen(0,'127.0.0.1');base=`http://127.0.0.1:${server.address().port}`;
@@ -45,7 +48,7 @@ test.before(async()=>{
 test.after(async()=>{
   try{await app?.close();}finally{const cleanup=await admin.connect();try{
     await cleanup.query('BEGIN');await cleanup.query('SET CONSTRAINTS ALL DEFERRED');
-    for(const t of ['work_reports','shifts','task_publication_snapshots','task_front_checks','front_template_versions','front_templates','daily_tasks','project_work_zones','project_work_types','crew_members','crews','employee_project_assignments','employee_admission_checks','admission_template_versions','admission_templates','project_memberships','employee_qualifications','people_command_receipts','employees','memberships','projects','organizations','audit_log']){
+    for(const t of ['report_effects','client_events','work_reports','shifts','task_publication_snapshots','task_front_checks','front_template_versions','front_templates','daily_tasks','project_work_zones','project_work_types','crew_members','crews','employee_project_assignments','employee_admission_checks','admission_template_versions','admission_templates','project_memberships','employee_qualifications','people_command_receipts','employees','memberships','projects','organizations','audit_log']){
       if((await admin.query(`SELECT to_regclass($1) name`,[t])).rows[0].name)await cleanup.query(`DELETE FROM ${t} WHERE tenant_id=ANY($1::uuid[])`,[[tenant,foreign]]);
     }
     await cleanup.query(`DELETE FROM tenants WHERE id=ANY($1::uuid[])`,[[tenant,foreign]]);
@@ -95,7 +98,7 @@ test('quantity interval: malformed plans and hidden references roll back every d
   const otherZone=await ok(`/projects/${p2}/zones`,command({name:'Other'}));
   const invalid=[{plannedQuantity:12},{plannedQuantity:'1e2'},{plannedQuantity:'-1'},{plannedQuantity:'0.000'},{plannedQuantity:'100000000000'},{plannedQuantity:'0.0001'},{plannedQuantity:'NaN'},{plannedQuantity:'+1'},{workDate:'2027-02-30'},{workDate:undefined},{workDate:'0000-01-01'},{plannedStart:'2027-01-15T09:00:00'},{plannedStart:'2027-01-15T09:00:00.1234Z'},{plannedStart:'2027-01-15T25:00:00Z'},{plannedStart:'2027-02-30T09:00:00Z'},{plannedStart:'2027-01-15T09:00:00+24:00'},{plannedEnd:'2027-01-15T08:00:00+03:00'},{plannedEnd:'2027-01-16T00:00:00+03:00'},{status:'published'},{passed:true},{planRevision:3},{unit:'forged'}];
   for(const extra of invalid){const b=command(plan(extra));const r=await req(taskPath,b,master);assert.equal(r.status,400,JSON.stringify({extra,r}));assert.deepEqual(await effects(b.requestId),{receipts:0,audits:0});}
-  for(const extra of [{zoneId:otherZone.id},{workTypeId:id()},{assigneeEmployeeId:id()},{responsibleUserId:outsider}]){const b=command(plan(extra));assert.equal((await req(taskPath,b,master)).status,404);assert.deepEqual(await effects(b.requestId),{receipts:0,audits:0});}
+  for(const extra of [{zoneId:otherZone.id},{workTypeId:id()},{assigneeEmployeeId:id()},{assigneeEmployeeId:foreignEmployee},{responsibleUserId:outsider}]){const b=command(plan(extra));assert.equal((await req(taskPath,b,master)).status,404);assert.deepEqual(await effects(b.requestId),{receipts:0,audits:0});}
   const rd=command(plan({rdReference:null}));assert.equal((await req(taskPath,rd,master)).status,422);assert.deepEqual(await effects(rd.requestId),{receipts:0,audits:0});
   for(const u of [pto,worker])assert.equal((await req(taskPath,command(plan()),u)).status,403);
   await admin.query(`UPDATE tenants SET timezone='Invalid/Zone' WHERE id=$1`,[tenant]);
@@ -203,7 +206,7 @@ test('front lifecycle: immutable complete attempts and director-only atomic publ
 });
 
 async function state(t:any) {
-  return (await admin.query(`SELECT version,status,publication_snapshot_id snapshot,(SELECT count(*)::int FROM task_publication_snapshots WHERE tenant_id=$1 AND task_id=$2) snapshots,(SELECT count(*)::int FROM task_front_checks WHERE tenant_id=$1 AND task_id=$2) checks,(SELECT count(*)::int FROM shifts WHERE tenant_id=$1 AND task_id=$2) shifts,(SELECT count(*)::int FROM work_reports WHERE tenant_id=$1 AND task_id=$2) reports FROM daily_tasks WHERE tenant_id=$1 AND id=$2`,[tenant,t.id])).rows[0];
+  return (await admin.query(`SELECT version,status,publication_snapshot_id snapshot,(SELECT count(*)::int FROM task_publication_snapshots WHERE tenant_id=$1 AND task_id=$2) snapshots,(SELECT count(*)::int FROM task_front_checks WHERE tenant_id=$1 AND task_id=$2) checks,(SELECT count(*)::int FROM shifts WHERE tenant_id=$1 AND task_id=$2) shifts,(SELECT count(*)::int FROM work_reports WHERE tenant_id=$1 AND task_id=$2) reports,(SELECT count(*)::int FROM pgboss.job WHERE data->>'tenantId'=$1::text) jobs FROM daily_tasks WHERE tenant_id=$1 AND id=$2`,[tenant,t.id])).rows[0];
 }
 const pathOf=(t:any)=>`/projects/${t.projectId}/tasks/${t.id}`;
 async function actionOk(t:any,action:string,user=director,extra:any={}) {
@@ -424,4 +427,55 @@ test('draft plan replacement and submit serialize with expectedVersion, and publ
 });
 test('legacy create is retired at HTTP and service boundaries',async()=>{
   for(const user of [director,master,pto,worker]){const before=(await admin.query(`SELECT count(*)::int n FROM daily_tasks WHERE tenant_id=$1`,[tenant])).rows[0].n;const r=await req('/tasks',{title:'Legacy bypass',employeeId:employee.id,plannedQuantity:'1',unit:'m',workDate:'2027-01-16'},user,'POST',true);assert.equal(r.status,410,JSON.stringify(r));assert.equal(r.body.error,'task_creation_retired');assert.equal((await admin.query(`SELECT count(*)::int n FROM daily_tasks WHERE tenant_id=$1`,[tenant])).rows[0].n,before);}
+});
+test('all managed states reject legacy execution before effects and before stored event replay',async()=>{
+  const tasks=[await freshTask(),await pendingTask()];let published=await pendingTask({workDate:'2027-01-19',plannedStart:'2027-01-19T09:00:00+03:00',plannedEnd:'2027-01-19T10:00:00+03:00'});published=await actionOk(published,'publish');tasks.push(published,await actionOk(await freshTask(),'cancel',master,{reason:'Fence cancellation'}));
+  const actor:Actor={tenantId:tenant,userId:director,role:'director',name:'Fixture',email:'fixture@tasks.test'},service=app!.get(WorkforceService);
+  assert.throws(()=>service.createTask(actor,{}),(e:any)=>e.getStatus()===410);
+  const totals=async()=>({rows:(await admin.query(`SELECT (SELECT count(*)::int FROM shifts WHERE tenant_id=$1) shifts,(SELECT count(*)::int FROM work_reports WHERE tenant_id=$1) reports,(SELECT count(*)::int FROM client_events WHERE tenant_id=$1) events,(SELECT count(*)::int FROM audit_log WHERE tenant_id=$1) audits,(SELECT count(*)::int FROM pgboss.job WHERE data->>'tenantId'=$1::text) jobs`,[tenant])).rows[0]});
+  for(const t of tasks){
+    const shift=id(),report=id(),oldEvent=id(),occurredAt=new Date().toISOString();
+    await admin.query(`INSERT INTO shifts(tenant_id,id,task_id,employee_id,status,started_at,occurred_started_at) VALUES($1,$2,$3,$4,'open',now(),now())`,[tenant,shift,t.id,employee.id]);
+    await admin.query(`INSERT INTO work_reports(tenant_id,id,task_id,submitted_quantity) VALUES($1,$2,$3,1)`,[tenant,report,t.id]);
+    const replay={eventId:oldEvent,tenantId:tenant,userId:director,kind:'submit_volume',occurredAt,payload:{taskId:t.id,quantity:'1'}};
+    const hash=createHash('sha256').update(stableEventBody({kind:replay.kind,occurredAt,payload:replay.payload})).digest('hex');await admin.query(`INSERT INTO client_events(tenant_id,user_id,event_id,payload_hash,result) VALUES($1,$2,$3,$4,$5)`,[tenant,director,oldEvent,hash,JSON.stringify({eventId:oldEvent,reportId:report})]);
+    const before=await totals(),taskBefore=await state(t),shiftBefore=(await admin.query(`SELECT * FROM shifts WHERE id=$1`,[shift])).rows[0],reportBefore=(await admin.query(`SELECT * FROM work_reports WHERE id=$1`,[report])).rows[0];
+    try{
+      for(const kind of ['shift_start','shift_end','submit_volume'])for(const employeeId of [employee.id,id()]){const event={eventId:id(),tenantId:tenant,userId:director,kind,occurredAt,payload:{taskId:t.id,employeeId,quantity:'1'}};const r=await req('/sync/events',{events:[event]},director,'POST',true);assert.equal(r.status,409,JSON.stringify({state:t.status,r}));assert.equal(r.body.error,'workflow_not_supported');assert.deepEqual(await totals(),before);assert.deepEqual(await state(t),taskBefore);}
+      const prior=await req('/sync/events',{events:[replay]},director,'POST',true);assert.equal(prior.status,409);assert.equal(prior.body.error,'workflow_not_supported');
+      const accept=await req(`/reports/${report}/accept`,{acceptedQuantity:'1'},director,'POST',true);assert.equal(accept.status,409);assert.equal(accept.body.error,'workflow_not_supported');
+      await assert.rejects(service.recordAndMaybeRollback(actor,'1',false,t.id),(e:any)=>e.getStatus()===409 && e.message==='workflow_not_supported');
+      assert.deepEqual(await totals(),before);assert.deepEqual(await state(t),taskBefore);assert.deepEqual((await admin.query(`SELECT * FROM shifts WHERE id=$1`,[shift])).rows[0],shiftBefore);assert.deepEqual((await admin.query(`SELECT * FROM work_reports WHERE id=$1`,[report])).rows[0],reportBefore);
+    }finally{await admin.query(`DELETE FROM client_events WHERE tenant_id=$1 AND event_id=$2`,[tenant,oldEvent]);await admin.query(`DELETE FROM shifts WHERE tenant_id=$1 AND id=$2`,[tenant,shift]);await admin.query(`DELETE FROM work_reports WHERE tenant_id=$1 AND id=$2`,[tenant,report]);}
+  }
+  for(const taskId of [id(),(await admin.query(`SELECT id FROM daily_tasks WHERE tenant_id<>$1 LIMIT 1`,[tenant])).rows[0]?.id].filter(Boolean)){
+    const r=await req('/sync/events',{events:[{eventId:id(),tenantId:tenant,userId:director,kind:'submit_volume',occurredAt:new Date().toISOString(),payload:{taskId,quantity:'1'}}]},director,'POST',true);assert.equal(r.status,404);
+  }
+});
+test('additive53-operation OpenAPI covers exact task forms responses immutable evidence and pagination',async()=>{
+  const spec=await (await fetch(`${base}/api/v1/openapi.json`)).json();assert.equal(Object.values(spec.paths).reduce((n:number,v:any)=>n+Object.keys(v).length,0),53);
+  const inventory=[['get','/projects/{p}/zones'],['post','/projects/{p}/zones'],['put','/projects/{p}/zones/{catalog}'],['get','/projects/{p}/work-types'],['post','/projects/{p}/work-types'],['put','/projects/{p}/work-types/{catalog}'],['post','/projects/{id}/tasks'],['get','/projects/{id}/tasks/{task}'],['put','/projects/{id}/tasks/{task}'],['get','/projects/{p}/front-template'],['post','/projects/{p}/front-template'],['put','/projects/{p}/front-template'],['get','/projects/{p}/front-template/versions'],['get','/projects/{id}/tasks/{task}/front-checks'],['post','/projects/{id}/tasks/{task}/front-checks'],['get','/projects/{id}/tasks/{task}/front-checks/{check}'],['get','/projects/{id}/tasks/{task}/readiness'],...['submit','reject','reopen','cancel','publish'].map(a=>['post',`/projects/{id}/tasks/{task}/${a}`])];assert.equal(inventory.length,22);
+  for(const [method,path] of inventory){const operation=spec.paths[`/api/v1${path}`]?.[method!];assert.ok(operation,`${method} ${path}`);for(const code of ['400','401','403','404',...(method==='get'?[]:['409','422'])])assert.ok(operation.responses[code]);if(method!=='get')assert.equal(operation.requestBody.required,true);}
+  assert.equal(spec.paths['/api/tasks'].post.deprecated,true);assert.ok(spec.paths['/api/tasks'].post.responses['410']);
+  function matches(value:any,schema:any,at:string):void {
+    if(value===null && schema.nullable)return;
+    if(schema.$ref)return matches(value,spec.components.schemas[schema.$ref.split('/').pop()],at);
+    if(schema.enum)assert.ok(schema.enum.includes(value),`${at} enum`);
+    if(schema.type==='object'){
+      assert.ok(value && typeof value==='object' && !Array.isArray(value),at);for(const k of schema.required??[])assert.ok(k in value,`${at}.${k} required`);
+      for(const [k,v] of Object.entries(value)){if(schema.additionalProperties===false)assert.ok(k in schema.properties,`${at}.${k} unexpected`);if(schema.properties[k])matches(v,schema.properties[k],`${at}.${k}`);}
+    }else if(schema.type==='array'){assert.ok(Array.isArray(value),at);if(schema.minItems!==undefined)assert.ok(value.length>=schema.minItems,at);if(schema.maxItems!==undefined)assert.ok(value.length<=schema.maxItems,at);value.forEach((v:any,i:number)=>matches(v,schema.items,`${at}[${i}]`));}
+    else if(schema.type==='integer'){assert.ok(Number.isSafeInteger(value),at);if(schema.minimum!==undefined)assert.ok(value>=schema.minimum,at);if(schema.maximum!==undefined)assert.ok(value<=schema.maximum,at);}
+    else{assert.equal(typeof value,schema.type,at);if(schema.pattern)assert.match(value,new RegExp(schema.pattern),at);}
+  }
+  const fixture=await freshTask(),sample=command(plan());matches(sample,spec.components.schemas.CreateTaskInput,'CreateTaskInput');assert.equal(spec.components.schemas.CreateTaskInput.additionalProperties,false);assert.equal(spec.components.schemas.CreateFrontCheckInput.additionalProperties,false);assert.equal(spec.components.schemas.TaskReasonInput.additionalProperties,false);
+  matches(fixture,spec.components.schemas.ManagedTask,'ManagedTask');
+  for(const [path,schema] of [[`${zonePath}?limit=1&offset=0`,'ZoneList'],[`${typePath}?limit=1`,'WorkTypeList'],[`${taskPath}?limit=2`,'TaskList'],[`/projects/${p}/front-template`,'FrontTemplate'],[`/projects/${p}/front-template/versions?limit=1`,'FrontTemplateList']] as any[]){matches(await ok(path),spec.components.schemas[schema],schema);}
+  const checkTask=await passing(fixture);matches(await ok(`${pathOf(checkTask)}/front-checks?limit=1`),spec.components.schemas.FrontCheckList,'FrontCheckList');matches(await ok(`${pathOf(checkTask)}/readiness`),spec.components.schemas.TaskReadiness,'TaskReadiness');
+  const t=await pendingTask({workDate:'2027-01-20',plannedStart:'2027-01-20T09:00:00+03:00',plannedEnd:'2027-01-20T10:00:00+03:00'}),published=await actionOk(t,'publish');matches(published,spec.components.schemas.PublicationResult,'PublicationResult');
+  const persisted=(await admin.query(`SELECT snapshot FROM task_publication_snapshots WHERE tenant_id=$1 AND task_id=$2`,[tenant,t.id])).rows[0].snapshot;matches(persisted,spec.components.schemas.TaskPublicationSnapshot,'TaskPublicationSnapshot');
+  for(const query of ['?limit=101','?limit=0','?offset=-1','?unknown=x'])assert.equal((await req(`${pathOf(t)}/front-checks${query}`)).status,400);
+  const operationIds=Object.values(spec.paths).flatMap((path:any)=>Object.values(path).map((o:any)=>o.operationId));assert.equal(new Set(operationIds).size,operationIds.length);
+  // Every local schema/response reference resolves; neither existing operation inventory nor old schema assertions is removed.
+  const scan=(value:any):void=>{if(value && typeof value==='object'){if(value.$ref?.startsWith('#/'))assert.ok(value.$ref.slice(2).split('/').reduce((v:any,k:string)=>v?.[k],spec),value.$ref);Object.values(value).forEach(scan);}};scan(spec);
 });

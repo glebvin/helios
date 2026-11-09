@@ -1,9 +1,9 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "HELIOS API v1 — people and read API",
-    "version": "1.1.0",
-    "description": "First read slice; legacy write APIs retain known project authorization limitations. All protected routes require active tenant membership. Directors see their tenant, master/PTO need active project membership, workers additionally need own active employee assignment for projects/tasks. Own employee profile may be read without assignment. Details hide inaccessible rows with 404. Counts use authorized rows. Overview uses civil day in tenant timezone with half-open timestamp bounds. reviewedReportsForDay means accepted_quantity IS NOT NULL, including zero, not completed tasks. currentOpenShifts is current across days. Null acceptedQuantity means no report in the group has been reviewed. No mixed-unit sum. Unavailable metrics are intentional capability declarations. Phase02a adds director-only people commands with durable requestId replay, expectedVersion, immutable yes/no admission evidence, project assignments and crews. Document references are metadata only. Current admission requires latest attempt/template and exact active qualification id/version, inclusive tenant civil-date expiry. Legacy task/sync writes still bypass this new admission workflow; task readiness is phase02b."
+    "title": "HELIOS API v1 — people, daily tasks and safe publication",
+    "version": "1.2.0",
+    "description": "Scoped read, personnel and task preparation/publication slices; legacy execution remains limited to existing legacy fixtures. All protected routes require active tenant membership. Directors see their tenant, master/PTO need active project membership, workers additionally need own active employee assignment for projects/tasks. Own employee profile may be read without assignment. Details hide inaccessible rows with 404. Counts use authorized rows. Overview uses civil day in tenant timezone with half-open timestamp bounds. reviewedReportsForDay means accepted_quantity IS NOT NULL, including zero, not completed tasks. currentOpenShifts is current across days. Null acceptedQuantity means no report in the group has been reviewed. No mixed-unit sum. Unavailable metrics are intentional capability declarations. Phase02a adds director-only people commands with durable requestId replay, expectedVersion, immutable yes/no admission evidence, project assignments and crews. Document references are metadata only. Current admission requires latest attempt/template and exact active qualification id/version, inclusive tenant civil-date expiry. Phase02b adds project catalogs, strict managed drafts, immutable front checks and atomic director publication. Legacy create is retired410; managed tasks reject legacy sync/report mutations409 before replay/effects. 52 v1 operations plus one deprecated legacy creation route. Execution/files/offline/material/ID/full pilot remain pending."
   },
   "servers": [
     {
@@ -377,6 +377,36 @@
           },
           {
             "$ref": "#/components/parameters/Day"
+          },
+          {
+            "name": "workDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "pending_approval",
+                "published",
+                "cancelled",
+                "in_progress",
+                "submitted",
+                "in_review",
+                "accepted",
+                "closed",
+                "suspended",
+                "needs_fix",
+                "partially_accepted"
+              ]
+            }
           }
         ],
         "responses": {
@@ -427,6 +457,113 @@
                 "schema": {
                   "$ref": "#/components/schemas/Error"
                 }
+              }
+            }
+          }
+        },
+        "description": "Existing day alias retained; workDate alias mutually exclusive with day. Optional known status filter. Worker sees only own published managed rows, never draft/pending/cancelled IDs, titles or totals. Legacy rows carry workflowKind legacy and nullable managed fields."
+      },
+      "post": {
+        "operationId": "prepareTaskDraft",
+        "summary": "prepareTaskDraft",
+        "description": "Director or assigned master prepares one employee draft; PTO/worker cannot mutate. Server derives unit, validates current scoped active references, responsible authority, RD metadata and real tenant-civil interval. Employee may remain unlinked until publication. Every mutation requires UUID requestId. Same global people/task actor+tenant namespace; normalized operation/payload exact replay returns original status/body after fresh scope reauthorization, ignoring later business invalidation. Existing-record writes require expectedVersion. Unknown body/query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedTask"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_version, template_changed, invalid_task_state, assignment_overlap, idempotency_payload_mismatch or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reference_denied, invalid_tenant_timezone, rd_required, employee_not_ready, responsible_not_ready, front_template_required or task_not_ready; no business/snapshot/audit/receipt effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskInput"
               }
             }
           }
@@ -2648,6 +2785,2222 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{p}/zones": {
+      "get": {
+        "operationId": "listProjectZones",
+        "summary": "listProjectZones",
+        "description": "Director, assigned master/PTO read; worker denied. Current tenant/project scope; hidden references404, unknown query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ZoneList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createProjectZone",
+        "summary": "createProjectZone",
+        "description": "Director only. Real project catalog; no norms/costing. Every mutation requires UUID requestId. Same global people/task actor+tenant namespace; normalized operation/payload exact replay returns original status/body after fresh scope reauthorization, ignoring later business invalidation. Existing-record writes require expectedVersion. Unknown body/query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Zone"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_version, template_changed, invalid_task_state, assignment_overlap, idempotency_payload_mismatch or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reference_denied, invalid_tenant_timezone, rd_required, employee_not_ready, responsible_not_ready, front_template_required or task_not_ready; no business/snapshot/audit/receipt effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateZoneInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/zones/{catalog}": {
+      "put": {
+        "operationId": "replaceProjectZone",
+        "summary": "replaceProjectZone",
+        "description": "Director only. Full replacement, increments version; changing catalog invalidates front readiness. Every mutation requires UUID requestId. Same global people/task actor+tenant namespace; normalized operation/payload exact replay returns original status/body after fresh scope reauthorization, ignoring later business invalidation. Existing-record writes require expectedVersion. Unknown body/query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "catalog",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Zone"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_version, template_changed, invalid_task_state, assignment_overlap, idempotency_payload_mismatch or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reference_denied, invalid_tenant_timezone, rd_required, employee_not_ready, responsible_not_ready, front_template_required or task_not_ready; no business/snapshot/audit/receipt effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateZoneInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/work-types": {
+      "get": {
+        "operationId": "listProjectWorkTypes",
+        "summary": "listProjectWorkTypes",
+        "description": "Director, assigned master/PTO read; worker denied. Current tenant/project scope; hidden references404, unknown query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkTypeList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createProjectWorkType",
+        "summary": "createProjectWorkType",
+        "description": "Director only. Real project catalog; no norms/costing. Every mutation requires UUID requestId. Same global people/task actor+tenant namespace; normalized operation/payload exact replay returns original status/body after fresh scope reauthorization, ignoring later business invalidation. Existing-record writes require expectedVersion. Unknown body/query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkType"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_version, template_changed, invalid_task_state, assignment_overlap, idempotency_payload_mismatch or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reference_denied, invalid_tenant_timezone, rd_required, employee_not_ready, responsible_not_ready, front_template_required or task_not_ready; no business/snapshot/audit/receipt effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkTypeInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/work-types/{catalog}": {
+      "put": {
+        "operationId": "replaceProjectWorkType",
+        "summary": "replaceProjectWorkType",
+        "description": "Director only. Full replacement, increments version; changing catalog invalidates front readiness. Every mutation requires UUID requestId. Same global people/task actor+tenant namespace; normalized operation/payload exact replay returns original status/body after fresh scope reauthorization, ignoring later business invalidation. Existing-record writes require expectedVersion. Unknown body/query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "catalog",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkType"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_version, template_changed, invalid_task_state, assignment_overlap, idempotency_payload_mismatch or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reference_denied, invalid_tenant_timezone, rd_required, employee_not_ready, responsible_not_ready, front_template_required or task_not_ready; no business/snapshot/audit/receipt effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkTypeInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/tasks/{task}": {
+      "get": {
+        "operationId": "getProjectTask",
+        "summary": "getProjectTask",
+        "description": "Director/master/PTO read preparation. Worker only own published managed tasks with active assignment/project membership; legacy read compatibility retained. Current tenant/project scope; hidden references404, unknown query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Task"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "replaceTaskDraft",
+        "summary": "replaceTaskDraft",
+        "description": "Director/assigned master, draft only. Accepted replacement increments version and planRevision and invalidates front checks. Published plans immutable. Every mutation requires UUID requestId. Same global people/task actor+tenant namespace; normalized operation/payload exact replay returns original status/body after fresh scope reauthorization, ignoring later business invalidation. Existing-record writes require expectedVersion. Unknown body/query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedTask"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_version, template_changed, invalid_task_state, assignment_overlap, idempotency_payload_mismatch or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reference_denied, invalid_tenant_timezone, rd_required, employee_not_ready, responsible_not_ready, front_template_required or task_not_ready; no business/snapshot/audit/receipt effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaskInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/front-template": {
+      "get": {
+        "operationId": "getFrontTemplate",
+        "summary": "getFrontTemplate",
+        "description": "Latest immutable version in one stable-code project family; director/master/PTO read. Current tenant/project scope; hidden references404, unknown query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrontTemplate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createFrontTemplate",
+        "summary": "createFrontTemplate",
+        "description": "Director only. Creates unique stable-code family/version1 with 1..100 unique yes/no items. Every mutation requires UUID requestId. Same global people/task actor+tenant namespace; normalized operation/payload exact replay returns original status/body after fresh scope reauthorization, ignoring later business invalidation. Existing-record writes require expectedVersion. Unknown body/query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrontTemplate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_version, template_changed, invalid_task_state, assignment_overlap, idempotency_payload_mismatch or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reference_denied, invalid_tenant_timezone, rd_required, employee_not_ready, responsible_not_ready, front_template_required or task_not_ready; no business/snapshot/audit/receipt effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFrontTemplateInput"
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "publishFrontTemplateVersion",
+        "summary": "publishFrontTemplateVersion",
+        "description": "Director only. Appends immutable next version under project lock; old versions preserved, old checks stale. Every mutation requires UUID requestId. Same global people/task actor+tenant namespace; normalized operation/payload exact replay returns original status/body after fresh scope reauthorization, ignoring later business invalidation. Existing-record writes require expectedVersion. Unknown body/query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrontTemplate"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_version, template_changed, invalid_task_state, assignment_overlap, idempotency_payload_mismatch or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reference_denied, invalid_tenant_timezone, rd_required, employee_not_ready, responsible_not_ready, front_template_required or task_not_ready; no business/snapshot/audit/receipt effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFrontTemplateInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/front-template/versions": {
+      "get": {
+        "operationId": "listFrontTemplateVersions",
+        "summary": "listFrontTemplateVersions",
+        "description": " Current tenant/project scope; hidden references404, unknown query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrontTemplateList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/tasks/{task}/front-checks": {
+      "get": {
+        "operationId": "listTaskFrontChecks",
+        "summary": "listTaskFrontChecks",
+        "description": "Director/master/PTO, immutable attempts in sequence DESC including failed. Current tenant/project scope; hidden references404, unknown query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrontCheckList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "recordTaskFrontCheck",
+        "summary": "recordTaskFrontCheck",
+        "description": "Director/assigned master, draft/pending only. Complete current answers; critical false blocks, noncritical false warns. Server captures full template, planRevision, zone/workType versions and actor/time. Task version increases; planRevision unchanged. Failed latest attempt supersedes earlier pass. Every mutation requires UUID requestId. Same global people/task actor+tenant namespace; normalized operation/payload exact replay returns original status/body after fresh scope reauthorization, ignoring later business invalidation. Existing-record writes require expectedVersion. Unknown body/query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrontCheck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_version, template_changed, invalid_task_state, assignment_overlap, idempotency_payload_mismatch or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reference_denied, invalid_tenant_timezone, rd_required, employee_not_ready, responsible_not_ready, front_template_required or task_not_ready; no business/snapshot/audit/receipt effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFrontCheckInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/tasks/{task}/front-checks/{check}": {
+      "get": {
+        "operationId": "getTaskFrontCheck",
+        "summary": "getTaskFrontCheck",
+        "description": " Current tenant/project scope; hidden references404, unknown query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "check",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrontCheck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/tasks/{task}/readiness": {
+      "get": {
+        "operationId": "getTaskReadiness",
+        "summary": "getTaskReadiness",
+        "description": "Director/master/PTO informational current reasons, no locks/guarantee across concurrent ordinary reads. Publication rechecks atomically. Reasons include front_missing/front_failed/front_template_changed/front_plan_changed/front_catalog_changed, assignment_inactive, employee_unlinked/employee_archived/employee_member_inactive/employee_project_inactive, responsible_inactive, admission:<personnel reason>, qualification_expired_on_work_date:<code>, rd_required, zone_inactive/work_type_inactive/work_type_unit_changed, material_control_unsupported/predecessor_acceptance_unsupported/id_unsupported, invalid_tenant_timezone/invalid_interval. Current tenant/project scope; hidden references404, unknown query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskReadiness"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/tasks/{task}/submit": {
+      "post": {
+        "operationId": "submitTask",
+        "summary": "submitTask",
+        "description": "Director/assigned master: draft to pending_approval, structural plan complete; readiness may be incomplete. Every mutation requires UUID requestId. Same global people/task actor+tenant namespace; normalized operation/payload exact replay returns original status/body after fresh scope reauthorization, ignoring later business invalidation. Existing-record writes require expectedVersion. Unknown body/query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedTask"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_version, template_changed, invalid_task_state, assignment_overlap, idempotency_payload_mismatch or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reference_denied, invalid_tenant_timezone, rd_required, employee_not_ready, responsible_not_ready, front_template_required or task_not_ready; no business/snapshot/audit/receipt effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskActionInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/tasks/{task}/reject": {
+      "post": {
+        "operationId": "rejectTask",
+        "summary": "rejectTask",
+        "description": "Director: pending_approval to draft, reason required. Every mutation requires UUID requestId. Same global people/task actor+tenant namespace; normalized operation/payload exact replay returns original status/body after fresh scope reauthorization, ignoring later business invalidation. Existing-record writes require expectedVersion. Unknown body/query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedTask"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_version, template_changed, invalid_task_state, assignment_overlap, idempotency_payload_mismatch or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reference_denied, invalid_tenant_timezone, rd_required, employee_not_ready, responsible_not_ready, front_template_required or task_not_ready; no business/snapshot/audit/receipt effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskReasonInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/tasks/{task}/reopen": {
+      "post": {
+        "operationId": "reopenTask",
+        "summary": "reopenTask",
+        "description": "Director/assigned master: pending_approval to draft with reason; published cannot reopen. Every mutation requires UUID requestId. Same global people/task actor+tenant namespace; normalized operation/payload exact replay returns original status/body after fresh scope reauthorization, ignoring later business invalidation. Existing-record writes require expectedVersion. Unknown body/query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedTask"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_version, template_changed, invalid_task_state, assignment_overlap, idempotency_payload_mismatch or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reference_denied, invalid_tenant_timezone, rd_required, employee_not_ready, responsible_not_ready, front_template_required or task_not_ready; no business/snapshot/audit/receipt effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskReasonInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/tasks/{task}/cancel": {
+      "post": {
+        "operationId": "cancelTask",
+        "summary": "cancelTask",
+        "description": "Director: draft/pending/published to terminal cancelled. Master: draft/pending only. Reason required; publication snapshot retained. Every mutation requires UUID requestId. Same global people/task actor+tenant namespace; normalized operation/payload exact replay returns original status/body after fresh scope reauthorization, ignoring later business invalidation. Existing-record writes require expectedVersion. Unknown body/query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManagedTask"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_version, template_changed, invalid_task_state, assignment_overlap, idempotency_payload_mismatch or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reference_denied, invalid_tenant_timezone, rd_required, employee_not_ready, responsible_not_ready, front_template_required or task_not_ready; no business/snapshot/audit/receipt effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskReasonInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/tasks/{task}/publish": {
+      "post": {
+        "operationId": "publishTask",
+        "summary": "publishTask",
+        "description": "Current director only: pending_approval to published. Ordered project->employee->membership->project-membership->task/assignment locks, fresh post-wait ACL/link/responsible checks. Same-client personnel eligibility plus exact required qualification validity inclusive on workDate; latest passed front/current template/plan/catalog bindings, RD metadata; unsupported material/predecessor/ID dependencies block. Cross-project [start,end) overlaps serialize on employee; adjacency allowed. Immutable plan/evidence snapshot, version, audit and shared receipt commit atomically. Stale front template409 template_changed; other unready422 task_not_ready, inspect GET readiness for reason codes. Legacy rows without intervals are not conflict-certified. Every mutation requires UUID requestId. Same global people/task actor+tenant namespace; normalized operation/payload exact replay returns original status/body after fresh scope reauthorization, ignoring later business invalidation. Existing-record writes require expectedVersion. Unknown body/query keys rejected.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success; immutable original response/status on exact authorized replay",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicationResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body/query/UUID/calendar/decimal/offset/boolean/version/answers; unknown or forged fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "stale_version, template_changed, invalid_task_state, assignment_overlap, idempotency_payload_mismatch or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "reference_denied, invalid_tenant_timezone, rd_required, employee_not_ready, responsible_not_ready, front_template_required or task_not_ready; no business/snapshot/audit/receipt effect",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TaskActionInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tasks": {
+      "post": {
+        "operationId": "retiredLegacyTaskCreate",
+        "summary": "Legacy creation retired",
+        "deprecated": true,
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          }
+        ],
+        "description": "Authenticated legacy creation always returns410 task_creation_retired, including direct service create. Use POST /api/v1/projects/{id}/tasks then front-checks/submit/publish. Managed tasks reject legacy sync shift_start/shift_end/submit_volume and report acceptance with409 workflow_not_supported before receipt replay/effects. Phase03 execution remains pending.",
+        "responses": {
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "task_creation_retired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -4309,6 +6662,1423 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Crew"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "additionalProperties": false
+      },
+      "Zone": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "name",
+          "version",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "WorkType": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "requiresRd": {
+            "type": "boolean"
+          },
+          "requiresMaterialControl": {
+            "type": "boolean"
+          },
+          "requiresPredecessorAcceptance": {
+            "type": "boolean"
+          },
+          "requiresId": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "name",
+          "version",
+          "status",
+          "unit",
+          "requiresRd",
+          "requiresMaterialControl",
+          "requiresPredecessorAcceptance",
+          "requiresId"
+        ],
+        "additionalProperties": false
+      },
+      "CreateZoneInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "requestId",
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateZoneInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          }
+        },
+        "required": [
+          "requestId",
+          "name",
+          "expectedVersion",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "CreateWorkTypeInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "requiresRd": {
+            "type": "boolean"
+          },
+          "requiresMaterialControl": {
+            "type": "boolean"
+          },
+          "requiresPredecessorAcceptance": {
+            "type": "boolean"
+          },
+          "requiresId": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "requestId",
+          "name",
+          "unit",
+          "requiresRd",
+          "requiresMaterialControl",
+          "requiresPredecessorAcceptance",
+          "requiresId"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateWorkTypeInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "unit": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "requiresRd": {
+            "type": "boolean"
+          },
+          "requiresMaterialControl": {
+            "type": "boolean"
+          },
+          "requiresPredecessorAcceptance": {
+            "type": "boolean"
+          },
+          "requiresId": {
+            "type": "boolean"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "archived"
+            ]
+          }
+        },
+        "required": [
+          "requestId",
+          "name",
+          "unit",
+          "requiresRd",
+          "requiresMaterialControl",
+          "requiresPredecessorAcceptance",
+          "requiresId",
+          "expectedVersion",
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "CreateTaskInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "zoneId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "workDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "plannedQuantity": {
+            "type": "string",
+            "pattern": "^(?!0+(?:\\.0+)?$)[0-9]{1,11}(?:\\.[0-9]{1,3})?$",
+            "description": "Strictly positive exact decimal string numeric(14,3); no signs/exponents/rounding/numeric JSON. Response canonical scale3."
+          },
+          "assigneeEmployeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "responsibleUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "plannedStart": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "description": "Strict real RFC3339 instant, explicit offset, at most millisecond precision. Start<end; both tenant-civil dates equal workDate. Stored normalized instants."
+          },
+          "plannedEnd": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "description": "Strict real RFC3339 instant, explicit offset, at most millisecond precision. Start<end; both tenant-civil dates equal workDate. Stored normalized instants."
+          },
+          "rdReference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "nullable": true
+          }
+        },
+        "required": [
+          "requestId",
+          "zoneId",
+          "workTypeId",
+          "title",
+          "workDate",
+          "plannedQuantity",
+          "assigneeEmployeeId",
+          "responsibleUserId",
+          "plannedStart",
+          "plannedEnd",
+          "rdReference"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateTaskInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "zoneId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "workDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "plannedQuantity": {
+            "type": "string",
+            "pattern": "^(?!0+(?:\\.0+)?$)[0-9]{1,11}(?:\\.[0-9]{1,3})?$",
+            "description": "Strictly positive exact decimal string numeric(14,3); no signs/exponents/rounding/numeric JSON. Response canonical scale3."
+          },
+          "assigneeEmployeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "responsibleUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "plannedStart": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "description": "Strict real RFC3339 instant, explicit offset, at most millisecond precision. Start<end; both tenant-civil dates equal workDate. Stored normalized instants."
+          },
+          "plannedEnd": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "description": "Strict real RFC3339 instant, explicit offset, at most millisecond precision. Start<end; both tenant-civil dates equal workDate. Stored normalized instants."
+          },
+          "rdReference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "nullable": true
+          }
+        },
+        "required": [
+          "requestId",
+          "expectedVersion",
+          "zoneId",
+          "workTypeId",
+          "title",
+          "workDate",
+          "plannedQuantity",
+          "assigneeEmployeeId",
+          "responsibleUserId",
+          "plannedStart",
+          "plannedEnd",
+          "rdReference"
+        ],
+        "additionalProperties": false
+      },
+      "TaskActionInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          }
+        },
+        "required": [
+          "requestId",
+          "expectedVersion"
+        ],
+        "additionalProperties": false
+      },
+      "TaskReasonInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "requestId",
+          "expectedVersion",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "ManagedTask": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "workDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "plannedQuantity": {
+            "type": "string",
+            "pattern": "^(?!0+(?:\\.0+)?$)[0-9]{1,11}(?:\\.[0-9]{1,3})?$",
+            "description": "Strictly positive exact decimal string numeric(14,3); no signs/exponents/rounding/numeric JSON. Response canonical scale3."
+          },
+          "unit": {
+            "type": "string"
+          },
+          "assigneeEmployeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "pending_approval",
+              "published",
+              "cancelled"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "workflowKind": {
+            "type": "string",
+            "enum": [
+              "managed02b"
+            ]
+          },
+          "planRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "zoneId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "responsibleUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rdReference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "nullable": true
+          },
+          "plannedStart": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "description": "Strict real RFC3339 instant, explicit offset, at most millisecond precision. Start<end; both tenant-civil dates equal workDate. Stored normalized instants."
+          },
+          "plannedEnd": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "description": "Strict real RFC3339 instant, explicit offset, at most millisecond precision. Start<end; both tenant-civil dates equal workDate. Stored normalized instants."
+          },
+          "publicationSnapshotId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "title",
+          "workDate",
+          "plannedQuantity",
+          "unit",
+          "assigneeEmployeeId",
+          "status",
+          "version",
+          "workflowKind",
+          "planRevision",
+          "zoneId",
+          "workTypeId",
+          "responsibleUserId",
+          "rdReference",
+          "plannedStart",
+          "plannedEnd",
+          "publicationSnapshotId"
+        ],
+        "additionalProperties": false
+      },
+      "TaskReadiness": {
+        "type": "object",
+        "properties": {
+          "ready": {
+            "type": "boolean"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "ready",
+          "reasons",
+          "warnings"
+        ],
+        "additionalProperties": false
+      },
+      "PublicationResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "workDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "plannedQuantity": {
+            "type": "string",
+            "pattern": "^(?!0+(?:\\.0+)?$)[0-9]{1,11}(?:\\.[0-9]{1,3})?$",
+            "description": "Strictly positive exact decimal string numeric(14,3); no signs/exponents/rounding/numeric JSON. Response canonical scale3."
+          },
+          "unit": {
+            "type": "string"
+          },
+          "assigneeEmployeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "pending_approval",
+              "published",
+              "cancelled"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "workflowKind": {
+            "type": "string",
+            "enum": [
+              "managed02b"
+            ]
+          },
+          "planRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "zoneId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "responsibleUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "rdReference": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "nullable": true
+          },
+          "plannedStart": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "description": "Strict real RFC3339 instant, explicit offset, at most millisecond precision. Start<end; both tenant-civil dates equal workDate. Stored normalized instants."
+          },
+          "plannedEnd": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "description": "Strict real RFC3339 instant, explicit offset, at most millisecond precision. Start<end; both tenant-civil dates equal workDate. Stored normalized instants."
+          },
+          "publicationSnapshotId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "readiness": {
+            "$ref": "#/components/schemas/TaskReadiness"
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "title",
+          "workDate",
+          "plannedQuantity",
+          "unit",
+          "assigneeEmployeeId",
+          "status",
+          "version",
+          "workflowKind",
+          "planRevision",
+          "zoneId",
+          "workTypeId",
+          "responsibleUserId",
+          "rdReference",
+          "plannedStart",
+          "plannedEnd",
+          "publicationSnapshotId",
+          "readiness"
+        ],
+        "additionalProperties": false
+      },
+      "LegacyTask": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "workDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "plannedQuantity": {
+            "type": "string",
+            "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "assigneeEmployeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "workflowKind": {
+            "type": "string",
+            "enum": [
+              "legacy"
+            ]
+          },
+          "planRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "nullable": true
+          },
+          "zoneId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "responsibleUserId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "rdReference": {
+            "type": "string",
+            "nullable": true
+          },
+          "plannedStart": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "plannedEnd": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "publicationSnapshotId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "title",
+          "workDate",
+          "plannedQuantity",
+          "unit",
+          "assigneeEmployeeId",
+          "status",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "FrontTemplate": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplateItem"
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "description": "Unique item IDs, enforced server-side."
+          }
+        },
+        "required": [
+          "projectId",
+          "code",
+          "title",
+          "version",
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "CreateFrontTemplateInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplateItem"
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "description": "Unique item IDs, enforced server-side."
+          }
+        },
+        "required": [
+          "requestId",
+          "code",
+          "title",
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateFrontTemplateInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplateItem"
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "description": "Unique item IDs, enforced server-side."
+          }
+        },
+        "required": [
+          "requestId",
+          "expectedVersion",
+          "title",
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "CreateFrontCheckInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "templateVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "answers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Answer"
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "description": "Exactly once for every current template item, no missing/extra/duplicate IDs."
+          }
+        },
+        "required": [
+          "requestId",
+          "expectedVersion",
+          "templateVersion",
+          "answers"
+        ],
+        "additionalProperties": false
+      },
+      "FrontCheck": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "planRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "templateCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "templateVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "templateSnapshot": {
+            "$ref": "#/components/schemas/FrontTemplate"
+          },
+          "zoneVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "workTypeVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "answers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Answer"
+            },
+            "minItems": 1,
+            "maxItems": 100,
+            "description": "Exactly once for every current template item, no missing/extra/duplicate IDs."
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "checkedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "checkedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "sequence",
+          "taskId",
+          "projectId",
+          "planRevision",
+          "templateCode",
+          "templateVersion",
+          "templateSnapshot",
+          "zoneVersion",
+          "workTypeVersion",
+          "answers",
+          "passed",
+          "reasons",
+          "warnings",
+          "checkedBy",
+          "checkedAt"
+        ],
+        "additionalProperties": false
+      },
+      "PublicationAssignment": {
+        "type": "object",
+        "properties": {
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          },
+          "admissionCheckId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "employeeId",
+          "status",
+          "version",
+          "admissionCheckId"
+        ],
+        "additionalProperties": false
+      },
+      "PublicationMembership": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          }
+        },
+        "required": [
+          "role",
+          "status",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "PublicationProjectMembership": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          }
+        },
+        "required": [
+          "status",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "PublicationEmployee": {
+        "type": "object",
+        "properties": {
+          "tenant_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organization_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "full_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "document_number": {
+            "type": "string",
+            "nullable": true
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483646
+          }
+        },
+        "required": [
+          "tenant_id",
+          "id",
+          "organization_id",
+          "full_name",
+          "phone",
+          "document_number",
+          "user_id",
+          "status",
+          "version"
+        ],
+        "additionalProperties": false
+      },
+      "TaskPublicationSnapshot": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/ManagedTask"
+          },
+          "tenantTimezone": {
+            "type": "string"
+          },
+          "employee": {
+            "$ref": "#/components/schemas/PublicationEmployee"
+          },
+          "linkedUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "linkedMembership": {
+            "$ref": "#/components/schemas/PublicationMembership"
+          },
+          "employeeProjectMembership": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483646
+              }
+            },
+            "required": [
+              "status",
+              "version"
+            ],
+            "additionalProperties": false,
+            "nullable": true
+          },
+          "assignment": {
+            "$ref": "#/components/schemas/PublicationAssignment"
+          },
+          "admission": {
+            "$ref": "#/components/schemas/CurrentAdmission"
+          },
+          "admissionCheck": {
+            "$ref": "#/components/schemas/C"
+          },
+          "front": {
+            "$ref": "#/components/schemas/FrontCheck"
+          },
+          "zone": {
+            "$ref": "#/components/schemas/Zone"
+          },
+          "workType": {
+            "$ref": "#/components/schemas/WorkType"
+          },
+          "responsible": {
+            "$ref": "#/components/schemas/PublicationMembership"
+          },
+          "responsibleProjectMembership": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 2147483646
+              }
+            },
+            "required": [
+              "status",
+              "version"
+            ],
+            "additionalProperties": false,
+            "nullable": true
+          },
+          "actorMembership": {
+            "$ref": "#/components/schemas/PublicationMembership"
+          },
+          "publishedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "publishedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "taskId",
+          "projectId",
+          "plan",
+          "tenantTimezone",
+          "employee",
+          "linkedUserId",
+          "linkedMembership",
+          "employeeProjectMembership",
+          "assignment",
+          "admission",
+          "admissionCheck",
+          "front",
+          "zone",
+          "workType",
+          "responsible",
+          "responsibleProjectMembership",
+          "actorMembership",
+          "publishedBy",
+          "publishedAt"
+        ],
+        "additionalProperties": false,
+        "description": "Immutable persisted publication evidence. Referenced by publicationSnapshotId; no client can supply or edit this document. Not a public file/export endpoint."
+      },
+      "ZoneList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Zone"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "additionalProperties": false
+      },
+      "WorkTypeList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkType"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "additionalProperties": false
+      },
+      "FrontTemplateList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrontTemplate"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "additionalProperties": false
+      },
+      "FrontCheckList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FrontCheck"
             }
           },
           "total": {

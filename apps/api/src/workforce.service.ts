@@ -11,7 +11,7 @@ import { Injectable } from "@nestjs/common";
 import type { Pool, PoolClient } from "pg";
 import type { PgBoss } from "pg-boss";
 import { queryClient, withTenant } from "./db.js";
-import { httpError, mapPgError } from "./errors.js";
+import { httpError } from "./errors.js";
 import { reportJob } from "./jobs.js";
 import { uuid } from "./api-input.js";
 import {taskVisible,taskJoin} from "./director-api.service.js";
@@ -129,23 +129,9 @@ export class WorkforceService {
 
   createTask(
     actor: Actor,
-    input: { title: string; employeeId: string; plannedQuantity: string; unit: string; workDate: string },
+    input: unknown,
   ) {
-    if (actor.role === "worker") throw httpError(403, "role_denied");
-    return this.with(actor, async (client) => {
-      try {
-        const result = await client.query(
-          `INSERT INTO daily_tasks (tenant_id, project_id, title, work_date, planned_quantity, unit, assignee_employee_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           RETURNING id, title, work_date, planned_quantity::text, unit, assignee_employee_id, status, version`,
-          [actor.tenantId, PROJECT_A, input.title, input.workDate, input.plannedQuantity, input.unit, input.employeeId],
-        );
-        await this.audit(client, actor, "task_created", "daily_task", result.rows[0].id, "ok");
-        return result.rows[0];
-      } catch (error) {
-        mapPgError(error);
-      }
-    });
+    throw httpError(410, "task_creation_retired");
   }
 
   async sync(actor: Actor, events: ClientEvent[]) {
@@ -160,10 +146,11 @@ export class WorkforceService {
     if (actor.role === "worker") throw httpError(403, "role_denied");
     return this.with(actor, async (client) => {
       const current = await client.query(
-        `SELECT submitted_quantity::text AS submitted FROM work_reports WHERE id = $1`,
-        [reportId],
+        `SELECT submitted_quantity::text AS submitted,task_id FROM work_reports WHERE tenant_id=$2 AND id = $1`,
+        [reportId,actor.tenantId],
       );
       if (!current.rows[0]) throw httpError(404, "not_found");
+      await this.legacyTask(client,actor,current.rows[0].task_id);
       const partial = partialAcceptance(current.rows[0].submitted, acceptedQuantity);
       const updated = await client.query(
         `UPDATE work_reports
@@ -187,15 +174,13 @@ export class WorkforceService {
     return row;
   }
 
-  async recordAndMaybeRollback(actor: Actor, quantity: string, rollback: boolean) {
+  async recordAndMaybeRollback(actor: Actor, quantity: string, rollback: boolean, taskId: string) {
     const client = await this.pool.connect();
     let reportId = "";
     try {
       await client.query("BEGIN");
       await client.query("SELECT set_config('app.tenant_id', $1, true)", [actor.tenantId]);
-      const task = await client.query(`SELECT id FROM daily_tasks LIMIT 1`);
-      const taskId = task.rows[0]?.id as string | undefined;
-      if (!taskId) throw httpError(422, "task_required");
+      await this.legacyTask(client,actor,taskId);
       const inserted = await client.query(
         `INSERT INTO work_reports (tenant_id, task_id, submitted_quantity)
          VALUES ($1, $2, $3) RETURNING id, version`,
@@ -235,6 +220,13 @@ export class WorkforceService {
     };
   }
 
+  private async legacyTask(client:PoolClient,actor:Actor,taskId:string) {
+    uuid(taskId);
+    const task=(await client.query(`SELECT workflow_kind FROM daily_tasks WHERE tenant_id=$1 AND id=$2`,[actor.tenantId,taskId])).rows[0];
+    if(!task)throw httpError(404,'not_found');
+    if(task.workflow_kind!=='legacy')throw httpError(409,'workflow_not_supported');
+  }
+
   private async applyEvent(client: PoolClient, actor: Actor, event: ClientEvent) {
     try {
       assertSameScope(event, actor);
@@ -242,6 +234,7 @@ export class WorkforceService {
       throw httpError(403, "scope_mismatch");
     }
     if (!event.eventId || !event.kind || !event.occurredAt) throw httpError(422, "bad_event");
+    await this.legacyTask(client,actor,required(event.payload?.taskId,"task_required"));
     const hash = createHash("sha256")
       .update(stableEventBody({ kind: event.kind, occurredAt: event.occurredAt, payload: event.payload ?? {} }))
       .digest("hex");
@@ -270,6 +263,7 @@ export class WorkforceService {
 
   private async startShift(client: PoolClient, actor: Actor, event: ClientEvent) {
     const taskId = required(event.payload?.taskId, "task_required");
+    await this.legacyTask(client,actor,taskId);
     const employeeId = required(event.payload?.employeeId, "employee_required");
     const open = await client.query(
       `SELECT id FROM shifts WHERE task_id = $1 AND employee_id = $2 AND status = 'open'`,
@@ -288,6 +282,7 @@ export class WorkforceService {
 
   private async finishShift(client: PoolClient, actor: Actor, event: ClientEvent) {
     const taskId = required(event.payload?.taskId, "task_required");
+    await this.legacyTask(client,actor,taskId);
     const open = await client.query(
       `SELECT id, occurred_started_at FROM shifts WHERE task_id = $1 AND status = 'open' ORDER BY started_at DESC LIMIT 1`,
       [taskId],
@@ -309,6 +304,7 @@ export class WorkforceService {
 
   private async submitVolume(client: PoolClient, actor: Actor, event: ClientEvent) {
     const taskId = required(event.payload?.taskId, "task_required");
+    await this.legacyTask(client,actor,taskId);
     const quantity = required(event.payload?.quantity, "quantity_required");
     if (Number(quantity) <= 0) throw httpError(422, "invalid_quantity");
     const inserted = await client.query(
