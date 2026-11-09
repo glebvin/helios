@@ -1,0 +1,40 @@
+TAP version 13
+# Subtest: catalog receipt: director creates project catalogs with durable single effect
+not ok 1 - catalog receipt: director creates project catalogs with durable single effect
+  ---
+  duration_ms: 511.315167
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/test/tasks-api.test.ts:53:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"status":404,"body":{"error":"Cannot POST /api/v1/projects/d2fee1f7-4dab-4994-b5e5-0c8141bf591f/zones"}}
+    
+    404 !== 201
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 201
+  actual: 404
+  operator: 'strictEqual'
+  stack: |-
+    <anonymous> (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/test/tasks-api.test.ts:56:29)
+    Array.forEach (<anonymous>)
+    TestContext.<anonymous> (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/test/tasks-api.test.ts:56:11)
+    process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 0
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1061.194458
+Error: ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL
+
+  × "pnpm recursive exec" failed in /Users/Gleb/Documents/ChatGPT/sites/
+  │ helios-worktrees/codex-api/apps/api
+
