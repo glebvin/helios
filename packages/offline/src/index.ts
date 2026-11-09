@@ -1,19 +1,11 @@
+import {uuid, object, instant, quantity, validateReply, createTransport, httpOutcome, retryDelay, type DeliveryOutcome, type Session} from './transport.js';
 import {NativeStore, OfflineQueueError, fail, type EventPayload, type StoredEvent, type QueueState} from './store.js';
 export {OfflineQueueError} from './store.js';
 export type {EventPayload, QueueState} from './store.js';
-export type Session = {token: string; tenantId: string; actorUserId: string; generation: number};
+export type {Session} from './transport.js';
 export type QueueOptions = {audience: string; tenantId: string; actorUserId: string; getSession: () => Session | null};
 export type QueueEvent = {id: string; requestId: string; employeeId: string; projectId: string; dependency: string | null;
   stage: 'event'; event: EventPayload; state: QueueState; attemptCount: number; nextAttemptAt: number | null; lastError: string | null};
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-function uuid(input: unknown): string {if (typeof input !== 'string' || !uuidPattern.test(input)) fail('invalid_uuid'); return input.toLowerCase();}
-function object(input: unknown, allowed?: string[]): Record<string, unknown> {
-  if (!input || typeof input !== 'object' || Array.isArray(input) || Object.getPrototypeOf(input) !== Object.prototype) fail('invalid_object');
-  const value = input as Record<string, unknown>;
-  if (Object.getOwnPropertySymbols(value).length || Object.values(Object.getOwnPropertyDescriptors(value)).some(descriptor => descriptor.get || descriptor.set)) fail('invalid_json');
-  if (allowed && Object.keys(value).some(key => !allowed.includes(key))) fail('invalid_field');
-  return value;
-}
 function stable(input: unknown): string {
   if (input === null || typeof input === 'boolean' || typeof input === 'string') return JSON.stringify(input);
   if (typeof input === 'number' && Number.isFinite(input)) return JSON.stringify(input);
@@ -21,19 +13,7 @@ function stable(input: unknown): string {
   const value = object(input);
   return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stable(value[key])}`).join(',')}}`;
 }
-function instant(value: unknown): number {
-  if (typeof value !== 'string') fail('invalid_instant');
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(Z|[+-](\d{2}):(\d{2}))$/.exec(value);
-  if (!match || +match[4] > 23 || +match[5] > 59 || +match[6] > 59 || (match[7] !== 'Z' && (+match[8] > 23 || +match[9] > 59))) fail('invalid_instant');
-  const day = new Date(`${value.slice(0, 10)}T00:00:00Z`);
-  if (!Number.isFinite(day.valueOf()) || day.toISOString().slice(0, 10) !== value.slice(0, 10) || !Number.isFinite(Date.parse(value))) fail('invalid_instant');
-  return Date.parse(value);
-}
 function text(value: unknown): void {if (typeof value !== 'string' || !value.trim() || value.length > 500) fail('invalid_text');}
-function quantity(value: unknown): string {
-  if (typeof value !== 'string' || !/^\d{1,11}(?:\.\d{1,3})?$/.test(value) || !/[1-9]/.test(value)) fail('invalid_quantity');
-  const [whole, fraction = ''] = value.split('.'); return `${whole.replace(/^0+(?=\d)/, '')}.${fraction.padEnd(3, '0')}`;
-}
 function validateEvent(input: unknown): {event: EventPayload; canonical: string} {
   // Stable JSON validation runs before cloning, so undefined/non-JSON cannot disappear silently.
   const canonical = stable(input); const value = object(input);
@@ -73,28 +53,7 @@ function audience(value: string): string {
   const path = url.pathname.replace(/\/$/, '');if (!path.endsWith('/api/v1')) fail('invalid_audience');
   return `${url.origin}${path}`;
 }
-const reviewKeys = ['delayed', 'future', 'suspicious', 'geoTimeMismatch', 'abovePlannedQuantity'];
-function validateReply(body: unknown, event: EventPayload): {state: 'synced' | 'blocked' | 'retry_wait' | 'auth-required'; code: string | null} {
-  const batch = object(body, ['results']);if (!Array.isArray(batch.results) || batch.results.length !== 1) fail('ambiguous_response');
-  const item = object(batch.results[0]);if (item.requestId !== uuid(event.requestId)) fail('ambiguous_response');
-  if (item.outcome === 'error') {
-    object(item, ['requestId', 'outcome', 'status', 'code', 'retryable']);
-    if (!Number.isInteger(item.status) || (item.status as number) < 400 || (item.status as number) > 599 || typeof item.retryable !== 'boolean' || typeof item.code !== 'string' || !/^[a-z0-9_]{1,80}$/.test(item.code)) fail('ambiguous_response');
-    return {state: item.status === 401 ? 'auth-required' : item.code === 'missing_dependency' ? 'blocked' : item.retryable ? 'retry_wait' : 'blocked', code: item.code};
-  }
-  object(item, ['requestId', 'outcome', 'status', 'result']);
-  if (!['success', 'duplicate'].includes(item.outcome as string) || item.status !== 201) fail('ambiguous_response');
-  const result = object(item.result);
-  for (const key of ['requestId', 'employeeId', 'projectId', 'shiftId'] as const) if (result[key] !== uuid(event[key])) fail('ambiguous_response');
-  if (result.kind !== event.kind || result.version !== event.expectedVersion + 1 || instant(result.occurredAt) !== instant(event.occurredAt)) fail('ambiguous_response');
-  instant(result.receivedAt);
-  const flags = object(result.reviewFlags, reviewKeys);
-  if (reviewKeys.some(key => typeof flags[key] !== 'boolean')) fail('ambiguous_response');
-  if (event.kind === 'submit_volume' && (result.taskId !== uuid(event.taskId) || result.reportId !== uuid(event.reportId) || result.submittedQuantity !== quantity(event.submittedQuantity) || result.provisional !== true || result.acceptedQuantity !== null)) fail('ambiguous_response');
-  return {state: 'synced', code: null};
-}
-
-/** Task1 event facade. Evidence authoring/delivery is added by the separate Task3. */
+/** Scope-bound immutable event facade. Evidence authoring/delivery is added by the separate Task3. */
 export async function openOfflineQueue(options: QueueOptions) {
   const base = audience(options.audience), tenantId = uuid(options.tenantId), actorUserId = uuid(options.actorUserId);
   const scope = JSON.stringify([base, tenantId, actorUserId]);
@@ -120,16 +79,13 @@ export async function openOfflineQueue(options: QueueOptions) {
     attemptCount: row.attemptCount, nextAttemptAt: row.nextAttemptAt, lastError: row.lastError});
   async function list(): Promise<QueueEvent[]> {return (await store.list(scope, epoch, capture())).map(view);}
   async function get(id: string): Promise<QueueEvent | null> {const row = await store.get(scope, epoch, uuid(id), capture());return row ? view(row) : null;}
-  async function request(path: '/me' | '/execution/events', check: () => void, body?: string): Promise<{status: number; body: unknown}> {
-    check();await store.list(scope, epoch, check);check();const current = session();
-    const controller = new AbortController();aborters.add(controller);
-    const timeout = setTimeout(() => controller.abort(), 30_000);
-    try {
-      const response = await fetch(`${base}${path}`, {method: body === undefined ? 'GET' : 'POST',
-        headers: {Authorization: `Bearer ${current.token}`, 'x-tenant-id': tenantId, ...(body === undefined ? {} : {'Content-Type': 'application/json'})},
-        body, signal: controller.signal, credentials: 'omit', redirect: 'error'});
-      check();const payload: unknown = await response.json();check();return {status: response.status, body: payload};
-    } finally {clearTimeout(timeout);aborters.delete(controller);}
+  const request = createTransport(base, tenantId, session, check => store.list(scope, epoch, check), aborters);
+  async function record(row: StoredEvent, outcome: DeliveryOutcome, check: () => void, retryAfter: number | null = null) {
+    const attempts = outcome.state === 'synced' ? 0 : row.attemptCount + 1;
+    if (outcome.state === 'retry_wait' && attempts >= 5) outcome = {state: 'blocked', code: 'blocked_retry_exhausted'};
+    await store.update(scope, epoch, row.id, row.commandHash, {state: outcome.state, attemptCount: attempts,
+      nextAttemptAt: outcome.state === 'retry_wait' ? Date.now() + retryDelay(attempts, retryAfter) : null, lastError: outcome.code}, check);
+    return outcome;
   }
   async function flush() {
     const check = capture();
@@ -138,10 +94,27 @@ export async function openOfflineQueue(options: QueueOptions) {
       if (!lock) return {state: 'busy' as const};
       check();const rows = await store.list(scope, epoch, check);
       if (!rows.some(row => row.state === 'pending' || row.state === 'retry_wait')) return {state: 'idle' as const};
-      const identity = await request('/me', check);
-      if (identity.status !== 200) fail(identity.status === 401 ? 'auth_required' : 'identity_unavailable');
-      const me = object(identity.body);
-      if (me.userId !== actorUserId || me.tenantId !== tenantId) fail('identity_mismatch');
+      let identityFailure: DeliveryOutcome | null = null, identityDelay: number | null = null;
+      try {
+        const identity = await request('/me', check);identityDelay = identity.retryAfterMs;
+        if (identity.status !== 200) identityFailure = httpOutcome(identity.status);
+        else {
+          const me = object(identity.body);
+          if (me.userId !== actorUserId || me.tenantId !== tenantId) identityFailure = {state: 'blocked', code: 'identity_mismatch'};
+        }
+      } catch (error) {
+        check();identityFailure = {state: 'retry_wait', code: error instanceof OfflineQueueError ? 'ambiguous_response' : 'network_error'};
+      }
+      if (identityFailure) {
+        // Only current employee heads are eligible; an identity failure never sends a command.
+        const seen = new Set<string>();
+        for (const row of rows) {
+          if (row.state === 'synced' || seen.has(row.employeeId)) continue;
+          seen.add(row.employeeId);
+          if (['pending', 'retry_wait'].includes(row.state) && (row.nextAttemptAt === null || row.nextAttemptAt <= Date.now())) await record(row, identityFailure, check, identityDelay);
+        }
+        return {state: 'finished' as const, attempted: 0};
+      }
       const heldEmployees = new Set<string>();let attempted = 0;
       for (const row of rows) {
         check();
@@ -149,19 +122,17 @@ export async function openOfflineQueue(options: QueueOptions) {
         if (heldEmployees.has(row.employeeId)) continue;
         if (!['pending', 'retry_wait'].includes(row.state) || (row.nextAttemptAt !== null && row.nextAttemptAt > Date.now())) {heldEmployees.add(row.employeeId);continue;}
         sending.add(row.id);attempted++;
-        let outcome: ReturnType<typeof validateReply>;
+        let outcome: DeliveryOutcome, retryAfter: number | null = null;
         try {
           const response = await request('/execution/events', check, JSON.stringify({events: [row.event]}));
+          retryAfter = response.retryAfterMs;
           if (response.status === 200) outcome = validateReply(response.body, row.event);
-          else outcome = {state: response.status === 401 ? 'auth-required' : [408, 429].includes(response.status) || response.status >= 500 ? 'retry_wait' : 'blocked', code: `http_${response.status}`};
+          else outcome = httpOutcome(response.status);
         } catch (error) {
           check();outcome = {state: 'retry_wait', code: error instanceof OfflineQueueError ? 'ambiguous_response' : 'network_error'};
         } finally {sending.delete(row.id);}
         check();
-        const attempts = outcome.state === 'synced' ? 0 : row.attemptCount + 1;
-        if (outcome.state === 'retry_wait' && attempts >= 5) outcome = {state: 'blocked', code: 'blocked_retry_exhausted'};
-        await store.update(scope, epoch, row.id, row.commandHash, {state: outcome.state, attemptCount: attempts,
-          nextAttemptAt: outcome.state === 'retry_wait' ? Date.now() + Math.min(60_000, 1000 * 2 ** Math.min(attempts - 1, 6)) : null, lastError: outcome.code}, check);
+        outcome = await record(row, outcome, check, retryAfter);
         if (outcome.state !== 'synced') heldEmployees.add(row.employeeId);
         if (outcome.state === 'auth-required') break;
       }

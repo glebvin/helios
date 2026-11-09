@@ -26,13 +26,14 @@ const journal = [];
 const wrongIds = new Set();
 const receipts = new Map();
 const actions = new Map();
+const gates = new Set(), fixtureErrors = [];
 let meAction = null;
 let activeSends = 0, maxActiveSends = 0;
 function barrier() {
   let enter, release;
   const entered = new Promise(resolve=>{enter=resolve;});
   const released = new Promise(resolve=>{release=resolve;});
-  return {entered,release,async wait(){enter();await released;}};
+  const gate={entered,release,async wait(){enter();await released;}};gates.add(gate);return gate;
 }
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const actorUserId = '22222222-2222-4222-8222-222222222222';
@@ -89,7 +90,7 @@ const server = createServer(async (req,res) => {
       res.setHeader('Content-Type','text/javascript');res.end(await readFile(join(compiled,req.url.slice(1))));return;
     }
     res.statusCode=404;res.end();
-  } catch(error) {res.statusCode=500;res.end(JSON.stringify({code:'fixture_failure',message:error.message}));}
+  } catch(error) {fixtureErrors.push(error);res.statusCode=500;res.end(JSON.stringify({code:'fixture_failure',message:error.message}));}
 });
 let contexts = new Set();
 async function openPage(engine, profile, origin) {
@@ -186,6 +187,7 @@ if(suite==='mechanics') tests.push(
     assert.equal((await page.evaluate(()=>queue.list())).length,0);
     const replay=await page.evaluate(c=>queue.enqueueEvent(c),first);assert.equal(replay.state,'synced');assert.deepEqual(replay.event,first);
     assert.equal((await page.evaluate(()=>queue.list())).length,0,'idempotent acknowledgement must not reinsert cleaned work');
+    assert.equal(await page.evaluate(c=>queue.enqueueEvent({...c,occurredAt:'2027-01-15T10:00:00+03:00'}).then(()=>null,e=>e.code),first),'local_identity_conflict');
     assert.equal(await page.evaluate(c=>queue.enqueueEvent({...c,requestId:crypto.randomUUID(),previousEventId:undefined}).then(()=>null,e=>e.code),first),'invalid_object');
     const next={...first,requestId:crypto.randomUUID(),expectedVersion:11,previousEventId:commands[3].requestId};
     await page.evaluate(c=>queue.enqueueEvent(c),next);
@@ -233,6 +235,9 @@ if(suite==='mechanics') tests.push(
     const {page}=await openPage(engine,profile,origin);
     const variants=[{raw:'{bad'},
       {body:c=>({results:[]})},
+      {body:c=>({results:[{requestId:c.requestId,outcome:'future',status:201,result:resultFor(c)}]})},
+      {body:c=>({results:[{requestId:c.requestId,outcome:'success',status:201,result:resultFor(c)},{requestId:c.requestId,outcome:'success',status:201,result:resultFor(c)}]})},
+      {status:204},
       {body:c=>({results:[{requestId:c.requestId,outcome:'success',status:200,result:resultFor(c)}]})},
       ...['employeeId','projectId','shiftId','kind','version','occurredAt','receivedAt','reviewFlags'].map(field=>({body:c=>({results:[{requestId:c.requestId,outcome:'duplicate',status:201,result:{...resultFor(c),[field]:field==='version'?99:field==='reviewFlags'?{}:'wrong'}}]})})),
       {body:c=>({results:[{requestId:c.requestId,outcome:'error',status:500,code:'temporary',retryable:true,result:resultFor(c)}]})},
@@ -283,6 +288,50 @@ if(suite==='mechanics') tests.push(
     assert.equal(await second.evaluate(()=>queue.flush().then(()=>null,e=>e.code)),'session_invalidated');assert.equal(journal.length,before);
     const fresh=await addPage(context,origin);assert.deepEqual(await fresh.evaluate(id=>queue.get(id).then(r=>r.event),command.requestId),command);
   }],
+  ['authEpoch rejects an in-flight completion before commit even without broadcast',async(engine,profile,origin,n)=>{
+    const {page,context}=await openPage(engine,profile,origin);const second=await context.newPage();await second.goto(origin);
+    await second.evaluate(async ({tenantId,actorUserId,token})=>{globalThis.BroadcastChannel=undefined;const {openOfflineQueue}=await import('/index.js');session={tenantId,actorUserId,token,generation:1};queue=await openOfflineQueue({audience:`${location.origin}/api/v1`,tenantId,actorUserId,getSession:()=>session});},{tenantId,actorUserId,token});
+    const command=event(n);await second.evaluate(c=>queue.enqueueEvent(c),command);const gate=barrier();actions.set(command.requestId,{gate});
+    const flushing=second.evaluate(()=>queue.flush().then(()=>null,e=>e.code));await gate.entered;await page.evaluate(()=>queue.closeSession());gate.release();assert.equal(await flushing,'session_invalidated');actions.delete(command.requestId);
+    const fresh=await addPage(context,origin);assert.equal(await fresh.evaluate(id=>queue.get(id).then(r=>r.state),command.requestId),'pending');
+  }],
+  ['known cross-project dependencies rejected and acknowledged pending dependencies cannot be cleaned',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin);const first=event(n);await page.evaluate(c=>queue.enqueueEvent(c),first);
+    const wrong={...first,requestId:crypto.randomUUID(),expectedVersion:1,projectId:crypto.randomUUID(),previousEventId:first.requestId};
+    assert.equal(await page.evaluate(c=>queue.enqueueEvent(c).then(()=>null,e=>e.code),wrong),'local_dependency_conflict');
+    const next={...first,requestId:crypto.randomUUID(),kind:'segment_change',mode:'downtime',reasonCode:'weather',comment:'Wet front',expectedVersion:1,previousEventId:first.requestId};await page.evaluate(c=>queue.enqueueEvent(c),next);
+    actions.set(next.requestId,{body:c=>({results:[{requestId:c.requestId,outcome:'error',status:409,code:'lifecycle_conflict',retryable:false}]})});await page.evaluate(()=>queue.flush());
+    assert.equal(await page.evaluate(id=>queue.cleanupAcknowledged([id]).then(()=>null,e=>e.code),first.requestId),'pending_dependency');assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),first.requestId),'synced');
+    await page.evaluate(id=>queue.retry(id),next.requestId);actions.delete(next.requestId);await page.evaluate(()=>queue.flush());await page.evaluate(id=>queue.cleanupAcknowledged([id]),first.requestId);
+  }],
+  ['strict JSON validation, segment variants and submit-volume response integrity',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin);const command=event(n);
+    const invalid=await page.evaluate(async c=>{
+      const inputs=[{...c,unexpected:true},{...c,expectedVersion:-1},{...c,occurredAt:'2027-02-30T00:00:00Z'},{...c,geo:{latitude:91,longitude:0,accuracyMeters:0,capturedAt:c.occurredAt}},
+        {...c,kind:'segment_change',mode:'work'},{...c,kind:'segment_change',mode:'break',taskId:crypto.randomUUID()},{...c,kind:'segment_change',mode:'downtime',reasonCode:'other',comment:''},
+        {...c,kind:'submit_volume',taskId:crypto.randomUUID(),reportId:crypto.randomUUID(),submittedQuantity:'0'}, {...c,extra:undefined},{...c,geo:{latitude:NaN,longitude:0,accuracyMeters:0,capturedAt:c.occurredAt}}];
+      const codes=[];for(const input of inputs)codes.push(await queue.enqueueEvent(input).then(()=>null,e=>e.code));return {codes,count:(await queue.list()).length};
+    },command);assert.ok(invalid.codes.every(Boolean));assert.equal(invalid.count,0);
+    for(const mode of ['idle','break','downtime']){const c={...event(n+10000+mode.length),requestId:crypto.randomUUID(),employeeId:crypto.randomUUID(),kind:'segment_change',mode,...(mode==='downtime'?{reasonCode:'other',comment:'Await inspection'}:{})};await page.evaluate(c=>queue.enqueueEvent(c),c);}
+    const report={...command,kind:'submit_volume',taskId:crypto.randomUUID(),reportId:crypto.randomUUID(),submittedQuantity:'1.200'};await page.evaluate(c=>queue.enqueueEvent(c),report);
+    for(const field of ['taskId','reportId','submittedQuantity','provisional','acceptedQuantity']){
+      actions.set(report.requestId,{body:c=>({results:[{requestId:c.requestId,outcome:'success',status:201,result:{...resultFor(c),[field]:field==='provisional'?false:field==='acceptedQuantity'?'1.200':crypto.randomUUID()}}]})});
+      await page.evaluate(id=>queue.retry(id),report.requestId);await page.evaluate(()=>queue.flush());assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),report.requestId),'retry_wait');
+    }
+    actions.delete(report.requestId);await page.evaluate(id=>queue.retry(id),report.requestId);await page.evaluate(()=>queue.flush());assert.ok((await page.evaluate(()=>queue.list())).every(r=>r.state==='synced'));
+  }],
+  ['current /me authority gate, retryable item500, Retry-After date and permanent item403',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin);const command=event(n);await page.evaluate(c=>queue.enqueueEvent(c),command);
+    const start=journal.length;meAction={body:{tenantId,userId:crypto.randomUUID()}};await page.evaluate(()=>queue.flush());meAction=null;
+    assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.lastError),command.requestId),'identity_mismatch');assert.equal(journal.slice(start).filter(x=>x.method==='POST').length,0);
+    await page.evaluate(()=>{globalThis.clock=2000000000000;Date.now=()=>clock;});
+    for(const [header,delay] of [['0',1000],[new Date(2000000005000).toUTCString(),5000],['invalid',1000]]){
+      await page.evaluate(id=>queue.retry(id),command.requestId);actions.set(command.requestId,{status:429,retryAfter:header});await page.evaluate(()=>queue.flush());assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.nextAttemptAt),command.requestId),2000000000000+delay);
+    }
+    for(const [status,code,retryable,state] of [[500,'temporary',true,'retry_wait'],[403,'access_denied',true,'blocked'],[401,'expired_session',false,'auth-required']]){
+      await page.evaluate(id=>queue.retry(id),command.requestId);actions.set(command.requestId,{body:c=>({results:[{requestId:c.requestId,outcome:'error',status,code,retryable}]})});await page.evaluate(()=>queue.flush());assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),command.requestId),state);
+    }
+  }],
   ['scope isolation, current identity on all public data methods and no stored token',async(engine,profile,origin,n)=>{
     const {page}=await openPage(engine,profile,origin);const command=event(n);await page.evaluate(c=>queue.enqueueEvent(c),command);
     const result=await page.evaluate(async ({command,tenantId,actorUserId,token})=>{
@@ -319,6 +368,17 @@ if(suite==='mechanics') tests.push(
     const flushing=page.evaluate(()=>queue.flush());await gate.entered;await page.evaluate(()=>expireRequest());await flushing;gate.release();actions.delete(command.requestId);await page.evaluate(()=>{globalThis.setTimeout=originalTimeout;});
     assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.lastError),command.requestId),'network_error');
     const cap=await page.evaluate(async command=>{for(let i=1;i<1000;i++)await queue.enqueueEvent({...command,requestId:crypto.randomUUID(),employeeId:crypto.randomUUID()});const overflow={...command,requestId:crypto.randomUUID(),employeeId:crypto.randomUUID()};return {code:await queue.enqueueEvent(overflow).then(()=>null,e=>e.code),count:(await queue.list()).length};},command);assert.deepEqual(cap,{code:'capacity_exceeded',count:1000});
+    const other=await page.evaluate(async ({tenantId,actorUserId,command})=>{const {openOfflineQueue}=await import('/index.js');const scoped=await openOfflineQueue({audience:`${location.origin}/other/api/v1`,tenantId,actorUserId,getSession:()=>session});try{return {code:await scoped.enqueueEvent(command).then(()=>null,e=>e.code),rows:(await scoped.list()).length};}finally{scoped.close();}},{tenantId,actorUserId,command});assert.deepEqual(other,{code:'capacity_exceeded',rows:0});
+  }],
+  ['genuine blocked native upgrade closes late success and unsupported storage info remains explicit',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin);
+    const result=await page.evaluate(async()=>{
+      const manager=navigator.storage;Object.defineProperty(navigator,'storage',{value:undefined,configurable:true});const info=await queue.storageInfo({requestPersistence:true});delete navigator.storage;
+      const {NativeStore}=await import('/store.js');const blocker=await new Promise((resolve,reject)=>{const r=indexedDB.open('helios-test-blocked-upgrade',1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+      const original=IDBFactory.prototype.open;let opened;const completed=new Promise(resolve=>{IDBFactory.prototype.open=function(){const r=original.call(this,'helios-test-blocked-upgrade',2);opened=r;r.addEventListener('success',()=>resolve());return r;};});
+      let code;try{code=await NativeStore.open().then(store=>{store.close();return null;},e=>e.code);}finally{IDBFactory.prototype.open=original;blocker.close();}
+      await completed;return {code,info,managerPresent:!!manager};
+    });assert.equal(result.code,'storage_upgrade_blocked');assert.equal(result.info.persistenceSupported,false);assert.equal(result.info.persisted,null);assert.equal(result.info.estimate,null);assert.equal(result.info.persistenceGranted,null);assert.equal(result.info.error,null);
   }],
 );
 let failed=0;
@@ -335,12 +395,13 @@ try {
       await browserTest(`${engineName} ${suite}: ${name}`,async()=>{
         try {await test(playwright[engineName],profile,origin,number);passed++;}
         catch(error){failed++;throw error;}
-        finally {for(const context of [...contexts]) await closeContext(context);}
+        finally {for(const gate of gates)gate.release();gates.clear();meAction=null;actions.clear();for(const context of [...contexts]) await closeContext(context);}
       });
       number++;
     }
     console.log(`${engineName} ${suite}: ${passed}/${tests.length} passed`);
   }
+  assert.equal(fixtureErrors.length,0,'owned fixture must not hide protocol assertion failures');
 } finally {
   for(const context of [...contexts]) await closeContext(context);
   server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
