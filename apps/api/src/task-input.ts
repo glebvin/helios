@@ -11,7 +11,7 @@ export function quantity(v:unknown):string {
   if(typeof v!=='string' || !/^\d{1,11}(?:\.\d{1,3})?$/.test(v) || !/[1-9]/.test(v))throw httpError(400,'invalid_quantity');
   const [whole,frac='']=v.split('.');return `${whole.replace(/^0+(?=\d)/,'')}.${frac.padEnd(3,'0')}`;
 }
-function instant(v:unknown):string {
+export function instant(v:unknown):string {
   if(typeof v!=='string')throw httpError(400,'invalid_interval');
   const m=/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(v);
   if(!m || +m[2]>23 || +m[3]>59 || +m[4]>59 || (m[8]!=='Z' && (+m[10]>23 || +m[11]>59)))throw httpError(400,'invalid_interval');

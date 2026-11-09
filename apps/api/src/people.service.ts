@@ -190,7 +190,7 @@ export class PeopleService {
     });
   }
   // Internal same-transaction evaluator. Caller owns project/employee/member locks; no write authority is granted.
-  async eligibility(c:PoolClient,e:Row,p:string,checkId:string|null) {
+  async eligibility(c:PoolClient,e:Row,p:string,checkId:string|null,workDate?:string) {
     const reasons:string[]=[];
     const t=(await c.query(`SELECT version,code FROM admission_templates WHERE project_id=$1`,[p])).rows[0];
     const row=checkId?(await c.query(`SELECT snapshot FROM employee_admission_checks WHERE employee_id=$1 AND project_id=$2 AND id=$3`,[e.id,p,checkId])).rows[0]:undefined;
@@ -204,6 +204,7 @@ export class PeopleService {
       if(!t || t.version!==check.templateVersion || t.code!==check.templateCode)reasons.push('template_changed');
       const evidence=await this.evidence(c,e.id,check.templateSnapshot.requiredQualificationCodes);
       reasons.push(...this.evidenceReasons(check.templateSnapshot,evidence,await this.civilDate(c)));
+      if(workDate)for(const q of evidence)if(q.validUntil!==null&&q.validUntil<workDate)reasons.push(`qualification_expired_on_work_date:${q.code}`);
       for(const code of check.templateSnapshot.requiredQualificationCodes) {
         const current=evidence.find(q=>q.code===code),recorded=check.qualificationEvidence.find((q:Row)=>q.code===code);
         if(!current || !recorded || current.id!==recorded.id || current.version!==recorded.version)reasons.push(`qualification_changed:${code}`);
