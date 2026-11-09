@@ -422,3 +422,6 @@ test('draft plan replacement and submit serialize with expectedVersion, and publ
     const snapshot=(await admin.query(`SELECT snapshot FROM task_publication_snapshots WHERE tenant_id=$1 AND task_id=$2`,[tenant,pending.id])).rows[0].snapshot;assert.equal(snapshot.admissionCheck.qualificationEvidence[0].version,q.version);assert.equal(snapshot.admissionCheck.qualificationEvidence[0].status,'active');
   }finally{await mg.query('ROLLBACK');mg.release();await pub;await qualification;await admin.query(`UPDATE employee_qualifications SET status='active',version=$3 WHERE tenant_id=$1 AND id=$2`,[tenant,q.id,q.version]);}
 });
+test('legacy create is retired at HTTP and service boundaries',async()=>{
+  for(const user of [director,master,pto,worker]){const before=(await admin.query(`SELECT count(*)::int n FROM daily_tasks WHERE tenant_id=$1`,[tenant])).rows[0].n;const r=await req('/tasks',{title:'Legacy bypass',employeeId:employee.id,plannedQuantity:'1',unit:'m',workDate:'2027-01-16'},user,'POST',true);assert.equal(r.status,410,JSON.stringify(r));assert.equal(r.body.error,'task_creation_retired');assert.equal((await admin.query(`SELECT count(*)::int n FROM daily_tasks WHERE tenant_id=$1`,[tenant])).rows[0].n,before);}
+});
