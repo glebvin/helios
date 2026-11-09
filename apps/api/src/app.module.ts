@@ -21,6 +21,8 @@ import { createBoss, ensureQueue } from "./jobs.js";
 import { WorkforceService } from "./workforce.service.js";
 import { DirectorApiController, VersionedAuthController, ApiSpecController } from "./director-api.controller.js";
 import { DirectorApiService } from "./director-api.service.js";
+import { PeopleService } from "./people.service.js";
+import { PeopleController } from "./people.controller.js";
 
 export const APP_POOL = "APP_POOL";
 export const BOSS = "BOSS";
@@ -107,13 +109,14 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [AuthController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController],
+  controllers: [AuthController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController],
   providers: [
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
     { provide: BOSS, useFactory: (host: BossHost) => host.boss, inject: [BossHost] },
     { provide: AuthService, useFactory: (pool: Pool) => new AuthService(pool), inject: [APP_POOL] },
     { provide: DirectorApiService, useFactory: (pool: Pool) => new DirectorApiService(pool), inject: [APP_POOL] },
+    { provide: PeopleService, useFactory: (pool: Pool, api: DirectorApiService) => new PeopleService(pool,api), inject: [APP_POOL,DirectorApiService] },
     {
       provide: WorkforceService,
       useFactory: (pool: Pool, boss: PgBoss) => new WorkforceService(pool, boss),

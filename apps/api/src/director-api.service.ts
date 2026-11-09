@@ -24,7 +24,7 @@ const taskVisible = `${projectVisible} AND ($1 <> 'worker' OR (e.user_id = $2 AN
 const taskJoin = `FROM daily_tasks t JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
   JOIN employees e ON e.tenant_id = t.tenant_id AND e.id = t.assignee_employee_id`;
 const projectFields = `p.id, p.name`;
-const employeeFields = `e.id, e.full_name AS "fullName", e.phone, e.organization_id AS "organizationId", e.user_id AS "userId"`;
+const employeeFields = `e.id, e.full_name AS "fullName", e.phone, e.organization_id AS "organizationId", e.user_id AS "userId", e.version, e.status`;
 
 export class DirectorApiService {
   constructor(private readonly pool: Pool) {}
@@ -33,7 +33,7 @@ export class DirectorApiService {
     return withTenant(this.pool, actor.tenantId, actor.userId, fn);
   }
 
-  private async projectExists(client: PoolClient, actor: Actor, projectId: string) {
+  async projectExists(client: PoolClient, actor: Actor, projectId: string) {
     const result = await client.query(`SELECT ${projectFields} FROM projects p
       WHERE ${projectVisible} AND p.id = $3`, [actor.role, actor.userId, projectId]);
     if (!result.rows[0]) throw httpError(404, "not_found");
@@ -69,7 +69,7 @@ export class DirectorApiService {
     });
   }
 
-  private employeeVisible() {
+  employeeVisible() {
     return `(($3::uuid IS NULL AND ($1 = 'director' OR e.user_id = $2)) OR EXISTS (
       SELECT 1 FROM employee_project_assignments a JOIN projects p ON p.tenant_id = a.tenant_id AND p.id = a.project_id
       WHERE a.tenant_id = e.tenant_id AND a.employee_id = e.id AND a.status = 'active'
@@ -91,12 +91,14 @@ export class DirectorApiService {
   }
 
   employee(actor: Actor, id: string) {
-    return this.with(actor, async (client) => {
+    return this.with(actor, client => this.employeeExists(client,actor,id));
+  }
+
+  async employeeExists(client: PoolClient, actor: Actor, id: string) {
       const result = await client.query(`SELECT ${employeeFields} FROM employees e
         WHERE ${this.employeeVisible()} AND e.id = $4`, [actor.role, actor.userId, null, id]);
       if (!result.rows[0]) throw httpError(404, "not_found");
       return result.rows[0];
-    });
   }
 
   overview(actor: Actor, projectId?: string, requestedDay?: string) {
