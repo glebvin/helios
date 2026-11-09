@@ -2,4 +2,3 @@ Error: ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL
 
   × "pnpm recursive exec" failed in /Users/Gleb/Documents/ChatGPT/sites/
   │ helios-worktrees/codex-api/apps/api
-

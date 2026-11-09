@@ -8,9 +8,9 @@ not ok 1 - tracer: reserve raw binary upload download and immutable existing eve
   failureType: 'testCodeFailure'
   error: |-
     {"status":404,"body":{"error":"Cannot POST /api/v1/projects/10b65af1-e25b-42cc-bceb-57d073760501/evidence"}}
-    
+
     404 !== 201
-    
+
   code: 'ERR_ASSERTION'
   name: 'AssertionError'
   expected: 201
