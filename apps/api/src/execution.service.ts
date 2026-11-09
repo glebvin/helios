@@ -43,7 +43,7 @@ export class ExecutionService {
     const member=(await c.query(`SELECT role,status FROM memberships WHERE tenant_id=$1 AND user_id=$2`,[a.tenantId,a.userId])).rows[0];
     if(!member||member.status!=='active'||!['director','master','worker'].includes(member.role))throw httpError(403,'role_denied');
     if(member.role!=='director'&&!(await c.query(`SELECT 1 FROM project_memberships WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3 AND status='active'`,[a.tenantId,b.projectId,a.userId])).rowCount)throw httpError(404,'not_found');
-    if(member.role==='worker'&&e.user_id!==a.userId)throw httpError(403,'employee_denied');
+    if(member.role==='worker'&&(e.user_id!==a.userId||e.status!=='active'))throw httpError(403,'employee_denied');
     if(member.role!=='worker'&&e.user_id!==a.userId&&!b.onBehalfReason)throw httpError(403,'on_behalf_reason_required');
   }
   private async admission(c:PoolClient,a:Actor,b:ExecutionEvent,e:Row,task?:Row){
@@ -51,7 +51,7 @@ export class ExecutionService {
     if(assignment?.status!=='active')throw httpError(422,'assignment_required');
     if(e.user_id){
       const linked=(await c.query(`SELECT m.role,m.status,pm.status project_status FROM memberships m LEFT JOIN project_memberships pm ON pm.tenant_id=m.tenant_id AND pm.user_id=m.user_id AND pm.project_id=$3 WHERE m.tenant_id=$1 AND m.user_id=$2`,[a.tenantId,e.user_id,b.projectId])).rows[0];
-      if(!linked||linked.role!=='worker'||linked.status!=='active'||linked.project_status!=='active')throw httpError(422,'employee_not_ready');
+      if(!linked||linked.status!=='active'||(linked.role==='worker'&&linked.project_status!=='active'))throw httpError(422,'employee_not_ready');
     }
     if(!(await this.people.eligibility(c,e,b.projectId,assignment.admission_check_id,task?.work_date)).eligible)throw httpError(422,'admission_required');
   }

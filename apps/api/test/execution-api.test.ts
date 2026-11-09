@@ -10,18 +10,18 @@ import {hashPassword} from '../src/password.js';
 import {AllExceptionsFilter} from '../src/http.js';
 import {executionReviewFlags} from '../src/execution.service.js';
 const admin=createPool(adminUrl),restricted=createPool();
-const tenant=id(),foreign=id(),org=id(),p=id(),p2=id(),director=id(),worker=id(),master=id(),pto=id(),outsider=id();
+const tenant=id(),foreign=id(),org=id(),foreignOrg=id(),foreignProject=id(),foreignEmployee=id(),p=id(),p2=id(),director=id(),worker=id(),master=id(),pto=id(),outsider=id();
 const users=[director,worker,master,pto,outsider],tokens=new Map<string,string>();
-let app:INestApplication|undefined,base:string,employee:any,task:any;
+let app:INestApplication|undefined,base:string,employee:any,task:any,publication:any;
 const command=(b:any)=>({requestId:id(),...b});
-async function req(path:string,body?:unknown,user=director,method=body===undefined?'GET':'POST') {
+async function req(path:string,body?:unknown,user:string=director,method=body===undefined?'GET':'POST') {
   const r=await fetch(`${base}/api/v1${path}`,{method,headers:{authorization:`Bearer ${tokens.get(user)}`,'x-tenant-id':tenant,'content-type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});
   return {status:r.status,body:await r.json()};
 }
-async function ok(path:string,body?:unknown,user=director,method=body===undefined?'GET':'POST') {const r=await req(path,body,user,method);assert.equal(r.status,method==='POST'?201:200,JSON.stringify(r));return r.body;}
+async function ok(path:string,body?:unknown,user:string=director,method=body===undefined?'GET':'POST') {const r=await req(path,body,user,method);assert.equal(r.status,method==='POST'?201:200,JSON.stringify(r));return r.body;}
 function event(kind:string,shiftId:string,expectedVersion:number,occurredAt:string,extra:any={}) {return command({kind,employeeId:employee.id,projectId:p,shiftId,expectedVersion,occurredAt,...extra});}
-async function batch(events:any[],user=worker){const r=await req('/execution/events',{events},user);assert.equal(r.status,200,JSON.stringify(r));return r.body.results;}
-async function accepted(e:any,user=worker){const r=(await batch([e],user))[0];assert.equal(r.outcome,'success',JSON.stringify(r));assert.equal(r.status,201);return r.result;}
+async function batch(events:any[],user:string=worker){const r=await req('/execution/events',{events},user);assert.equal(r.status,200,JSON.stringify(r));return r.body.results;}
+async function accepted(e:any,user:string=worker){const r=(await batch([e],user))[0];assert.equal(r.outcome,'success',JSON.stringify(r));assert.equal(r.status,201);return r.result;}
 async function effects(requestId:string){return (await admin.query(`SELECT (SELECT count(*)::int FROM people_command_receipts WHERE tenant_id=$1 AND request_id=$2) receipts,(SELECT count(*)::int FROM audit_log WHERE tenant_id=$1 AND details->>'requestId'=$2::text) audits,(SELECT count(*)::int FROM managed_execution_events WHERE tenant_id=$1 AND request_id=$2) events`,[tenant,requestId])).rows[0];}
 test.before(async()=>{
   const actual=(await admin.query(`SELECT current_setting('port') port,current_setting('data_directory') dir`)).rows[0];assert.equal(actual.port,'54339');assert.ok(actual.dir.endsWith('codex-api/.data/pg-54339'));
@@ -31,6 +31,9 @@ test.before(async()=>{
   await admin.query(`INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,'director')`,[foreign,outsider]);
   await admin.query(`INSERT INTO organizations(tenant_id,id,kind,name) VALUES($1,$2,'own','Own')`,[tenant,org]);
   await admin.query(`INSERT INTO projects(tenant_id,id,name) VALUES($1,$2,'P1'),($1,$3,'P2')`,[tenant,p,p2]);
+  await admin.query(`INSERT INTO organizations(tenant_id,id,kind,name) VALUES($1,$2,'own','Foreign')`,[foreign,foreignOrg]);
+  await admin.query(`INSERT INTO projects(tenant_id,id,name) VALUES($1,$2,'Foreign project')`,[foreign,foreignProject]);
+  await admin.query(`INSERT INTO employees(tenant_id,id,organization_id,full_name) VALUES($1,$2,$3,'Foreign employee')`,[foreign,foreignEmployee,foreignOrg]);
   app=await NestFactory.create(AppModule,{logger:false});app.useGlobalFilters(new AllExceptionsFilter());const server=await app.listen(0,'127.0.0.1');base=`http://127.0.0.1:${server.address().port}`;
   for(const u of users){const r=await fetch(`${base}/api/v1/auth/login`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:`${u}@execution.test`,password:'execution-password'})});assert.equal(r.status,201);tokens.set(u,(await r.json()).token);}
   for(const u of [master,pto])await ok(`/projects/${p}/memberships/${u}`,command({expectedVersion:0,status:'active'}),director,'PUT');
@@ -46,6 +49,7 @@ test.before(async()=>{
   task=await ok(`/projects/${p}/tasks/${task.id}`);
   for(const action of ['submit','publish']){const r=await req(`/projects/${p}/tasks/${task.id}/${action}`,command({expectedVersion:task.version}));assert.equal(r.status,200,JSON.stringify(r));task=r.body;}
   task=await ok(`/projects/${p}/tasks/${task.id}`);
+  publication=(await admin.query(`SELECT * FROM task_publication_snapshots WHERE tenant_id=$1 AND task_id=$2`,[tenant,task.id])).rows;
 });
 test.after(async()=>{
   try{await app?.close();}finally{const c=await admin.connect();try{
@@ -153,4 +157,265 @@ test('SQL: FORCE RLS, narrow grants, tenant/project/employee/task FKs, open uniq
   const before=await snapshot();assert.equal(before.ledger.filter(r=>r.filename==='007_managed_execution.sql').length,1);
   execFileSync('corepack',['pnpm','db:migrate'],{cwd:new URL('../../../',import.meta.url),env:{...process.env,DATABASE_URL:'postgres://helios_app:helios_app@127.0.0.1:54339/helios',ADMIN_DATABASE_URL:'postgres://helios:helios@127.0.0.1:54339/helios',HELIOS_DB_PORT:'54339',API_PORT:'4327'},stdio:'pipe'});
   assert.deepEqual(await snapshot(),before);
+});
+
+// All race gates are observed through PostgreSQL's actual lock graph before mutation/release.
+async function waiters(pid:number,count=1){
+  const deadline=Date.now()+8000;
+  while(Date.now()<deadline){
+    const rows=await admin.query(`WITH RECURSIVE waiting(pid) AS (SELECT pid FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid)) UNION SELECT a.pid FROM pg_stat_activity a JOIN waiting w ON w.pid=ANY(pg_blocking_pids(a.pid))) SELECT count(*)::int n FROM waiting`,[pid]);
+    if(rows.rows[0].n>=count)return;
+    await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  assert.fail(`Expected ${count} actual PostgreSQL waiters behind ${pid}`);
+}
+async function executionState(){
+  return Promise.all(['managed_execution_streams','managed_shifts','managed_segments','managed_execution_events','managed_execution_reports'].map(async table=>(await admin.query(`SELECT * FROM ${table} WHERE tenant_id=$1 ORDER BY to_jsonb(${table})::text`,[tenant])).rows));
+}
+async function gateFailure(e:any,user:string,table:string,key:string,mutate:(c:any)=>Promise<unknown>,restore:()=>Promise<unknown>,code:string){
+  const c=await admin.connect(),before=await executionState(),beforeEffects=await effects(e.requestId);let pending:Promise<any>|undefined;
+  try{
+    await c.query('BEGIN');await c.query(`SELECT 1 FROM ${table} WHERE tenant_id=$1 AND ${table==='memberships'||table==='project_memberships'?'user_id':'id'}=$2 ${table==='project_memberships'?'AND project_id=$3':''} FOR NO KEY UPDATE`,table==='project_memberships'?[tenant,key,p]:[tenant,key]);
+    const pid=(await c.query(`SELECT pg_backend_pid() pid`)).rows[0].pid;
+    pending=batch([e],user);await waiters(pid);await mutate(c);await c.query('COMMIT');
+    const r=(await pending)[0];assert.equal(r.outcome,'error',JSON.stringify(r));assert.equal(r.code,code,JSON.stringify(r));
+    assert.deepEqual(await effects(e.requestId),beforeEffects);assert.deepEqual(await executionState(),before);
+  }finally{await c.query('ROLLBACK');c.release();await pending;await restore();}
+}
+async function refreshAdmission(project=p){
+  const template=await ok(`/projects/${project}/admission-template`);
+  const check=await ok(`/employees/${employee.id}/admission-checks`,command({projectId:project,templateVersion:template.version,answers:template.items.map((i:any)=>({itemId:i.id,value:true}))}));
+  const prior=(await admin.query(`SELECT version FROM employee_project_assignments WHERE tenant_id=$1 AND project_id=$2 AND employee_id=$3`,[tenant,project,employee.id])).rows[0];
+  await ok(`/projects/${project}/assignments/${employee.id}`,command({expectedVersion:prior?.version??0,status:'active',admissionCheckId:check.id}),director,'PUT');
+  return check;
+}
+test('authority matrix, target linked master/director compatibility, mandatory manager reason and tenant/project fences',async()=>{
+  const v=await currentVersion(),start=event('shift_start',id(),v,at);
+  assert.equal((await req('/execution/events',{events:[start]},outsider)).status,403);
+  assert.equal((await batch([start],pto))[0].code,'role_denied');
+  for(const manager of [master,director])assert.equal((await batch([start],manager))[0].code,'on_behalf_reason_required');
+  assert.equal((await batch([{...start,projectId:p2}],worker))[0].status,404);
+  assert.equal((await batch([{...start,projectId:p2,onBehalfReason:'Assist'}],master))[0].status,404);
+  assert.equal((await batch([{...start,employeeId:id()}],director))[0].status,404);
+  const other=await ok('/employees',command({fullName:'Unlinked',organizationId:org}));
+  assert.equal((await batch([{...start,employeeId:other.id}],worker))[0].code,'employee_denied');
+  // Linked employees may hold any active tenant role, exactly as assignment/publication allow.
+  for(const linkedUser of [master,director]){
+    await admin.query(`UPDATE employees SET user_id=$3 WHERE tenant_id=$1 AND id=$2`,[tenant,employee.id,linkedUser]);
+    await admin.query(`UPDATE project_memberships SET status='revoked' WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3`,[tenant,p,linkedUser]);
+    try{
+      const shift=id(),version=await currentVersion();
+      const e=event('shift_start',shift,version,at,{onBehalfReason:'Record linked manager presence'});
+      await accepted(e,director);
+      // A master linked to the employee still needs its own project grant as actor.
+      if(linkedUser===master)assert.equal((await batch([event('shift_end',shift,version+1,at)],master))[0].status,404);
+      await accepted(event('shift_end',shift,version+1,at,{onBehalfReason:'Close linked manager presence'}),director);
+    }finally{
+      await admin.query(`UPDATE employees SET user_id=$3 WHERE tenant_id=$1 AND id=$2`,[tenant,employee.id,worker]);
+      await admin.query(`UPDATE project_memberships SET status='active' WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3`,[tenant,p,linkedUser]);
+    }
+  }
+});
+test('real waits: current actor role, tenant/project status, employee link and archive are reread after every prerequisite gate',async()=>{
+  const start=()=>event('shift_start',id(),0,at); // Failure must precede the intentionally stale version.
+  for(const [column,value,reset] of [['role','pto','worker'],['status','revoked','active']]){
+    await gateFailure(start(),worker,'memberships',worker,c=>c.query(`UPDATE memberships SET ${column}=$3 WHERE tenant_id=$1 AND user_id=$2`,[tenant,worker,value]),()=>admin.query(`UPDATE memberships SET ${column}=$3 WHERE tenant_id=$1 AND user_id=$2`,[tenant,worker,reset]),'role_denied');
+  }
+  await gateFailure(start(),worker,'project_memberships',worker,c=>c.query(`UPDATE project_memberships SET status='revoked' WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3`,[tenant,p,worker]),()=>admin.query(`UPDATE project_memberships SET status='active' WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3`,[tenant,p,worker]),'not_found');
+  await gateFailure(start(),worker,'employees',employee.id,c=>c.query(`UPDATE employees SET user_id=$3 WHERE tenant_id=$1 AND id=$2`,[tenant,employee.id,master]),()=>admin.query(`UPDATE employees SET user_id=$3 WHERE tenant_id=$1 AND id=$2`,[tenant,employee.id,worker]),'employee_denied');
+  await gateFailure(start(),worker,'employees',employee.id,c=>c.query(`UPDATE employees SET status='archived' WHERE tenant_id=$1 AND id=$2`,[tenant,employee.id]),()=>admin.query(`UPDATE employees SET status='active' WHERE tenant_id=$1 AND id=$2`,[tenant,employee.id]),'employee_denied');
+  await gateFailure({...start(),onBehalfReason:'Assist'},master,'employees',employee.id,c=>c.query(`UPDATE project_memberships SET status='revoked' WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3`,[tenant,p,master]),()=>admin.query(`UPDATE project_memberships SET status='active' WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3`,[tenant,p,master]),'not_found');
+});
+test('real work races: assignment, template/latest admission, evidence version/status/expiry/workDate, cancellation and linked status invalidate after wait',async()=>{
+  const q=await ok(`/employees/${employee.id}/qualifications`,command({code:'execution-license',title:'License',validUntil:'2028-01-01'}));
+  const template=await ok(`/projects/${p}/admission-template`);
+  await ok(`/projects/${p}/admission-template`,command({expectedVersion:template.version,title:template.title,items:template.items,requiredQualificationCodes:['execution-license']}),director,'PUT');
+  await refreshAdmission();
+  const shift=id(),version=await currentVersion();await accepted(event('shift_start',shift,version,at));
+  const work=()=>event('segment_change',shift,version+1,at,{mode:'work',taskId:task.id});
+  await gateFailure(work(),worker,'projects',p,c=>c.query(`UPDATE employee_project_assignments SET status='revoked' WHERE tenant_id=$1 AND project_id=$2 AND employee_id=$3`,[tenant,p,employee.id]),()=>admin.query(`UPDATE employee_project_assignments SET status='active' WHERE tenant_id=$1 AND project_id=$2 AND employee_id=$3`,[tenant,p,employee.id]),'assignment_required');
+  await gateFailure(work(),worker,'projects',p,c=>c.query(`UPDATE admission_templates SET version=version+1 WHERE tenant_id=$1 AND project_id=$2`,[tenant,p]),()=>admin.query(`UPDATE admission_templates SET version=version-1 WHERE tenant_id=$1 AND project_id=$2`,[tenant,p]),'admission_required');
+  // The new failed attempt is created through the real production command inside the observed project wait.
+  const gate=await admin.connect();let pending:Promise<any>|undefined;
+  try{
+    await gate.query('BEGIN');await gate.query(`SELECT id FROM employees WHERE tenant_id=$1 AND id=$2 FOR NO KEY UPDATE`,[tenant,employee.id]);
+    const pid=(await gate.query(`SELECT pg_backend_pid() pid`)).rows[0].pid;
+    // A project owner first creates the attempt, then queues work behind it on employee.
+    const t=await ok(`/projects/${p}/admission-template`);
+    const checkCall=req(`/employees/${employee.id}/admission-checks`,command({projectId:p,templateVersion:t.version,answers:t.items.map((i:any)=>({itemId:i.id,value:false}))}));
+    await waiters(pid);pending=batch([work()]);await waiters(pid,2);await gate.query('COMMIT');const newer=await checkCall;assert.equal(newer.status,201);assert.equal((await pending)[0].code,'admission_required');
+  }finally{await gate.query('ROLLBACK');gate.release();await pending;await refreshAdmission();}
+  for(const [change,restore] of [[`version=version+1`,`version=${q.version}`],[`status='revoked'`,`status='active'`],[`valid_until='2000-01-01'`,`valid_until='2028-01-01'`],[`valid_until='2027-01-14'`,`valid_until='2028-01-01'`]]){
+    await gateFailure(work(),worker,'employees',employee.id,c=>c.query(`UPDATE employee_qualifications SET ${change} WHERE tenant_id=$1 AND id=$2`,[tenant,q.id]),()=>admin.query(`UPDATE employee_qualifications SET ${restore} WHERE tenant_id=$1 AND id=$2`,[tenant,q.id]),'admission_required');
+  }
+  await gateFailure(work(),worker,'projects',p,c=>c.query(`UPDATE daily_tasks SET status='cancelled' WHERE tenant_id=$1 AND id=$2`,[tenant,task.id]),()=>admin.query(`UPDATE daily_tasks SET status='published' WHERE tenant_id=$1 AND id=$2`,[tenant,task.id]),'published_managed_task_required');
+  await gateFailure({...work(),onBehalfReason:'Assist'},director,'memberships',worker,c=>c.query(`UPDATE memberships SET status='revoked' WHERE tenant_id=$1 AND user_id=$2`,[tenant,worker]),()=>admin.query(`UPDATE memberships SET status='active' WHERE tenant_id=$1 AND user_id=$2`,[tenant,worker]),'employee_not_ready');
+  // Inclusive workDate boundary remains valid when the current exact evidence has that expiry.
+  await admin.query(`UPDATE employee_qualifications SET valid_until='2027-01-15' WHERE tenant_id=$1 AND id=$2`,[tenant,q.id]);await refreshAdmission();
+  await accepted(work());await accepted(event('shift_end',shift,version+2,'2027-02-01T00:00:00.001Z'));
+  await admin.query(`UPDATE employee_qualifications SET valid_until='2028-01-01' WHERE tenant_id=$1 AND id=$2`,[tenant,q.id]);await refreshAdmission();
+});
+test('queued same receipt, same-version devices and competing projects serialize with one winner, without deadlocks',async()=>{
+  await ok(`/projects/${p2}/admission-template`,command({code:'safe2',title:'Second',items:[{id:'safe',label:'Safe',critical:true}],requiredQualificationCodes:[]}));await refreshAdmission(p2);
+  for(const mode of ['receipt','version','projects']){
+    const c=await admin.connect(),v=await currentVersion(),first=event('shift_start',id(),v,'2027-02-02T00:00:00Z');
+    const second=mode==='receipt'?first:{...first,requestId:id(),shiftId:id(),...(mode==='projects'?{projectId:p2}:{})};let calls:Promise<any>[]=[];
+    try{
+      await c.query('BEGIN');await c.query(`SELECT id FROM employees WHERE tenant_id=$1 AND id=$2 FOR NO KEY UPDATE`,[tenant,employee.id]);const pid=(await c.query(`SELECT pg_backend_pid() pid`)).rows[0].pid;
+      calls=[batch([first])];await waiters(pid);calls.push(batch([second]));await waiters(pid,2);await c.query('COMMIT');
+      const [a,b]=await Promise.all(calls);assert.equal(a[0].outcome,'success');assert.equal(b[0].outcome,mode==='receipt'?'duplicate':'error');
+      if(mode==='receipt')assert.deepEqual(b[0].result,a[0].result);else assert.equal(b[0].code,'stale_version');
+      assert.equal(await currentVersion(),v+1);assert.equal((await admin.query(`SELECT count(*)::int n FROM managed_shifts WHERE tenant_id=$1 AND employee_id=$2 AND ended_at IS NULL`,[tenant,employee.id])).rows[0].n,1);
+      await accepted(event('shift_end',first.shiftId,v+1,'2027-02-02T00:00:00Z'));
+    }finally{await c.query('ROLLBACK');c.release();await Promise.all(calls);}
+  }
+});
+test('exact replay rechecks current authority but survives business invalidation; managers close archived/revoked time with audited reason',async()=>{
+  const shift=id(),v=await currentVersion(),start=event('shift_start',shift,v,'2027-02-03T00:00:00Z');const original=await accepted(start);
+  await admin.query(`UPDATE employee_project_assignments SET status='revoked' WHERE tenant_id=$1 AND employee_id=$2`,[tenant,employee.id]);
+  await admin.query(`UPDATE admission_templates SET version=version+1 WHERE tenant_id=$1 AND project_id=$2`,[tenant,p]);
+  try{
+    assert.deepEqual((await batch([start]))[0].result,original);
+    await gateFailure(start,worker,'memberships',worker,c=>c.query(`UPDATE memberships SET role='pto' WHERE tenant_id=$1 AND user_id=$2`,[tenant,worker]),()=>admin.query(`UPDATE memberships SET role='worker' WHERE tenant_id=$1 AND user_id=$2`,[tenant,worker]),'role_denied');
+    await admin.query(`UPDATE employees SET status='archived' WHERE tenant_id=$1 AND id=$2`,[tenant,employee.id]);
+    await admin.query(`UPDATE memberships SET status='revoked' WHERE tenant_id=$1 AND user_id=$2`,[tenant,worker]);
+    const end=event('shift_end',shift,v+1,'2027-02-03T01:00:00Z');
+    assert.equal((await req('/execution/events',{events:[end]},worker)).status,403);
+    await admin.query(`UPDATE memberships SET status='active' WHERE tenant_id=$1 AND user_id=$2`,[tenant,worker]);assert.equal((await batch([end]))[0].code,'employee_denied');assert.equal((await batch([end],master))[0].code,'on_behalf_reason_required');
+    await admin.query(`UPDATE memberships SET status='revoked' WHERE tenant_id=$1 AND user_id=$2`,[tenant,worker]);
+    const cleanup={...end,onBehalfReason:'Resolve archived assignee open time'};const done=await accepted(cleanup,master);
+    assert.deepEqual((await batch([cleanup],master))[0].result,done);
+    const audit=(await admin.query(`SELECT actor_user_id,details FROM audit_log WHERE tenant_id=$1 AND details->>'requestId'=$2`,[tenant,cleanup.requestId])).rows[0];assert.equal(audit.actor_user_id,master);assert.equal(audit.details.onBehalfReason,cleanup.onBehalfReason);
+  }finally{
+    await admin.query(`UPDATE employees SET status='active' WHERE tenant_id=$1 AND id=$2`,[tenant,employee.id]);
+    await admin.query(`UPDATE memberships SET status='active' WHERE tenant_id=$1 AND user_id=$2`,[tenant,worker]);
+    await admin.query(`UPDATE admission_templates SET version=version-1 WHERE tenant_id=$1 AND project_id=$2`,[tenant,p]);await refreshAdmission();await refreshAdmission(p2);
+  }
+});
+test('all real people/task operation families share execution receipt namespace; unrelated receipts never satisfy dependencies',async()=>{
+  const shift=id(),v=await currentVersion(),start=event('shift_start',shift,v,'2027-02-04T00:00:00Z',{onBehalfReason:'Namespace proof'});
+  await accepted(start,director);await accepted(event('shift_end',shift,v+1,'2027-02-04T00:00:00Z',{onBehalfReason:'Namespace proof'}),director);
+  const zone=(await ok(`/projects/${p}/zones`)).items[0],type=(await ok(`/projects/${p}/work-types`)).items[0];
+  const qualification=(await ok(`/employees/${employee.id}/qualifications`)).items[0],admission=await ok(`/projects/${p}/admission-template`),front=await ok(`/projects/${p}/front-template`);
+  const crew=await ok(`/projects/${p}/crews`,command({name:'Namespace crew'}));
+  const templates={title:'Namespace',items:[{id:'safe',label:'Safe',critical:true}]};
+  const plan={zoneId:zone.id,workTypeId:type.id,title:'Namespace',workDate:'2027-01-15',plannedQuantity:'1',assigneeEmployeeId:employee.id,responsibleUserId:master,plannedStart:'2027-01-15T09:00:00+03:00',plannedEnd:'2027-01-15T10:00:00+03:00',rdReference:null};
+  const calls:[string,string,any][]=[
+    ['POST','/employees',{fullName:'Namespace',organizationId:org}],
+    ['PUT',`/employees/${employee.id}`,{fullName:'Namespace',organizationId:org,phone:null,userId:worker,expectedVersion:1,status:'active'}],
+    ['POST',`/employees/${employee.id}/qualifications`,{code:'extra',title:'Namespace'}],
+    ['PUT',`/employees/${employee.id}/qualifications/${qualification.id}`,{title:'Namespace',documentReference:null,validUntil:null,expectedVersion:1,status:'active'}],
+    ['POST',`/projects/${p}/admission-template`,{...templates,code:'safe',requiredQualificationCodes:[]}],
+    ['PUT',`/projects/${p}/admission-template`,{...templates,expectedVersion:1,requiredQualificationCodes:[]}],
+    ['POST',`/employees/${employee.id}/admission-checks`,{projectId:p,templateVersion:admission.version,answers:[{itemId:'safe',value:true}]}],
+    ['PUT',`/projects/${p}/memberships/${master}`,{expectedVersion:0,status:'active'}],
+    ['PUT',`/projects/${p}/assignments/${employee.id}`,{expectedVersion:0,status:'active',admissionCheckId:id()}],
+    ['POST',`/projects/${p}/crews`,{name:'Namespace'}],
+    ['PUT',`/projects/${p}/crews/${crew.id}/members/${employee.id}`,{expectedVersion:0,status:'active'}],
+    ['POST',`/projects/${p}/zones`,{name:'Namespace'}],
+    ['PUT',`/projects/${p}/zones/${zone.id}`,{name:'Namespace',expectedVersion:1,status:'active'}],
+    ['POST',`/projects/${p}/work-types`,{name:'Namespace',unit:'m',requiresRd:false,requiresId:false,requiresMaterialControl:false,requiresPredecessorAcceptance:false}],
+    ['PUT',`/projects/${p}/work-types/${type.id}`,{name:'Namespace',unit:'m',requiresRd:false,requiresId:false,requiresMaterialControl:false,requiresPredecessorAcceptance:false,expectedVersion:1,status:'active'}],
+    ['POST',`/projects/${p}/front-template`,{...templates,code:'front'}],
+    ['PUT',`/projects/${p}/front-template`,{...templates,expectedVersion:1}],
+    ['POST',`/projects/${p}/tasks`,plan],
+    ['PUT',`/projects/${p}/tasks/${task.id}`,{...plan,expectedVersion:1}],
+    ['POST',`/projects/${p}/tasks/${task.id}/front-checks`,{expectedVersion:1,templateVersion:front.version,answers:[{itemId:'ready',value:true}]}],
+    ...['submit','publish','reject','reopen','cancel'].map(action=>['POST',`/projects/${p}/tasks/${task.id}/${action}`,{expectedVersion:1,...(['reject','reopen','cancel'].includes(action)?{reason:'Namespace'}:{})}] as [string,string,any])
+  ];
+  const before=await executionState(),original=(await admin.query(`SELECT * FROM people_command_receipts WHERE tenant_id=$1 AND actor_user_id=$2 AND request_id=$3`,[tenant,director,start.requestId])).rows[0];
+  for(const [method,path,payload] of calls){const r=await req(path,{requestId:start.requestId,...payload},director,method);assert.equal(r.status,409,JSON.stringify({method,path,r}));assert.equal(r.body.error,'idempotency_payload_mismatch');}
+  assert.deepEqual(await executionState(),before);assert.deepEqual((await admin.query(`SELECT * FROM people_command_receipts WHERE tenant_id=$1 AND actor_user_id=$2 AND request_id=$3`,[tenant,director,start.requestId])).rows[0],original);
+  const receipts=(await admin.query(`SELECT * FROM people_command_receipts WHERE tenant_id=$1 AND actor_user_id=$2 AND operation<>'POST /execution/events' ORDER BY operation`,[tenant,director])).rows;
+  assert.ok(receipts.some(r=>r.operation===`POST /employees/${employee.id}/admission-checks`));
+  for(const receipt of receipts){
+    const reused={...start,requestId:receipt.request_id,shiftId:id(),expectedVersion:await currentVersion()};
+    assert.equal((await batch([reused],director))[0].code,'idempotency_payload_mismatch');
+    assert.deepEqual((await admin.query(`SELECT * FROM people_command_receipts WHERE tenant_id=$1 AND actor_user_id=$2 AND request_id=$3`,[tenant,director,receipt.request_id])).rows[0],receipt);
+    const dependent={...reused,requestId:id(),previousEventId:receipt.request_id};assert.equal((await batch([dependent],director))[0].code,'missing_dependency');assert.deepEqual(await effects(dependent.requestId),{receipts:0,audits:0,events:0});
+  }
+  // An execution predecessor belonging to another actor/project/employee is also unrelated.
+  for(const extra of [{previousEventId:start.requestId},{projectId:p2,previousEventId:start.requestId}]){
+    const dependent=event('shift_start',id(),await currentVersion(),'2027-02-04T00:00:00Z',extra);assert.equal((await batch([dependent]))[0].code,'missing_dependency');
+  }
+});
+test('start and final volume revalidate after waits; expired admission/cancelled work never strands an authorized worker end',async()=>{
+  const q=(await ok(`/employees/${employee.id}/qualifications`)).items[0];
+  const v=await currentVersion(),shift=id(),start=event('shift_start',shift,v,'2027-02-05T00:00:00Z');
+  await gateFailure(start,worker,'projects',p,c=>c.query(`UPDATE employee_project_assignments SET status='revoked' WHERE tenant_id=$1 AND project_id=$2 AND employee_id=$3`,[tenant,p,employee.id]),()=>admin.query(`UPDATE employee_project_assignments SET status='active' WHERE tenant_id=$1 AND project_id=$2 AND employee_id=$3`,[tenant,p,employee.id]),'assignment_required');
+  await accepted(start);await accepted(event('segment_change',shift,v+1,'2027-02-05T00:00:00Z',{mode:'work',taskId:task.id}));
+  await admin.query(`UPDATE employee_qualifications SET status='revoked' WHERE tenant_id=$1 AND id=$2`,[tenant,q.id]);
+  await admin.query(`UPDATE daily_tasks SET status='cancelled' WHERE tenant_id=$1 AND id=$2`,[tenant,task.id]);
+  try{
+    await accepted(event('segment_change',shift,v+2,'2027-02-05T00:00:00.001Z',{mode:'downtime',taskId:task.id,reasonCode:'safety',comment:'Admission revoked after work'}));
+    await accepted(event('segment_change',shift,v+3,'2027-02-05T00:00:00.002Z',{mode:'break'}));
+    await accepted(event('shift_end',shift,v+4,'2027-02-05T00:00:00.003Z'));
+  }finally{
+    await admin.query(`UPDATE employee_qualifications SET status='active' WHERE tenant_id=$1 AND id=$2`,[tenant,q.id]);
+    await admin.query(`UPDATE daily_tasks SET status='published' WHERE tenant_id=$1 AND id=$2`,[tenant,task.id]);
+  }
+  const report=()=>event('submit_volume',shift,v+5,'2027-02-05T01:00:00Z',{taskId:task.id,reportId:id(),submittedQuantity:'0.001'});
+  await gateFailure(report(),worker,'employees',employee.id,c=>c.query(`UPDATE employee_qualifications SET version=version+1 WHERE tenant_id=$1 AND id=$2`,[tenant,q.id]),()=>admin.query(`UPDATE employee_qualifications SET version=$3 WHERE tenant_id=$1 AND id=$2`,[tenant,q.id,q.version]),'admission_required');
+  await gateFailure(report(),worker,'projects',p,c=>c.query(`UPDATE daily_tasks SET status='cancelled' WHERE tenant_id=$1 AND id=$2`,[tenant,task.id]),()=>admin.query(`UPDATE daily_tasks SET status='published' WHERE tenant_id=$1 AND id=$2`,[tenant,task.id]),'published_managed_task_required');
+  const final=report(),result=await accepted(final);
+  await admin.query(`UPDATE employee_project_assignments SET status='revoked' WHERE tenant_id=$1 AND project_id=$2 AND employee_id=$3`,[tenant,p,employee.id]);
+  await admin.query(`UPDATE daily_tasks SET status='cancelled' WHERE tenant_id=$1 AND id=$2`,[tenant,task.id]);
+  try{assert.deepEqual((await batch([final]))[0].result,result);}finally{await admin.query(`UPDATE daily_tasks SET status='published' WHERE tenant_id=$1 AND id=$2`,[tenant,task.id]);await refreshAdmission();}
+});
+async function pendingExecutionTask(){
+  const zone=(await ok(`/projects/${p}/zones`)).items[0],type=(await ok(`/projects/${p}/work-types`)).items[0],front=await ok(`/projects/${p}/front-template`);
+  let t=await ok(`/projects/${p}/tasks`,command({zoneId:zone.id,workTypeId:type.id,title:'Concurrent plan',workDate:'2027-02-06',plannedQuantity:'1',assigneeEmployeeId:employee.id,responsibleUserId:master,plannedStart:'2027-02-06T09:00:00+03:00',plannedEnd:'2027-02-06T10:00:00+03:00',rdReference:null}));
+  await ok(`/projects/${p}/tasks/${t.id}/front-checks`,command({expectedVersion:t.version,templateVersion:front.version,answers:front.items.map((i:any)=>({itemId:i.id,value:true}))}));
+  t=await ok(`/projects/${p}/tasks/${t.id}`);const submitted=await req(`/projects/${p}/tasks/${t.id}/submit`,command({expectedVersion:t.version}));assert.equal(submitted.status,200);return submitted.body;
+}
+test('actual publication and employee archive commands coexist with queued starts in both lock orderings',async()=>{
+  // Publication first; start waits on its project while both serialize on the employee.
+  for(const publicationFirst of [true,false]){
+    const t=await pendingExecutionTask(),c=await admin.connect(),v=await currentVersion(),shift=id();let pub:Promise<any>|undefined,start:Promise<any>|undefined;
+    try{
+      await c.query('BEGIN');await c.query(`SELECT id FROM employees WHERE tenant_id=$1 AND id=$2 FOR NO KEY UPDATE`,[tenant,employee.id]);const pid=(await c.query(`SELECT pg_backend_pid() pid`)).rows[0].pid;
+      const publish=()=>req(`/projects/${p}/tasks/${t.id}/publish`,command({expectedVersion:t.version}));
+      const begin=()=>batch([event('shift_start',shift,v,'2027-02-06T00:00:00Z')]);
+      if(publicationFirst){pub=publish();await waiters(pid);start=begin();}else{start=begin();await waiters(pid);pub=publish();}
+      await waiters(pid,2);await c.query('COMMIT');assert.equal((await pub).status,200);assert.equal((await start)[0].outcome,'success');
+      await accepted(event('shift_end',shift,v+1,'2027-02-06T00:00:00Z'));
+      const published=await ok(`/projects/${p}/tasks/${t.id}`);assert.equal((await req(`/projects/${p}/tasks/${t.id}/cancel`,command({expectedVersion:published.version,reason:'Release next publication test interval'}))).status,200);
+    }finally{await c.query('ROLLBACK');c.release();await pub;await start;}
+  }
+  for(const archiveFirst of [true,false]){
+    const c=await admin.connect(),v=await currentVersion(),shift=id(),e=await ok(`/employees/${employee.id}`);let archive:Promise<any>|undefined,start:Promise<any>|undefined;
+    try{
+      await c.query('BEGIN');await c.query(`SELECT id FROM employees WHERE tenant_id=$1 AND id=$2 FOR NO KEY UPDATE`,[tenant,employee.id]);const pid=(await c.query(`SELECT pg_backend_pid() pid`)).rows[0].pid;
+      const archiveCall=()=>req(`/employees/${employee.id}`,command({expectedVersion:e.version,fullName:e.fullName,organizationId:e.organizationId,phone:e.phone,userId:e.userId,status:'archived'}),director,'PUT');
+      const begin=()=>batch([event('shift_start',shift,v,'2027-02-07T00:00:00Z')]);
+      if(archiveFirst){archive=archiveCall();await waiters(pid);start=begin();}else{start=begin();await waiters(pid);archive=archiveCall();}
+      await waiters(pid,2);await c.query('COMMIT');assert.equal((await archive).status,200);const outcome=(await start)[0];
+      if(archiveFirst){assert.equal(outcome.code,'employee_denied');assert.equal(await currentVersion(),v);}
+      else{assert.equal(outcome.outcome,'success');await accepted(event('shift_end',shift,v+1,'2027-02-07T00:00:00Z',{onBehalfReason:'Resolve employee archived after start'}),director);}
+    }finally{
+      await c.query('ROLLBACK');c.release();await archive;await start;
+      await admin.query(`UPDATE employees SET status='active' WHERE tenant_id=$1 AND id=$2`,[tenant,employee.id]);await refreshAdmission();await refreshAdmission(p2);
+    }
+  }
+  // Immutable publication snapshots and base task plan survive every execution mutation/race.
+  assert.deepEqual(await ok(`/projects/${p}/tasks/${task.id}`),task);
+});
+test('real foreign tenant/project, draft/pending/legacy/cancelled/other-assignee task references cannot authorize work',async()=>{
+  const v=await currentVersion(),shift=id(),start=event('shift_start',shift,v,'2027-02-08T00:00:00Z');
+  for(const extra of [{projectId:foreignProject},{employeeId:foreignEmployee}]){
+    const e={...start,requestId:id(),onBehalfReason:'Cannot cross tenant',...extra};assert.equal((await batch([e],director))[0].status,404);assert.deepEqual(await effects(e.requestId),{receipts:0,audits:0,events:0});
+  }
+  await accepted(start);
+  const pending=await pendingExecutionTask();
+  const legacy=id();await admin.query(`INSERT INTO daily_tasks(tenant_id,id,project_id,title,work_date,planned_quantity,unit,assignee_employee_id) VALUES($1,$2,$3,'Legacy own','2027-02-08',1,'m3',$4)`,[tenant,legacy,p,employee.id]);
+  const otherTask=(await admin.query(`SELECT id FROM daily_tasks WHERE tenant_id=$1 AND project_id=$2 AND assignee_employee_id<>$3 LIMIT 1`,[tenant,p,employee.id])).rows[0].id;
+  const list=[{taskId:pending.id,code:'published_managed_task_required'},{taskId:legacy,code:'published_managed_task_required'},{taskId:otherTask,code:'task_reference_denied'},{taskId:id(),code:'task_reference_denied'}];
+  for(const entry of list){const e=event('segment_change',shift,v+1,'2027-02-08T00:00:00Z',{mode:'work',taskId:entry.taskId});assert.equal((await batch([e]))[0].code,entry.code);assert.deepEqual(await effects(e.requestId),{receipts:0,audits:0,events:0});}
+  for(const action of ['reject','submit','reopen','submit','cancel']){
+    const current=await ok(`/projects/${p}/tasks/${pending.id}`);const response=await req(`/projects/${p}/tasks/${pending.id}/${action}`,command({expectedVersion:current.version,...(action==='submit'?{}:{reason:'Task state must not authorize execution'})}));assert.equal(response.status,200);
+    const e=event('segment_change',shift,v+1,'2027-02-08T00:00:00Z',{mode:'work',taskId:pending.id});assert.equal((await batch([e]))[0].code,'published_managed_task_required');
+  }
+  await accepted(event('shift_end',shift,v+1,'2027-02-08T00:00:00Z'));
+  assert.deepEqual((await admin.query(`SELECT * FROM task_publication_snapshots WHERE tenant_id=$1 AND task_id=$2`,[tenant,task.id])).rows,publication);
+  assert.deepEqual(await ok(`/projects/${p}/tasks/${task.id}`),task);
 });
