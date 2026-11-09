@@ -5,11 +5,14 @@ import {httpError} from './errors.js';
 import {reserveCommand,replayCommand,completeCommand} from './durable-command.js';
 import {evidenceTimeScope} from './evidence-time-scope.js';
 import {timeCommand,totalKeys,type Totals} from './time-input.js';
-import {timeSource,canonicalSource} from './time-source.js';
+import {timeSource,canonicalSource,recordedTimePredicate} from './time-source.js';
+import {executionClock} from './execution-read.js';
+import {TimeXlsx,type TimeExportRow} from './time-xlsx.js';
 import type {Page} from './api-input.js';
 type Row=Record<string,any>;
 export class TimeService {
  constructor(private readonly pool:Pool){}
+ private readonly xlsx=new TimeXlsx();
  private async scope(c:PoolClient,a:Actor,p:string,e:string,director=false){const scope=await evidenceTimeScope(c,a,p,[e]);if(director&&scope.role!=='director')throw httpError(403,'role_denied');return scope;}
  private values(a:Actor,p:string,e:string,day:string){return [a.tenantId,p,e,day];}
  private async latest(c:PoolClient,a:Actor,p:string,e:string,day:string){return (await c.query(`SELECT r.* FROM time_approval_heads h JOIN time_approval_revisions r USING(tenant_id,project_id,employee_id,day,version) WHERE h.tenant_id=$1 AND h.project_id=$2 AND h.employee_id=$3 AND h.day=$4`,this.values(a,p,e,day))).rows[0] as Row|undefined;}
@@ -20,6 +23,35 @@ export class TimeService {
  }
  day(a:Actor,p:string,e:string,day:string){return withTenant(this.pool,a.tenantId,a.userId,async c=>{await this.scope(c,a,p,e);return this.result(e,p,day,await timeSource(c,a,p,e,day),await this.latest(c,a,p,e,day));});}
  history(a:Actor,p:string,e:string,day:string,page:Page){return withTenant(this.pool,a.tenantId,a.userId,async c=>{await this.scope(c,a,p,e);const v=this.values(a,p,e,day),where='tenant_id=$1 AND project_id=$2 AND employee_id=$3 AND day=$4';const total=(await c.query(`SELECT count(*)::int n FROM time_approval_revisions WHERE ${where}`,v)).rows[0].n;const rows=(await c.query(`SELECT * FROM time_approval_revisions WHERE ${where} ORDER BY version DESC LIMIT $5 OFFSET $6`,[...v,page.limit,page.offset])).rows;return {items:rows.map(r=>this.revision(r)),total,...page};});}
+ async export(a:Actor,p:string,range:{from:string;to:string}){
+  const snapshot=await withTenant(this.pool,a.tenantId,a.userId,async c=>{
+   // Project serialization freezes03a sources before enumeration. All remaining locks
+   // follow the same sorted employee -> memberships/grants -> heads order as commands.
+   if(!(await c.query(`SELECT id FROM projects WHERE tenant_id=$1 AND id=$2 FOR NO KEY UPDATE`,[a.tenantId,p])).rowCount)throw httpError(404,'not_found');
+   const clock=await executionClock(c,a,range.from);
+   const recorded=(await c.query(`SELECT DISTINCT s.employee_id,to_char(d.civil_day,'YYYY-MM-DD') AS "day" FROM managed_segments s CROSS JOIN generate_series($3::date,$4::date,interval '1 day') d(civil_day) WHERE s.tenant_id=$1 AND s.project_id=$2 AND ${recordedTimePredicate('d.civil_day::date','$5','$6')} ORDER BY s.employee_id,"day" LIMIT 10001`,[a.tenantId,p,range.from,range.to,clock.timezone,clock.asOf])).rows;
+   const ids=[...new Set(recorded.map(r=>r.employee_id))].sort();
+   await evidenceTimeScope(c,a,p,ids,false,undefined,['director','master','pto']);
+   if(recorded.length>10000)throw httpError(422,'time_export_row_limit');
+   await c.query(`SELECT employee_id,day FROM time_approval_heads WHERE tenant_id=$1 AND project_id=$2 AND employee_id=ANY($3::uuid[]) AND day BETWEEN $4 AND $5 ORDER BY employee_id,day FOR NO KEY UPDATE`,[a.tenantId,p,ids,range.from,range.to]);
+   const project=(await c.query(`SELECT name FROM projects WHERE tenant_id=$1 AND id=$2`,[a.tenantId,p])).rows[0];
+   const labels=new Map((await c.query(`SELECT id,full_name FROM employees WHERE tenant_id=$1 AND id=ANY($2::uuid[])`,[a.tenantId,ids])).rows.map(e=>[e.id,e.full_name]));
+   const rows:TimeExportRow[]=[],invalid:{employeeId:string;day:string;status:string}[]=[];
+   for(const r of recorded){
+    const current=await timeSource(c,a,p,r.employee_id,r.day,clock),latest=await this.latest(c,a,p,r.employee_id,r.day);
+    const result=this.result(r.employee_id,p,r.day,current,latest);
+    if(!result.isCurrent){invalid.push({employeeId:r.employee_id,day:r.day,status:result.status});if(invalid.length===20)break;continue;}
+    rows.push({employeeId:r.employee_id,employeeName:labels.get(r.employee_id)!,day:r.day,revision:this.revision(latest!)});
+   }
+   // Bounded actionable identifiers, never omit a recorded employee/day silently.
+   if(invalid.length)throw httpError(409,`time_export_incomplete:${JSON.stringify(invalid)}`);
+   return {projectId:p,projectName:project.name,timezone:clock.timezone,capturedAt:clock.asOf,...range,rows};
+  });
+  const bytes=await this.xlsx.render(snapshot); // All snapshot locks are released before ZIP work.
+  await withTenant(this.pool,a.tenantId,a.userId,c=>evidenceTimeScope(c,a,p,[],false,undefined,['director','master','pto']));
+  // Source changes after capture are allowed: hash/revision/clock attribute these exact bytes.
+  return bytes;
+ }
  command(a:Actor,p:string,e:string,day:string,input:unknown,revoke=false){
  const b=timeCommand(input,revoke);
  return withTenant(this.pool,a.tenantId,a.userId,async c=>{

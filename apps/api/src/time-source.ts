@@ -10,12 +10,17 @@ export function canonicalSource(v:any):string{
  if(v!==null&&typeof v==='object')return `{${Object.keys(v).sort().map(k=>`${JSON.stringify(k)}:${canonicalSource(v[k])}`).join(',')}}`;
  return JSON.stringify(v);
 }
+// Shared recorded-day membership for reads, approval and bounded export enumeration.
+export function recordedTimePredicate(day='$4::date',timezone='$5',asOf='$6'){
+ const ms=civilClipMs.replaceAll('$4::date',day).replaceAll('$5',timezone).replaceAll('$6',asOf);
+ return `s.started_at<=(${asOf}::timestamptz) AND ((${ms})>0 OR (s.started_at=s.ended_at AND s.started_at>=(${day}::timestamp AT TIME ZONE ${timezone}) AND s.started_at<((${day}+1)::timestamp AT TIME ZONE ${timezone})) OR (s.ended_at IS NULL AND s.started_at<((${day}+1)::timestamp AT TIME ZONE ${timezone}) AND ${asOf}::timestamptz>=(${day}::timestamp AT TIME ZONE ${timezone})))`;
+}
 export async function timeSource(c:PoolClient,a:Actor,p:string,e:string,day:string,clock?:Awaited<ReturnType<typeof executionClock>>){
  clock??=await executionClock(c,a,day);
  const bounds=(await c.query(`SELECT ($1::date::timestamp AT TIME ZONE $2) lo,(($1::date+1)::timestamp AT TIME ZONE $2) hi,to_char($3::timestamptz AT TIME ZONE $2,'YYYY-MM-DD') today`,[day,clock.timezone,clock.asOf])).rows[0];
  const lo=+bounds.lo,hi=+bounds.hi,now=+new Date(clock.asOf);
  // Include closed zero-time markers inside the half-open day and just-opened intervals at the captured clock.
- const segments=(await c.query(`SELECT s.*,${civilClipStart} clipped_start,${civilClipEnd} clipped_end,(${civilClipMs})::text ms FROM managed_segments s WHERE s.tenant_id=$1 AND s.project_id=$2 AND s.employee_id=$3 AND s.started_at<=( $6::timestamptz) AND ((${civilClipMs})>0 OR (s.started_at=s.ended_at AND s.started_at>=($4::date::timestamp AT TIME ZONE $5) AND s.started_at<(($4::date+1)::timestamp AT TIME ZONE $5)) OR (s.ended_at IS NULL AND s.started_at<(($4::date+1)::timestamp AT TIME ZONE $5) AND $6::timestamptz>=($4::date::timestamp AT TIME ZONE $5))) ORDER BY s.shift_id,s.started_at,s.id`,[a.tenantId,p,e,day,clock.timezone,clock.asOf])).rows;
+ const segments=(await c.query(`SELECT s.*,${civilClipStart} clipped_start,${civilClipEnd} clipped_end,(${civilClipMs})::text ms FROM managed_segments s WHERE s.tenant_id=$1 AND s.project_id=$2 AND s.employee_id=$3 AND ${recordedTimePredicate()} ORDER BY s.shift_id,s.started_at,s.id`,[a.tenantId,p,e,day,clock.timezone,clock.asOf])).rows;
  const shiftIds=[...new Set(segments.map(s=>s.shift_id))];
  const events=(await c.query(`SELECT * FROM managed_execution_events WHERE tenant_id=$1 AND project_id=$2 AND employee_id=$3 AND shift_id=ANY($4::uuid[]) AND kind<>'submit_volume' ORDER BY version`,[a.tenantId,p,e,shiftIds])).rows;
  // Replay ordered interval lifecycle. Timestamp ties are resolved by numeric employee version,

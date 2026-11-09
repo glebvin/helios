@@ -1,4 +1,4 @@
-import {uuid} from './api-input.js';
+import {uuid,day,queryInput} from './api-input.js';
 import {httpError} from './errors.js';
 export const totalKeys=['presenceMs','idleMs','workMs','breakMs','downtimeMs'] as const;
 export type Totals=Record<typeof totalKeys[number],string>;
@@ -17,4 +17,10 @@ export function timeCommand(v:unknown,revoke=false){
  let confirmedTotals:Totals|undefined;
  if(b.confirmedTotals!==undefined){const t=strictObject(b.confirmedTotals,totalKeys);for(const k of totalKeys)if(typeof t[k]!=='string'||! /^(0|[1-9][0-9]*)$/.test(t[k]))throw httpError(400,'invalid_totals');confirmedTotals=t as Totals;}
  return {...base,sourceHash:b.sourceHash as string,acknowledgeSuspicious:b.acknowledgeSuspicious as boolean|undefined,confirmedTotals};
+}
+
+export function timeRange(q:Record<string,unknown>){
+ queryInput(q,['from','to']);const from=day(q.from),to=day(q.to);
+ if(!from||!to||from>to||(Date.parse(to)-Date.parse(from))/86400000>=31)throw httpError(400,'invalid_time_range');
+ return {from,to};
 }

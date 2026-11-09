@@ -3,7 +3,7 @@ import type {Actor} from './workforce.service.js';
 import {httpError} from './errors.js';
 // Same-client current authority; order matches 03a and people administration. No I/O in this transaction.
 // Receipt (caller) -> project -> sorted employees -> sorted memberships -> grants -> worker assignment -> file/head (caller).
-export async function evidenceTimeScope(c:PoolClient,a:Actor,projectId:string,employeeIds:string[]=[],mutation=false,onBehalfReason?:string){
+export async function evidenceTimeScope(c:PoolClient,a:Actor,projectId:string,employeeIds:string[]=[],mutation=false,onBehalfReason?:string,allowedRoles?:readonly string[]){
  if(!(await c.query(`SELECT id FROM projects WHERE tenant_id=$1 AND id=$2 FOR NO KEY UPDATE`,[a.tenantId,projectId])).rowCount)throw httpError(404,'not_found');
  const employees=(await c.query(`SELECT id FROM employees WHERE tenant_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR NO KEY UPDATE`,[a.tenantId,[...new Set(employeeIds)].sort()])).rows;
  if(employees.length!==new Set(employeeIds).size)throw httpError(404,'not_found');
@@ -14,6 +14,7 @@ export async function evidenceTimeScope(c:PoolClient,a:Actor,projectId:string,em
  await c.query(`SELECT user_id FROM project_memberships WHERE tenant_id=$1 AND project_id=$2 AND user_id=ANY($3::uuid[]) ORDER BY user_id FOR NO KEY UPDATE`,[a.tenantId,projectId,ids]);
  const m=(await c.query(`SELECT role,status FROM memberships WHERE tenant_id=$1 AND user_id=$2`,[a.tenantId,a.userId])).rows[0];
  if(!m||m.status!=='active'||!['director','master','pto','worker'].includes(m.role)||mutation&&m.role==='pto')throw httpError(403,'role_denied');
+ if(allowedRoles&&!allowedRoles.includes(m.role))throw httpError(403,'role_denied');
  if(m.role!=='director'&&!(await c.query(`SELECT 1 FROM project_memberships WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3 AND status='active'`,[a.tenantId,projectId,a.userId])).rowCount)throw httpError(404,'not_found');
  if(m.role==='worker'){
   if(!current.length)throw httpError(404,'not_found');

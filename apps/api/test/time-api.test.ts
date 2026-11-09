@@ -8,7 +8,8 @@ import {request as httpRequest} from 'node:http';
 import {execFileSync} from 'node:child_process';
 import {EvidenceStorage} from '../src/evidence-storage.js';
 import {withTenant} from '../src/db.js';
-import {timeSource} from '../src/time-source.js';
+import {TimeXlsx} from '../src/time-xlsx.js';
+import {timeSource,canonicalSource} from '../src/time-source.js';
 import {NestFactory} from '@nestjs/core';
 import type {INestApplication} from '@nestjs/common';
 import {AppModule} from '../src/app.module.js';
@@ -245,4 +246,123 @@ test('one captured clock records a just-opened zero interval and half-open midni
 
 test('XLSX tracer: actual HTTP empty snapshot is a downloadable workbook',async()=>{
  const r=await req(`/projects/${p}/time/export.xlsx?from=2026-01-01&to=2026-01-01`,undefined,director);assert.equal(r.status,200,JSON.stringify(r));assert.ok(Buffer.isBuffer(r.body));assert.equal(r.body.subarray(0,2).toString(),'PK');
+});
+
+const exportPath=(from:string,to=from,project=p)=>`/projects/${project}/time/export.xlsx?from=${from}&to=${to}`;
+async function workbook(bytes:Buffer){
+ const file=join(root,`time-${id()}.xlsx`);await writeFile(file,bytes);
+ try{const sheets=JSON.parse(execFileSync('python3',[new URL('./inspect-time-xlsx.py',import.meta.url).pathname,file],{encoding:'utf8',maxBuffer:64*1024*1024}));
+  const [head,...rows]=sheets.Time,records=rows.map((r:any[])=>Object.fromEntries(head.map((c:any,i:number)=>[c.value,r[i].value]))),meta=Object.fromEntries(sheets.Snapshot.slice(1).map((r:any[])=>r.map(c=>c.value)));return {sheets,records,meta};
+ }finally{await unlink(file);}
+}
+test('XLSX independently parsed header-only snapshot, HTTP headers and strict civil range',async()=>{
+ const r=await fetch(`${base}/api/v1${exportPath('2026-01-01','2026-01-31')}`,{headers:headers(director)});assert.equal(r.status,200);
+ assert.equal(r.headers.get('content-type'),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');assert.match(r.headers.get('content-disposition')!,/^attachment; filename="time-2026-01-01-2026-01-31.xlsx"$/);assert.equal(r.headers.get('cache-control'),'private, no-store');assert.equal(r.headers.get('x-content-type-options'),'nosniff');
+ const x=await workbook(Buffer.from(await r.arrayBuffer()));assert.equal(x.records.length,0);assert.equal(x.meta.empty,'true');assert.equal(x.meta.recordedRows,'0');assert.match(x.meta.explanation,/No recorded/);assert.ok(!JSON.stringify(x).includes('provisional'));
+ for(const q of ['', '?from=2026-01-01','?from=2026-01-01&to=2026-02-01','?from=2026-02-02&to=2026-02-01','?from=2026-02-30&to=2026-03-01','?from=0000-01-01&to=2026-01-01','?from=2026-01-01&to=2026-01-01&asOf=2026-01-01','?from=2026-01-01&from=2026-01-02&to=2026-01-02'])assert.equal((await req(`/projects/${p}/time/export.xlsx${q}`,undefined,director)).status,400,q);
+});
+test('XLSX complete current approved snapshot keeps zero, exact source vs override, identity and safe typed labels',async()=>{
+ await lifecycle('2026-02-01T12:00:00Z',[{at:'2026-02-01T12:00:00Z'}]);await lifecycle('2026-02-02T12:00:00Z',[{at:'2026-02-02T12:00:00.001Z'}]);
+ const reason='=SUM(A1:A2)\u0001<&> + - @';assert.equal((await approval('2026-02-01',{reason})).status,201);assert.equal((await approval('2026-02-02',{reason,confirmedTotals:{...zeroTotals,presenceMs:'3600003',workMs:'3600001',breakMs:'2'}})).status,201);
+ const sources=await Promise.all(['2026-02-01','2026-02-02'].map(d=>source(d)));
+ try{for(const prefix of ['=','+','-','@']){
+  await admin.query(`UPDATE projects SET name=$3 WHERE tenant_id=$1 AND id=$2`,[tenant,p,prefix+'Project\u0002<&>']);await admin.query(`UPDATE employees SET full_name=$3 WHERE tenant_id=$1 AND id=$2`,[tenant,employee,prefix+'Worker\u0003<&>']);
+  for(const u of [director,master,pto]){const r=await req(exportPath('2026-02-01','2026-02-02'),undefined,u);assert.equal(r.status,200,JSON.stringify(r));const x=await workbook(r.body);assert.equal(x.records.length,2);assert.equal(x.meta.empty,'false');assert.equal(x.meta.recordedRows,'2');assert.match(x.meta.hoursRounding,/half up.*six/);
+   for(const [i,row] of x.records.entries()){assert.equal(row.projectId,p);assert.equal(row.projectName,prefix+'Project<&>');assert.equal(row.employeeId,employee);assert.equal(row.employeeName,prefix+'Worker<&>');assert.equal(row.day,sources[i].day);assert.equal(row.sourceHash,sources[i].sourceHash);assert.equal(row.approvalVersion,String(sources[i].approvalVersion));assert.equal(row.actorUserId,director);assert.equal(row.requestId,sources[i].latest.requestId);assert.equal(row.approvedAt,sources[i].latest.recordedAt);assert.equal(row.reason,'=SUM(A1:A2)<&> + - @');assert.equal(row.capturedAt,x.meta.capturedAt);assert.equal(row.timezone,'UTC');
+    for(const k of Object.keys(zeroTotals)){assert.equal(row['source.'+k],sources[i].source.totals[k]);assert.equal(row['confirmed.'+k],sources[i].latest.confirmedTotals[k]);}assert.ok(!JSON.stringify(row).includes('provisional'));
+   }assert.equal(x.records[0]['source.presenceMs'],'0');assert.equal(x.records[1]['source.presenceMs'],'1');assert.equal(x.records[1]['source.presenceHours'],'0');assert.equal(x.records[1]['confirmed.workHours'],'1');assert.equal(x.records[1]['confirmed.presenceHours'],'1.000001');assert.equal(x.records[1]['confirmed.breakHours'],'0.000001');assert.equal(x.records[1].overridden,'1');
+  }
+ }}finally{await admin.query(`UPDATE projects SET name='P1' WHERE tenant_id=$1 AND id=$2`,[tenant,p]);await admin.query(`UPDATE employees SET full_name='Worker' WHERE tenant_id=$1 AND id=$2`,[tenant,employee]);}
+});
+test('XLSX refuses every missing, stale, revoked and relevant open row without filtering',async()=>{
+ const day='2026-02-03';await lifecycle(day+'T10:00:00Z',[{at:day+'T11:00:00Z'}]);
+ async function denied(status:string){const r=await req(exportPath('2026-02-01',day),undefined,director);assert.equal(r.status,409,JSON.stringify(r));assert.match(r.body.error,/time_export_incomplete/);assert.ok(r.body.error.includes(employee));assert.ok(r.body.error.includes(day));assert.ok(r.body.error.includes(status));}
+ await denied('unapproved');assert.equal((await approval(day)).status,201);assert.equal((await req(exportPath('2026-02-01',day),undefined,director)).status,200);
+ const l=await lifecycle(day+'T12:00:00Z',[{at:day+'T13:00:00Z'}]);await denied('stale');assert.equal((await approval(day)).status,201);
+ const s=await source(day);assert.equal((await req(timePath(day)+'/revoke',{requestId:id(),expectedApprovalVersion:s.approvalVersion,reason:'Withdraw'},director)).status,201);await denied('revoked');assert.equal((await approval(day)).status,201);
+ await admin.query(`UPDATE managed_execution_events SET review_flags='{"delayed":true}' WHERE tenant_id=$1 AND actor_user_id=$2 AND request_id=$3`,[tenant,l.events[0].actor,l.events[0].requestId]);await denied('stale');assert.equal((await approval(day)).status,201);
+ const opened=await lifecycle(day+'T14:00:00Z',[],{open:true});await denied('stale');
+ const requestId=id(),version=Number((await admin.query(`SELECT version FROM managed_execution_streams WHERE tenant_id=$1 AND employee_id=$2`,[tenant,employee])).rows[0].version)+1;
+ await admin.query(`INSERT INTO people_command_receipts(tenant_id,actor_user_id,request_id,operation,command_hash,status,result) VALUES($1,$2,$3,'fixture',repeat('a',64),201,'{}')`,[tenant,worker,requestId]);
+ await admin.query(`INSERT INTO managed_execution_events(tenant_id,actor_user_id,request_id,employee_id,project_id,shift_id,kind,version,occurred_at,received_at,original_payload,command_hash,review_flags) VALUES($1,$2,$3,$4,$5,$6,'shift_end',$7,$8,now(),'{}',repeat('a',64),'{}')`,[tenant,worker,requestId,employee,p,opened.shift,version,day+'T15:00:00Z']);
+ await admin.query(`UPDATE managed_segments SET ended_at=$3 WHERE tenant_id=$1 AND shift_id=$2`,[tenant,opened.shift,day+'T15:00:00Z']);await admin.query(`UPDATE managed_shifts SET ended_at=$3 WHERE tenant_id=$1 AND id=$2`,[tenant,opened.shift,day+'T15:00:00Z']);await admin.query(`UPDATE managed_execution_streams SET version=$3 WHERE tenant_id=$1 AND employee_id=$2`,[tenant,employee,version]);
+});
+test('XLSX historical director and granted master/PTO authority survives archived employee and assignment; workers and foreign scopes denied',async()=>{
+ try{await admin.query(`UPDATE employees SET status='archived',user_id=NULL WHERE tenant_id=$1 AND id=$2`,[tenant,employee]);await admin.query(`UPDATE employee_project_assignments SET status='revoked' WHERE tenant_id=$1 AND project_id=$2 AND employee_id=$3`,[tenant,p,employee]);
+  for(const u of [director,master,pto])assert.equal((await req(exportPath('2026-02-01','2026-02-02'),undefined,u)).status,200);
+  assert.equal((await req(exportPath('2026-02-01'),undefined,worker)).status,403);assert.equal((await req(exportPath('2026-01-01'),undefined,worker)).status,403);assert.equal((await req(exportPath('2026-01-01'),undefined,outsider)).status,403);assert.equal((await req(exportPath('2026-01-01','2026-01-01',foreignProject),undefined,director)).status,404);assert.equal((await req(exportPath('2026-01-01','2026-01-01',p2),undefined,master)).status,404);
+ }finally{await admin.query(`UPDATE employees SET status='active',user_id=$3 WHERE tenant_id=$1 AND id=$2`,[tenant,employee,worker]);await admin.query(`UPDATE employee_project_assignments SET status='active' WHERE tenant_id=$1 AND project_id=$2 AND employee_id=$3`,[tenant,p,employee]);}
+});
+test('XLSX fresh authority after actual PostgreSQL waits rejects role/status/grant revocation',async()=>{
+ const cases=[{table:'memberships',user:director,set:"role='worker'",reset:"role='director'",status:403},{table:'memberships',user:director,set:"status='revoked'",reset:"status='active'",status:403},{table:'project_memberships',user:master,set:"status='revoked'",reset:"status='active'",status:404}];
+ for(const v of cases){const c=await admin.connect();let pending:Promise<any>|undefined;const where=`tenant_id=$1 AND user_id=$2${v.table==='project_memberships'?' AND project_id=$3':''}`,values=v.table==='project_memberships'?[tenant,v.user,p]:[tenant,v.user];
+  try{await c.query('BEGIN');await c.query(`SELECT 1 FROM ${v.table} WHERE ${where} FOR NO KEY UPDATE`,values);const pid=(await c.query('SELECT pg_backend_pid() pid')).rows[0].pid;pending=req(exportPath('2026-02-01','2026-02-02'),undefined,v.user);await waiters(pid);await c.query(`UPDATE ${v.table} SET ${v.set} WHERE ${where}`,values);await c.query('COMMIT');assert.equal((await pending).status,v.status);
+  }finally{await c.query('ROLLBACK');c.release();await pending;await admin.query(`UPDATE ${v.table} SET ${v.reset} WHERE ${where}`,values);}
+ }
+});
+test('XLSX rendering holds no database scope locks; post-render current ACL fails closed for role/status/grant changes',async()=>{
+ const cases=[{table:'memberships',user:director,set:"role='worker'",reset:"role='director'",status:403},{table:'memberships',user:director,set:"status='revoked'",reset:"status='active'",status:403},{table:'project_memberships',user:master,set:"status='revoked'",reset:"status='active'",status:404},{table:'memberships',user:pto,set:"role='worker'",reset:"role='pto'",status:403}];
+ for(const v of cases){const original=TimeXlsx.prototype.render;let release!:()=>void,entered!:()=>void;const gate=new Promise<void>(r=>release=r),seen=new Promise<void>(r=>entered=r);let pending:Promise<any>|undefined;
+  TimeXlsx.prototype.render=async function(s){entered();await gate;return original.call(this,s);};const where=`tenant_id=$1 AND user_id=$2${v.table==='project_memberships'?' AND project_id=$3':''}`,values=v.table==='project_memberships'?[tenant,v.user,p]:[tenant,v.user];
+  try{pending=req(exportPath('2026-02-02'),undefined,v.user);await Promise.race([seen,pending.then(r=>{throw new Error('Export ended before render: '+JSON.stringify(r));})]);const c=await admin.connect();try{await c.query('BEGIN');await c.query("SET LOCAL lock_timeout='1s'");await c.query(`UPDATE ${v.table} SET ${v.set} WHERE ${where}`,values);await c.query('COMMIT');}finally{await c.query('ROLLBACK');c.release();}release();const r=await pending;assert.equal(r.status,v.status,JSON.stringify(r));assert.ok(!Buffer.isBuffer(r.body));
+  }finally{release();TimeXlsx.prototype.render=original;await pending;await admin.query(`UPDATE ${v.table} SET ${v.reset} WHERE ${where}`,values);}
+ }
+});
+test('XLSX captured snapshot remains attributable after valid03a event arrives during unlocked rendering',async()=>{
+ const day='2026-11-08',sh=id();await accept(await interval('shift_start',sh,day+'T09:00:00Z'));await accept(await interval('shift_end',sh,day+'T10:00:00Z'));assert.equal((await approval(day,{},otherEmployee)).status,201);const s=await source(day,otherEmployee);
+ const original=TimeXlsx.prototype.render;let release!:()=>void,entered!:(s:any)=>void;const gate=new Promise<void>(r=>release=r),seen=new Promise<any>(r=>entered=r);let pending:Promise<any>|undefined;
+ TimeXlsx.prototype.render=async function(s){entered(s);await gate;return original.call(this,s);};
+ try{pending=req(exportPath(day),undefined,director);const captured=await Promise.race([seen,pending.then(r=>{throw new Error('Export ended before render: '+JSON.stringify(r));})]);assert.equal(captured.rows.length,1);assert.equal(captured.rows[0].revision.sourceHash,s.sourceHash);
+  const late=id();await accept(await interval('shift_start',late,day+'T11:00:00Z'));await accept(await interval('shift_end',late,day+'T12:00:00Z'));assert.equal((await source(day,otherEmployee)).status,'stale');release();const r=await pending;assert.equal(r.status,200,JSON.stringify(r));const x=await workbook(r.body);assert.equal(x.records[0].sourceHash,s.sourceHash);assert.equal(x.records[0]['source.presenceMs'],'3600000');assert.equal(x.records[0].approvalVersion,String(s.approvalVersion));assert.equal(x.meta.capturedAt,captured.capturedAt);assert.equal((await req(exportPath(day),undefined,director)).status,409);
+ }finally{release();TimeXlsx.prototype.render=original;await pending;}
+});
+test('XLSX actual export/source-event project lock queues serialize both arrival orders',async()=>{
+ const day='2026-11-08';assert.equal((await approval(day,{},otherEmployee)).status,201);
+ for(const eventFirst of [true,false]){const s=await source(day,otherEmployee),sh=id(),ev=await interval('shift_start',sh,day+(eventFirst?'T13:00:00Z':'T15:00:00Z')),gate=await admin.connect();let ep:Promise<any>|undefined,xp:Promise<any>|undefined;
+  try{await gate.query('BEGIN');await gate.query(`SELECT id FROM projects WHERE tenant_id=$1 AND id=$2 FOR NO KEY UPDATE`,[tenant,p]);const pid=(await gate.query('SELECT pg_backend_pid() pid')).rows[0].pid;
+   if(eventFirst){ep=ingest(ev);await waiters(pid);xp=req(exportPath(day),undefined,director);}else{xp=req(exportPath(day),undefined,director);await waiters(pid);ep=ingest(ev);}await waiters(pid,2);await gate.query('COMMIT');assert.equal((await ep).outcome,'success');const x=await xp;assert.equal(x.status,eventFirst?409:200,JSON.stringify(x));if(!eventFirst){const book=await workbook(x.body);assert.equal(book.records[0].sourceHash,s.sourceHash);assert.equal(book.records[0].approvalVersion,String(s.approvalVersion));}
+  }finally{await gate.query('ROLLBACK');gate.release();await Promise.all([ep,xp]);}
+  await accept(await interval('shift_end',sh,day+(eventFirst?'T14:00:00Z':'T16:00:00Z')));assert.equal((await approval(day,{},otherEmployee)).status,201);
+ }
+});
+test('XLSX actual civil DST 23/25-hour exports preserve exact milliseconds and hours',async()=>{
+ try{await admin.query(`UPDATE tenants SET timezone='Europe/Berlin' WHERE id=$1`,[tenant]);
+  for(const [day,start,end,total,hours] of [['2025-03-30','2025-03-29T23:00:00Z','2025-03-30T22:00:00Z','82800000','23'],['2025-10-26','2025-10-25T22:00:00Z','2025-10-26T23:00:00Z','90000000','25']]){
+   await lifecycle(start,[{at:end}]);assert.equal((await approval(day)).status,201);const r=await req(exportPath(day),undefined,director);assert.equal(r.status,200);const x=await workbook(r.body);assert.equal(x.records.length,1);assert.equal(x.records[0]['source.presenceMs'],total);assert.equal(x.records[0]['source.presenceHours'],hours);assert.equal(x.records[0]['confirmed.presenceMs'],total);assert.equal(x.meta.timezone,'Europe/Berlin');
+  }
+ }finally{await admin.query(`UPDATE tenants SET timezone='UTC' WHERE id=$1`,[tenant]);}
+});
+test('XLSX exact10000 recorded-day boundary renders all approvals;10001 including zero rejects; incomplete identifiers bounded',async()=>{
+ const project=id(),people=Array.from({length:323},(_,i)=>({employee:id(),shift:id(),segment:id(),open:id(),close:id(),days:i===322?18:31}));
+ await admin.query(`INSERT INTO projects(tenant_id,id,name) VALUES($1,$2,'Boundary')`,[tenant,project]);
+ await admin.query(`INSERT INTO employees(tenant_id,id,organization_id,full_name) SELECT $1,(x->>'employee')::uuid,$2,'Boundary employee' FROM jsonb_array_elements($3::jsonb) x`,[tenant,org,JSON.stringify(people)]);
+ const revisions:any[]=[],totals={...zeroTotals,presenceMs:'86400000',idleMs:'86400000'},flags={delayed:false,future:false,geoTimeMismatch:false,suspicious:false};
+ for(const person of people){
+  const start='2026-03-01T00:00:00.000Z',end=new Date(Date.parse(start)+person.days*86400000).toISOString();
+  await admin.query(`INSERT INTO managed_execution_streams(tenant_id,employee_id,version) VALUES($1,$2,2)`,[tenant,person.employee]);
+  await admin.query(`INSERT INTO managed_shifts(tenant_id,project_id,employee_id,id,started_at,ended_at) VALUES($1,$2,$3,$4,$5,$6)`,[tenant,project,person.employee,person.shift,start,end]);
+  await admin.query(`INSERT INTO managed_segments(tenant_id,project_id,employee_id,shift_id,id,mode,started_at,ended_at) VALUES($1,$2,$3,$4,$5,'idle',$6,$7)`,[tenant,project,person.employee,person.shift,person.segment,start,end]);
+  for(const [n,requestId,at,kind] of [[1,person.open,start,'shift_start'],[2,person.close,end,'shift_end']] as const){
+   await admin.query(`INSERT INTO people_command_receipts(tenant_id,actor_user_id,request_id,operation,command_hash,status,result) VALUES($1,$2,$3,'fixture',repeat('a',64),201,'{}')`,[tenant,director,requestId]);
+   await admin.query(`INSERT INTO managed_execution_events(tenant_id,actor_user_id,request_id,employee_id,project_id,shift_id,kind,version,occurred_at,received_at,original_payload,command_hash,review_flags) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,now(),'{}',repeat('a',64),'{}')`,[tenant,director,requestId,person.employee,project,person.shift,kind,n,at]);
+  }
+  for(let n=0;n<person.days;n++){
+   const lo=new Date(Date.parse(start)+n*86400000).toISOString(),hi=new Date(Date.parse(lo)+86400000).toISOString(),day=lo.slice(0,10);
+   const source={schemaVersion:1,tenantId:tenant,projectId:project,employeeId:person.employee,day,timezone:'UTC',civilStart:lo,civilEnd:hi,segments:[{id:person.segment,shiftId:person.shift,taskId:null,mode:'idle',clippedStart:lo,clippedEnd:hi,ms:'86400000',open:false}],zeroMarkers:[],totals,tasks:[],intervalEvents:[{tenantId:tenant,actorUserId:director,requestId:person.open,employeeId:person.employee,version:'1',shiftId:person.shift,kind:'shift_start',clippedOccurredAt:lo,flags},{tenantId:tenant,actorUserId:director,requestId:person.close,employeeId:person.employee,version:'2',shiftId:person.shift,kind:'shift_end',clippedOccurredAt:hi,flags}],hasOpenIntervals:false,suspicious:false};
+   revisions.push({employee:person.employee,day,source,hash:createHash('sha256').update(canonicalSource(source)).digest('hex'),request:id()});
+  }
+ }
+ assert.equal(revisions.length,10000);
+ const missing=await req(exportPath('2026-03-01','2026-03-31',project),undefined,director);assert.equal(missing.status,409);const issues=JSON.parse(missing.body.error.slice('time_export_incomplete:'.length));assert.equal(issues.length,20);assert.ok(issues.every((x:any)=>x.status==='unapproved'&&x.employeeId&&x.day));
+ // Fixture revisions are actual FK-scoped immutable rows; spot-check independently read canonical sources before bulk approvals.
+ for(const row of [revisions[0],revisions.at(-1)]){const actual=await source(row.day,row.employee,project);assert.equal(actual.sourceHash,row.hash);assert.deepEqual(actual.source,row.source);}
+ const encoded=JSON.stringify(revisions),c=await admin.connect();try{await c.query('BEGIN');
+  await c.query(`INSERT INTO people_command_receipts(tenant_id,actor_user_id,request_id,operation,command_hash,status,result) SELECT $1,$2,(x->>'request')::uuid,'fixture',repeat('a',64),201,'{}' FROM jsonb_array_elements($3::jsonb) x`,[tenant,director,encoded]);
+  await c.query(`INSERT INTO time_approval_revisions(tenant_id,project_id,employee_id,day,version,state,source,source_hash,source_totals,confirmed_totals,overridden,reason,acknowledged_suspicious,actor_user_id,request_id) SELECT $1,$2,(x->>'employee')::uuid,(x->>'day')::date,1,'approved',x->'source',x->>'hash',x->'source'->'totals',x->'source'->'totals',false,'Boundary fixture',false,$3,(x->>'request')::uuid FROM jsonb_array_elements($4::jsonb) x`,[tenant,project,director,encoded]);
+  await c.query(`INSERT INTO time_approval_heads(tenant_id,project_id,employee_id,day,version) SELECT $1,$2,(x->>'employee')::uuid,(x->>'day')::date,1 FROM jsonb_array_elements($3::jsonb) x`,[tenant,project,encoded]);await c.query('COMMIT');
+ }finally{await c.query('ROLLBACK');c.release();}
+ const exported=await req(exportPath('2026-03-01','2026-03-31',project),undefined,director);assert.equal(exported.status,200,JSON.stringify(exported));const x=await workbook(exported.body);assert.equal(x.records.length,10000);assert.equal(x.meta.recordedRows,'10000');assert.equal(new Set(x.records.map((r:any)=>r.employeeId+'/'+r.day)).size,10000);assert.equal(new Set(x.records.map((r:any)=>r.capturedAt)).size,1);
+ const expected=new Map(revisions.map(r=>[r.employee+'/'+r.day,r]));for(const row of x.records){const r=expected.get(row.employeeId+'/'+row.day);assert.ok(r);assert.equal(row.sourceHash,r.hash);assert.equal(row['source.presenceMs'],'86400000');assert.equal(row['confirmed.presenceMs'],'86400000');}
+ await lifecycle('2026-03-31T12:00:00Z',[{at:'2026-03-31T12:00:00Z'}],{project,employee:otherEmployee,actor:director});
+ const over=await req(exportPath('2026-03-01','2026-03-31',project),undefined,director);assert.equal(over.status,422);assert.equal(over.body.error,'time_export_row_limit');
 });
