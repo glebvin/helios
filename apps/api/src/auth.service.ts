@@ -1,15 +1,20 @@
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, type CanActivate, type ExecutionContext } from "@nestjs/common";
 import type { Pool } from "pg";
 import { withTenant } from "./db.js";
 import { httpError } from "./errors.js";
 import { hashToken, newToken, verifyPassword } from "./password.js";
 import type { Actor } from "./workforce.service.js";
+import { uuid } from "./api-input.js";
 
 @Injectable()
 export class AuthService {
   constructor(private readonly pool: Pool) {}
 
-  async login(email: string, password: string) {
+  async login(body: unknown) {
+    if (typeof body !== "object" || body === null || Array.isArray(body)) throw httpError(400, "invalid_login");
+    const { email, password } = body as Record<string, unknown>;
+    if (typeof email !== "string" || !email.trim() || email.length > 320 ||
+        typeof password !== "string" || !password || password.length > 1024) throw httpError(400, "invalid_login");
     const user = await this.pool.query(
       `SELECT id, email, name, password_hash FROM users WHERE lower(email) = $1`,
       [email.trim().toLowerCase()],
@@ -26,13 +31,13 @@ export class AuthService {
   }
 
   async actor(token: string, tenantId: string): Promise<Actor | null> {
-    if (!token || !tenantId) return null;
+    uuid(tenantId);
     const session = await this.pool.query(
       `SELECT user_id FROM sessions WHERE token_hash = $1 AND expires_at > now()`,
       [hashToken(token)],
     );
     const userId = session.rows[0]?.user_id as string | undefined;
-    if (!userId) return null;
+    if (!userId) throw httpError(401, "unauthorized");
     return withTenant(this.pool, tenantId, userId, async (client) => {
       const membership = await client.query(
         `SELECT m.role, u.name, u.email
@@ -46,4 +51,38 @@ export class AuthService {
       return { userId, tenantId, role: row.role as string, name: row.name as string, email: row.email as string };
     });
   }
+
+  async logout(token: string) {
+    await this.pool.query("DELETE FROM sessions WHERE token_hash = $1", [hashToken(token)]);
+    return { ok: true };
+  }
+}
+
+export type ActorRequest = {
+  headers: Record<string, unknown>;
+  actor?: Actor;
+  sessionToken?: string;
+};
+
+@Injectable()
+export class TenantGuard implements CanActivate {
+  constructor(@Inject(AuthService) private readonly auth: AuthService) {}
+
+  async canActivate(context: ExecutionContext) {
+    const request = context.switchToHttp().getRequest<ActorRequest>();
+    const header = request.headers.authorization;
+    if (typeof header !== "string" || !/^Bearer [0-9a-f]{64}$/i.test(header)) throw httpError(401, "unauthorized");
+    const tenantId = uuid(request.headers["x-tenant-id"]);
+    const token = header.slice(7);
+    const actor = await this.auth.actor(token, tenantId);
+    if (!actor) throw httpError(403, "tenant_denied");
+    request.actor = actor;
+    request.sessionToken = token;
+    return true;
+  }
+}
+
+export function actorOf(request: ActorRequest): Actor {
+  if (!request.actor) throw httpError(403, "tenant_denied");
+  return request.actor;
 }

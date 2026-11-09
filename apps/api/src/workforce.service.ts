@@ -13,6 +13,7 @@ import type { PgBoss } from "pg-boss";
 import { queryClient, withTenant } from "./db.js";
 import { httpError, mapPgError } from "./errors.js";
 import { reportJob } from "./jobs.js";
+import { uuid } from "./api-input.js";
 
 export type Actor = {
   userId: string;
@@ -60,7 +61,9 @@ export class WorkforceService {
   desk(actor: Actor) {
     return this.with(actor, async (client) => {
       const employees = await client.query(
-        `SELECT id, full_name, phone, document_number, user_id FROM employees ORDER BY full_name`,
+        `SELECT id, full_name, phone, document_number, user_id FROM employees
+         WHERE ($1 <> 'worker' OR user_id = $2) ORDER BY full_name`,
+        [actor.role, actor.userId],
       );
       const tasks = await client.query(
         `SELECT t.id, t.title, t.work_date::text AS work_date, t.planned_quantity::text, t.unit, t.assignee_employee_id, t.status, t.version, t.project_id
@@ -111,8 +114,10 @@ export class WorkforceService {
   }
 
   async employee(actor: Actor, id: string) {
+    uuid(id);
     const row = await this.with(actor, async (client) => {
-      const result = await client.query(`SELECT id, full_name, phone FROM employees WHERE id = $1`, [id]);
+      const result = await client.query(`SELECT id, full_name, phone FROM employees
+        WHERE id = $1 AND ($2 <> 'worker' OR user_id = $3)`, [id, actor.role, actor.userId]);
       return result.rows[0] ?? null;
     });
     if (!row) throw httpError(404, "not_found");

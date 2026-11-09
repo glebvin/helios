@@ -1,9 +1,7 @@
 import "reflect-metadata";
 import {
   Body,
-  CanActivate,
   Controller,
-  ExecutionContext,
   Get,
   Inject,
   Injectable,
@@ -17,16 +15,16 @@ import {
 } from "@nestjs/common";
 import type { Pool } from "pg";
 import type { PgBoss } from "pg-boss";
-import { AuthService } from "./auth.service.js";
+import { AuthService, TenantGuard, actorOf, type ActorRequest } from "./auth.service.js";
 import { createPool } from "./db.js";
-import { httpError } from "./errors.js";
 import { createBoss, ensureQueue } from "./jobs.js";
-import { WorkforceService, type Actor } from "./workforce.service.js";
+import { WorkforceService } from "./workforce.service.js";
+import { DirectorApiController, VersionedAuthController, ApiSpecController } from "./director-api.controller.js";
+import { DirectorApiService } from "./director-api.service.js";
 
 export const APP_POOL = "APP_POOL";
 export const BOSS = "BOSS";
 
-type ActorRequest = { headers: Record<string, string | undefined>; actor?: Actor };
 
 @Injectable()
 class BossHost implements OnModuleInit, OnModuleDestroy {
@@ -42,29 +40,14 @@ class BossHost implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-@Injectable()
-class TenantGuard implements CanActivate {
-  constructor(@Inject(AuthService) private readonly auth: AuthService) {}
-
-  async canActivate(context: ExecutionContext) {
-    const request = context.switchToHttp().getRequest<ActorRequest>();
-    const token = (request.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
-    const tenantId = request.headers["x-tenant-id"] ?? "";
-    if (!token) throw httpError(401, "unauthorized");
-    const actor = await this.auth.actor(token, tenantId);
-    if (!actor) throw httpError(403, "tenant_denied");
-    request.actor = actor;
-    return true;
-  }
-}
 
 @Controller("api")
 class AuthController {
   constructor(@Inject(AuthService) private readonly auth: AuthService) {}
 
   @Post("auth/login")
-  login(@Body() body: { email?: string; password?: string }) {
-    return this.auth.login(body.email ?? "", body.password ?? "");
+  login(@Body() body: unknown) {
+    return this.auth.login(body);
   }
 
   @Get("health")
@@ -123,18 +106,14 @@ class WorkforceController {
   }
 }
 
-function actorOf(request: ActorRequest): Actor {
-  if (!request.actor) throw httpError(403, "tenant_denied");
-  return request.actor;
-}
-
 @Module({
-  controllers: [AuthController, WorkforceController],
+  controllers: [AuthController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController],
   providers: [
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
     { provide: BOSS, useFactory: (host: BossHost) => host.boss, inject: [BossHost] },
     { provide: AuthService, useFactory: (pool: Pool) => new AuthService(pool), inject: [APP_POOL] },
+    { provide: DirectorApiService, useFactory: (pool: Pool) => new DirectorApiService(pool), inject: [APP_POOL] },
     {
       provide: WorkforceService,
       useFactory: (pool: Pool, boss: PgBoss) => new WorkforceService(pool, boss),
