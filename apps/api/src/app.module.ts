@@ -29,6 +29,8 @@ import {TasksController} from "./tasks.controller.js";
 import {ExecutionService} from "./execution.service.js";
 import {ExecutionController} from "./execution.controller.js";
 
+import {TimeController} from './time.controller.js';
+import {TimeService} from './time.service.js';
 import {EvidenceController} from './evidence.controller.js';
 import {EvidenceService} from './evidence.service.js';
 import {EvidenceStorage} from './evidence-storage.js';
@@ -109,7 +111,7 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [AuthController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController],
+  controllers: [AuthController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
   providers: [
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
@@ -124,6 +126,7 @@ class WorkforceController {
       useFactory: (pool: Pool, boss: PgBoss) => new WorkforceService(pool, boss),
       inject: [APP_POOL, BOSS],
     },
+    {provide:TimeService,useFactory:(pool:Pool)=>new TimeService(pool),inject:[APP_POOL]},
     EvidenceStorage,
     {provide:EvidenceService,useFactory:(pool:Pool,storage:EvidenceStorage)=>new EvidenceService(pool,storage),inject:[APP_POOL,EvidenceStorage]},
     TenantGuard,

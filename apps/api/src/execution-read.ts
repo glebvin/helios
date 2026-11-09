@@ -18,10 +18,14 @@ export async function executionClock(c:PoolClient,a:Actor,requestedDay?:string,r
  const day=requestedDay??(await c.query(`SELECT to_char($1::timestamptz AT TIME ZONE $2,'YYYY-MM-DD') AS day`,[asOf,t.timezone])).rows[0].day;
  return {day,timezone:t.timezone as string,asOf,source:'server_as_of' as const,provisional:true as const};
 }
+// Exact shared civil clipping; callers choose their own visibility/recorded predicate.
+export const civilClipStart=`greatest(s.started_at,$4::date::timestamp AT TIME ZONE $5)`;
+export const civilClipEnd=`least(coalesce(s.ended_at,$6::timestamptz),$6::timestamptz,(($4::date+1)::timestamp AT TIME ZONE $5))`;
+export const civilClipMs=`greatest(0,extract(epoch FROM (${civilClipEnd}-${civilClipStart}))*1000)::bigint`;
 export async function executionTotals(c:PoolClient,a:Actor,projectId:string|undefined,clock:{day:string;timezone:string;asOf:string},employeeId?:string){
  const values=[a.tenantId,a.userId,projectId??null,clock.day,clock.timezone,clock.asOf,employeeId??null];
  const clipped=`WITH clipped AS (SELECT s.task_id,s.mode,s.ended_at IS NULL AND s.started_at<$6::timestamptz AND s.started_at<(($4::date+1)::timestamp AT TIME ZONE $5) AND $6::timestamptz>($4::date::timestamp AT TIME ZONE $5) open,
- greatest(0,extract(epoch FROM (least(coalesce(s.ended_at,$6::timestamptz),$6::timestamptz,(($4::date+1)::timestamp AT TIME ZONE $5))-greatest(s.started_at,$4::date::timestamp AT TIME ZONE $5)))*1000)::bigint ms
+ ${civilClipMs} ms
  FROM managed_segments s ${executionJoin} WHERE ${executionScope} AND ($7::uuid IS NULL OR e.id=$7))`;
  const totals=(await c.query(`${clipped} SELECT coalesce(sum(ms),0)::text AS "presenceMs",coalesce(sum(ms) FILTER(WHERE mode='idle'),0)::text AS "idleMs",coalesce(sum(ms) FILTER(WHERE mode='work'),0)::text AS "workMs",coalesce(sum(ms) FILTER(WHERE mode='break'),0)::text AS "breakMs",coalesce(sum(ms) FILTER(WHERE mode='downtime'),0)::text AS "downtimeMs",coalesce(bool_or(open),false) AS "hasOpenIntervals" FROM clipped`,values)).rows[0];
  const tasks=(await c.query(`${clipped} SELECT task_id AS "taskId",coalesce(sum(ms) FILTER(WHERE mode='work'),0)::text AS "workMs",coalesce(sum(ms) FILTER(WHERE mode='downtime'),0)::text AS "downtimeMs" FROM clipped WHERE task_id IS NOT NULL AND ms>0 GROUP BY task_id ORDER BY task_id`,values)).rows;
