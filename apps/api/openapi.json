@@ -2956,6 +2956,47 @@
           "version": {
             "type": "integer",
             "minimum": 1
+          },
+          "workflowKind": {
+            "type": "string",
+            "enum": [
+              "legacy",
+              "managed02b"
+            ]
+          },
+          "planRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "nullable": true
+          },
+          "zoneId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "responsibleUserId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "rdReference": {
+            "type": "string",
+            "nullable": true
+          },
+          "plannedStart": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "plannedEnd": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
           }
         },
         "required": [

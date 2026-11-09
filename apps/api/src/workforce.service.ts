@@ -14,6 +14,7 @@ import { queryClient, withTenant } from "./db.js";
 import { httpError, mapPgError } from "./errors.js";
 import { reportJob } from "./jobs.js";
 import { uuid } from "./api-input.js";
+import {taskVisible,taskJoin} from "./director-api.service.js";
 
 export type Actor = {
   userId: string;
@@ -47,8 +48,8 @@ export class WorkforceService {
 
   summary(actor: Actor) {
     return this.with(actor, async (client) => {
-      const tasks = await client.query(`SELECT count(*)::int AS n FROM daily_tasks WHERE work_date = CURRENT_DATE`);
-      const shifts = await client.query(`SELECT count(*)::int AS n FROM shifts WHERE status = 'open'`);
+      const tasks = await client.query(`SELECT count(*)::int AS n ${taskJoin} WHERE ${taskVisible} AND t.work_date = CURRENT_DATE`,[actor.role,actor.userId]);
+      const shifts = await client.query(`SELECT count(*)::int AS n FROM shifts s JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.id=s.task_id JOIN projects p ON p.tenant_id=t.tenant_id AND p.id=t.project_id JOIN employees e ON e.tenant_id=t.tenant_id AND e.id=t.assignee_employee_id WHERE s.status='open' AND ${taskVisible} AND ($1<>'worker' OR s.employee_id IN (SELECT id FROM employees WHERE user_id=$2))`,[actor.role,actor.userId]);
       return {
         sample: true,
         label: "Учебные цифры, не расчёт по объекту",
@@ -67,25 +68,27 @@ export class WorkforceService {
       );
       const tasks = await client.query(
         `SELECT t.id, t.title, t.work_date::text AS work_date, t.planned_quantity::text, t.unit, t.assignee_employee_id, t.status, t.version, t.project_id
-         FROM daily_tasks t
-         JOIN employees e ON e.tenant_id = t.tenant_id AND e.id = t.assignee_employee_id
-         WHERE ($1 <> 'worker' OR e.user_id = $2)
+         ${taskJoin}
+         WHERE ${taskVisible}
          ORDER BY t.work_date DESC, t.title`,
         [actor.role, actor.userId],
       );
       const shifts = await client.query(
-        `SELECT id, task_id, employee_id, status, version, started_at, finished_at, occurred_started_at, occurred_finished_at, clock_requires_review
-         FROM shifts
-         WHERE ($1 <> 'worker' OR employee_id IN (SELECT id FROM employees WHERE user_id = $2))
-         ORDER BY started_at DESC NULLS LAST`,
+        `SELECT s.id,s.task_id,s.employee_id,s.status,s.version,s.started_at,s.finished_at,s.occurred_started_at,s.occurred_finished_at,s.clock_requires_review
+         FROM shifts s JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.id=s.task_id
+         JOIN projects p ON p.tenant_id=t.tenant_id AND p.id=t.project_id
+         JOIN employees e ON e.tenant_id=t.tenant_id AND e.id=t.assignee_employee_id
+         WHERE ${taskVisible} AND ($1 <> 'worker' OR s.employee_id IN (SELECT id FROM employees WHERE user_id = $2))
+         ORDER BY s.started_at DESC NULLS LAST`,
         [actor.role, actor.userId],
       );
       const reports = await client.query(
         `SELECT r.id, r.task_id, r.submitted_quantity::text, r.accepted_quantity::text, r.version
          FROM work_reports r
          JOIN daily_tasks t ON t.tenant_id = r.tenant_id AND t.id = r.task_id
+         JOIN projects p ON p.tenant_id=t.tenant_id AND p.id=t.project_id
          JOIN employees e ON e.tenant_id = t.tenant_id AND e.id = t.assignee_employee_id
-         WHERE ($1 <> 'worker' OR e.user_id = $2)
+         WHERE ${taskVisible}
          ORDER BY r.created_at DESC`,
         [actor.role, actor.userId],
       );
@@ -96,7 +99,7 @@ export class WorkforceService {
         actor.role === "worker"
           ? { rows: [] }
           : await client.query(`SELECT id, filename FROM stored_files ORDER BY filename`);
-      const summary = await this.summaryCounts(client);
+      const summary = await this.summaryCounts(client,actor);
       return {
         actor,
         projectId: projects.rows[0]?.id ?? PROJECT_A,
@@ -221,9 +224,9 @@ export class WorkforceService {
     return withTenant(this.pool, actor.tenantId, actor.userId, fn);
   }
 
-  private async summaryCounts(client: PoolClient) {
-    const tasks = await client.query(`SELECT count(*)::int AS n FROM daily_tasks WHERE work_date = CURRENT_DATE`);
-    const shifts = await client.query(`SELECT count(*)::int AS n FROM shifts WHERE status = 'open'`);
+  private async summaryCounts(client: PoolClient,actor:Actor) {
+    const tasks = await client.query(`SELECT count(*)::int AS n ${taskJoin} WHERE ${taskVisible} AND t.work_date = CURRENT_DATE`,[actor.role,actor.userId]);
+    const shifts = await client.query(`SELECT count(*)::int AS n FROM shifts s JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.id=s.task_id JOIN projects p ON p.tenant_id=t.tenant_id AND p.id=t.project_id JOIN employees e ON e.tenant_id=t.tenant_id AND e.id=t.assignee_employee_id WHERE s.status='open' AND ${taskVisible} AND ($1<>'worker' OR s.employee_id IN (SELECT id FROM employees WHERE user_id=$2))`,[actor.role,actor.userId]);
     return {
       sample: true,
       label: "Учебные цифры, не расчёт по объекту",

@@ -24,6 +24,9 @@ import { DirectorApiService } from "./director-api.service.js";
 import { PeopleService } from "./people.service.js";
 import { PeopleController } from "./people.controller.js";
 
+import {TasksService} from "./tasks.service.js";
+import {TasksController} from "./tasks.controller.js";
+
 export const APP_POOL = "APP_POOL";
 export const BOSS = "BOSS";
 
@@ -109,13 +112,14 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [AuthController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController],
+  controllers: [AuthController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController],
   providers: [
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
     { provide: BOSS, useFactory: (host: BossHost) => host.boss, inject: [BossHost] },
     { provide: AuthService, useFactory: (pool: Pool) => new AuthService(pool), inject: [APP_POOL] },
     { provide: DirectorApiService, useFactory: (pool: Pool) => new DirectorApiService(pool), inject: [APP_POOL] },
+    { provide: TasksService, useFactory: (pool:Pool,api:DirectorApiService) => new TasksService(pool,api), inject:[APP_POOL,DirectorApiService] },
     { provide: PeopleService, useFactory: (pool: Pool, api: DirectorApiService) => new PeopleService(pool,api), inject: [APP_POOL,DirectorApiService] },
     {
       provide: WorkforceService,

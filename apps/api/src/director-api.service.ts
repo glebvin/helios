@@ -16,13 +16,14 @@ const projectVisible = `($1 = 'director' OR (
     WHERE a.tenant_id = p.tenant_id AND a.project_id = p.id AND a.status = 'active' AND own.user_id = $2
   ))
 ))`;
-const taskVisible = `${projectVisible} AND ($1 <> 'worker' OR (e.user_id = $2 AND EXISTS (
+export const taskVisible = `${projectVisible} AND ($1 <> 'worker' OR ((t.workflow_kind='legacy' OR t.status='published') AND e.user_id = $2 AND EXISTS (
   SELECT 1 FROM employee_project_assignments own_assignment
   WHERE own_assignment.tenant_id = t.tenant_id AND own_assignment.project_id = t.project_id
     AND own_assignment.employee_id = e.id AND own_assignment.status = 'active'
 )))`;
-const taskJoin = `FROM daily_tasks t JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
+export const taskJoin = `FROM daily_tasks t JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
   JOIN employees e ON e.tenant_id = t.tenant_id AND e.id = t.assignee_employee_id`;
+export const taskFields = `t.id,t.project_id AS "projectId",t.title,t.work_date::text AS "workDate",t.planned_quantity::text AS "plannedQuantity",t.unit,t.assignee_employee_id AS "assigneeEmployeeId",t.status,t.version,t.workflow_kind AS "workflowKind",t.plan_revision AS "planRevision",t.zone_id AS "zoneId",t.work_type_id AS "workTypeId",t.responsible_user_id AS "responsibleUserId",t.rd_reference AS "rdReference",t.planned_start AS "plannedStart",t.planned_end AS "plannedEnd"`;
 const projectFields = `p.id, p.name`;
 const employeeFields = `e.id, e.full_name AS "fullName", e.phone, e.organization_id AS "organizationId", e.user_id AS "userId", e.version, e.status`;
 
@@ -55,17 +56,16 @@ export class DirectorApiService {
 
   project(actor: Actor, id: string) { return this.with(actor, (client) => this.projectExists(client, actor, id)); }
 
-  tasks(actor: Actor, projectId: string, page: Page, day?: string) {
+  tasks(actor: Actor, projectId: string, page: Page, day?: string, status?:string, id?:string) {
     return this.with(actor, async (client) => {
       await this.projectExists(client, actor, projectId);
-      const values = [actor.role, actor.userId, projectId, day ?? null];
-      const where = `${taskVisible} AND p.id = $3 AND ($4::date IS NULL OR t.work_date = $4::date)`;
+      const values = [actor.role, actor.userId, projectId, day ?? null, status??null, id??null];
+      const where = `${taskVisible} AND p.id = $3 AND ($4::date IS NULL OR t.work_date = $4::date) AND ($5::text IS NULL OR t.status=$5) AND ($6::uuid IS NULL OR t.id=$6)`;
       const count = await client.query(`SELECT count(*)::int AS total ${taskJoin} WHERE ${where}`, values);
-      const items = await client.query(`SELECT t.id, t.project_id AS "projectId", t.title,
-        t.work_date::text AS "workDate", t.planned_quantity::text AS "plannedQuantity", t.unit,
-        t.assignee_employee_id AS "assigneeEmployeeId", t.status, t.version
-        ${taskJoin} WHERE ${where} ORDER BY t.work_date DESC, t.title, t.id LIMIT $5 OFFSET $6`,
+      const items = await client.query(`SELECT ${taskFields}
+        ${taskJoin} WHERE ${where} ORDER BY t.work_date DESC, t.title, t.id LIMIT $7 OFFSET $8`,
       [...values, page.limit, page.offset]);
+      if(id){if(!items.rows[0])throw httpError(404,'not_found');return items.rows[0];}
       return { items: items.rows, total: count.rows[0].total, ...page };
     });
   }

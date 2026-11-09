@@ -1,6 +1,8 @@
 import { Body, Controller, Get, Inject, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { readFile } from "node:fs/promises";
 import { AuthService, TenantGuard, actorOf, type ActorRequest } from "./auth.service.js";
+import {httpError} from "./errors.js";
+import {taskStatus} from "./task-input.js";
 import { DirectorApiService } from "./director-api.service.js";
 import { day, page, queryInput, uuid } from "./api-input.js";
 
@@ -35,9 +37,12 @@ export class DirectorApiController {
   project(@Req() request: ActorRequest, @Param("id") id: string) { return this.api.project(actorOf(request), uuid(id)); }
   @Get("projects/:id/tasks")
   tasks(@Req() request: ActorRequest, @Param("id") id: string, @Query() query: Record<string, unknown>) {
-    queryInput(query, ["limit", "offset", "day"]);
-    return this.api.tasks(actorOf(request), uuid(id), page(query), day(query.day));
+    queryInput(query, ["limit", "offset", "day", "workDate", "status"]);
+    if(query.day!==undefined && query.workDate!==undefined)throw httpError(400,"invalid_query");
+    return this.api.tasks(actorOf(request), uuid(id).toLowerCase(), page(query), day(query.workDate??query.day),taskStatus(query.status));
   }
+  @Get("projects/:id/tasks/:task")
+  task(@Req()request:ActorRequest,@Param("id")id:string,@Param("task")task:string,@Query()query:Record<string,unknown>){queryInput(query,[]);return this.api.tasks(actorOf(request),uuid(id).toLowerCase(),page({}),undefined,undefined,uuid(task).toLowerCase());}
   @Get("employees")
   employees(@Req() request: ActorRequest, @Query() query: Record<string, unknown>) {
     queryInput(query, ["limit", "offset", "projectId"]);

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {randomUUID as id} from 'node:crypto';
 import test from 'node:test';
+import {execFileSync} from 'node:child_process';
 import {NestFactory} from '@nestjs/core';
 import type {INestApplication} from '@nestjs/common';
 import {AppModule} from '../src/app.module.js';
@@ -80,7 +81,7 @@ test('draft: assigned master creates and replaces an exact single employee plan;
   draft=await ok(taskPath,command(plan()),master);assert.equal(draft.workflowKind,'managed02b');assert.equal(draft.status,'draft');assert.equal(draft.unit,'m3');assert.equal(draft.plannedQuantity,'12.340');assert.equal(draft.planRevision,1);assert.equal(draft.version,1);
   assert.deepEqual(await ok(`${taskPath}/${draft.id}`,undefined,pto),draft);
   assert.equal((await ok(taskPath,undefined,worker)).total,0);assert.equal((await req(`${taskPath}/${draft.id}`,undefined,worker)).status,404);
-  const overview=await ok(`/overview?projectId=${p}&day=2027-01-15`,undefined,worker);assert.equal(JSON.stringify(overview).includes(draft.id),false);
+  const overview=await ok(`/overview?projectId=${p}&day=2027-01-15`,undefined,worker);assert.equal(JSON.stringify(overview).includes(draft.id),false);assert.equal(overview.tasksForDay,0);assert.equal((await ok(`/overview?projectId=${p}&day=2027-01-15`)).tasksForDay,1);
   const desk=await req('/desk',undefined,worker,'GET',true);assert.equal(desk.status,200);assert.equal(JSON.stringify(desk.body).includes(draft.id),false);assert.equal(desk.body.summary.live.tasksToday,0);
   assert.equal((await req('/summary',undefined,worker,'GET',true)).body.live.tasksToday,0);
   draft=await ok(`${taskPath}/${draft.id}`,command({...plan({title:'Revised'}),expectedVersion:1}),master,'PUT');assert.equal(draft.version,2);assert.equal(draft.planRevision,2);
@@ -109,4 +110,77 @@ test('draft receipt replay reauthorizes scope and ignores later catalog business
   zone=await ok(`${zonePath}/${zone.id}`,command({expectedVersion:edited.version,name:'Restored',status:'active'}),director,'PUT');
   await assert.rejects(withTenant(restricted,tenant,director,c=>c.query(`UPDATE daily_tasks SET workflow_kind='legacy' WHERE id=$1`,[draft.id])),(e:any)=>e.code==='23514');
   await assert.rejects(withTenant(restricted,tenant,director,c=>c.query(`DELETE FROM daily_tasks WHERE id=$1`,[draft.id])),(e:any)=>e.code==='42501');
+});
+
+async function waitBlocked(pid:number) {
+  const end=Date.now()+5000;
+  while(Date.now()<end){
+    const r=await admin.query(`SELECT count(*)::int n FROM pg_stat_activity WHERE $1=ANY(pg_blocking_pids(pid))`,[pid]);
+    if(r.rows[0].n>0)return;
+    await new Promise(resolve=>setTimeout(resolve,10));
+  }
+  assert.fail(`No transaction waited for row gate ${pid}`);
+}
+test('draft interval race: actor revoked after Guard while waiting for employee cannot commit',async()=>{
+  const c=await admin.connect();let pending:Promise<any>|undefined;
+  const b=command(plan({title:'Must not commit after revoke'}));
+  try{
+    await c.query('BEGIN');
+    await c.query(`SELECT id FROM employees WHERE tenant_id=$1 AND id=$2 FOR NO KEY UPDATE`,[tenant,employee.id]);
+    const pid=(await c.query(`SELECT pg_backend_pid() pid`)).rows[0].pid;
+    pending=req(taskPath,b,master);
+    await waitBlocked(pid);
+    await admin.query(`UPDATE memberships SET status='revoked' WHERE tenant_id=$1 AND user_id=$2`,[tenant,master]);
+    await c.query('COMMIT');
+    assert.equal((await pending).status,403);assert.deepEqual(await effects(b.requestId),{receipts:0,audits:0});
+  }finally{
+    await c.query('ROLLBACK');c.release();await pending;
+    await admin.query(`UPDATE memberships SET status='active' WHERE tenant_id=$1 AND user_id=$2`,[tenant,master]);
+  }
+});
+test('draft receipt rollback: failure after task insert rolls back task, audit and reservation',async()=>{
+  const b=command(plan({title:'Injected rollback'})),suffix=id().replaceAll('-','');
+  const fn=`task_audit_fail_${suffix}`,tr=`task_audit_fail_${suffix}`;
+  const before=(await admin.query(`SELECT count(*)::int n FROM daily_tasks WHERE tenant_id=$1`,[tenant])).rows[0].n;
+  await admin.query(`CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.details->>'requestId'='${b.requestId}' THEN RAISE EXCEPTION 'injected task command audit failure'; END IF; RETURN NEW; END $$`);
+  try{
+    await admin.query(`CREATE TRIGGER ${tr} BEFORE INSERT ON audit_log FOR EACH ROW EXECUTE FUNCTION ${fn}()`);
+    assert.equal((await req(taskPath,b,master)).status,500);
+    assert.deepEqual(await effects(b.requestId),{receipts:0,audits:0});
+    assert.equal((await admin.query(`SELECT count(*)::int n FROM daily_tasks WHERE tenant_id=$1`,[tenant])).rows[0].n,before);
+  }finally{await admin.query(`DROP TRIGGER IF EXISTS ${tr} ON audit_log`);await admin.query(`DROP FUNCTION ${fn}()`);}
+  const successful=await req(taskPath,b,master);assert.equal(successful.status,201);assert.deepEqual(await effects(b.requestId),{receipts:1,audits:1});
+});
+test('catalog migration repeat preserves ledger and data; SQL grants and composite plan constraints hold',async()=>{
+  const actual=(await admin.query(`SELECT current_setting('port') port,current_setting('data_directory') dir`)).rows[0];assert.equal(actual.port,'54339');assert.ok(actual.dir.endsWith('codex-api/.data/pg-54339'));
+  for(const t of ['project_work_zones','project_work_types']){
+    assert.deepEqual((await admin.query(`SELECT relrowsecurity rls,relforcerowsecurity force FROM pg_class WHERE oid=$1::regclass`,[t])).rows[0],{rls:true,force:true});
+    assert.equal((await withTenant(restricted,foreign,outsider,c=>c.query(`SELECT * FROM ${t}`))).rowCount,0);
+    assert.equal((await admin.query(`SELECT has_table_privilege('helios_app',$1,'DELETE') allowed`,[t])).rows[0].allowed,false);
+  }
+  const otherZone=(await ok(`/projects/${p2}/zones`)).items[0];
+  await assert.rejects(withTenant(restricted,tenant,director,c=>c.query(`UPDATE daily_tasks SET zone_id=$2 WHERE id=$1`,[draft.id,otherZone.id])),(e:any)=>e.code==='23503');
+  await assert.rejects(withTenant(restricted,tenant,director,c=>c.query(`UPDATE daily_tasks SET plan_revision=NULL WHERE id=$1`,[draft.id])),(e:any)=>e.code==='23514');
+  const snapshot=async()=>({ledger:(await admin.query(`SELECT * FROM schema_migrations ORDER BY filename`)).rows,tasks:(await admin.query(`SELECT * FROM daily_tasks WHERE tenant_id=$1 ORDER BY id`,[tenant])).rows,zones:(await admin.query(`SELECT * FROM project_work_zones WHERE tenant_id=$1 ORDER BY id`,[tenant])).rows,receipts:(await admin.query(`SELECT * FROM people_command_receipts WHERE tenant_id=$1 ORDER BY request_id`,[tenant])).rows});
+  const before=await snapshot();assert.ok(before.ledger.some(r=>r.filename==='005_task_preparation.sql'));
+  execFileSync('corepack',['pnpm','db:migrate'],{cwd:new URL('../../../',import.meta.url),env:{...process.env,DATABASE_URL:'postgres://helios_app:helios_app@127.0.0.1:54339/helios',ADMIN_DATABASE_URL:'postgres://helios:helios@127.0.0.1:54339/helios',HELIOS_DB_PORT:'54339',API_PORT:'4327'},stdio:'pipe'});
+  assert.deepEqual(await snapshot(),before);
+});
+
+test('draft views hide current-day preparation counts and controlled preexisting shifts/reports',async()=>{
+  const today=(await admin.query(`SELECT to_char(CURRENT_DATE,'YYYY-MM-DD') AS day`)).rows[0].day;
+  const t=await ok(taskPath,command(plan({title:'Today private plan',workDate:today,plannedStart:`${today}T09:00:00+03:00`,plannedEnd:`${today}T10:00:00+03:00`})),master);
+  const shift=id(),report=id();
+  try{
+    await admin.query(`INSERT INTO shifts(tenant_id,id,task_id,employee_id,status) VALUES($1,$2,$3,$4,'open')`,[tenant,shift,t.id,employee.id]);
+    await admin.query(`INSERT INTO work_reports(tenant_id,id,task_id,submitted_quantity) VALUES($1,$2,$3,1)`,[tenant,report,t.id]);
+    const desk=await req('/desk',undefined,worker,'GET',true);assert.equal(desk.status,200);
+    for(const hidden of [t.id,shift,report,t.title])assert.equal(JSON.stringify(desk.body).includes(hidden),false);
+    assert.equal(desk.body.summary.live.tasksToday,0);assert.equal(desk.body.summary.live.openShifts,0);
+    const summary=await req('/summary',undefined,worker,'GET',true);assert.equal(summary.body.live.tasksToday,0);assert.equal(summary.body.live.openShifts,0);
+    const overview=await ok(`/overview?projectId=${p}&day=${today}`,undefined,worker);assert.equal(overview.tasksForDay,0);assert.equal(overview.currentOpenShifts,0);assert.equal(overview.submittedReportsForDay,0);
+    assert.equal((await ok(`/overview?projectId=${p}&day=${today}`)).tasksForDay,1);
+  }finally{
+    await admin.query(`DELETE FROM shifts WHERE tenant_id=$1 AND id=$2`,[tenant,shift]);await admin.query(`DELETE FROM work_reports WHERE tenant_id=$1 AND id=$2`,[tenant,report]);await admin.query(`DELETE FROM daily_tasks WHERE tenant_id=$1 AND id=$2`,[tenant,t.id]);
+  }
 });

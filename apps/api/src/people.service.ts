@@ -1,21 +1,16 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { withTenant } from './db.js';
 import { httpError } from './errors.js';
 import type { Actor } from './workforce.service.js';
 import type { Page } from './api-input.js';
+import {reserveCommand,replayCommand,completeCommand,type CommandResult} from './durable-command.js';
 import { DirectorApiService } from './director-api.service.js';
 import { employeeInput, qualificationInput, templateInput, checkInput, membershipInput, crewInput } from './people-input.js';
 
 const employeeFields = `id,full_name AS "fullName",phone,organization_id AS "organizationId",user_id AS "userId",version,status`;
 const qualificationFields = `id,employee_id AS "employeeId",code,title,document_reference AS "documentReference",valid_until::text AS "validUntil",status,version`;
 type Row = Record<string, any>;
-type CommandResult = { status: number; body: Row };
-function canonical(value: any): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  if (value !== null && typeof value === 'object') return `{${Object.keys(value).sort().map(k => `${JSON.stringify(k)}:${canonical(value[k])}`).join(',')}}`;
-  return JSON.stringify(value);
-}
 export class PeopleService {
   constructor(private readonly pool: Pool, private readonly api: DirectorApiService) {}
   private with<T>(a: Actor, f: (c: PoolClient) => Promise<T>) { return withTenant(this.pool,a.tenantId,a.userId,f); }
@@ -24,22 +19,16 @@ export class PeopleService {
   }
   // Deliberately local to people commands: reserve before entity locks, complete with audit in the same transaction.
   private async command(a: Actor, operation: string, b: Row, status: number, authorize: (c: PoolClient) => Promise<unknown>, run: (c: PoolClient) => Promise<Row>): Promise<CommandResult> {
-    const { requestId, ...payload } = b;
-    const hash = createHash('sha256').update(canonical({operation,payload})).digest('hex');
+    const {requestId}=b;
     try {
       return await this.with(a,async c => {
         await this.director(c,a);
-        const inserted = await c.query(`INSERT INTO people_command_receipts(tenant_id,actor_user_id,request_id,operation,command_hash) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING request_id`,[a.tenantId,a.userId,requestId,operation,hash]);
+        const {inserted,hash}=await reserveCommand(c,a,operation,b);
         await authorize(c);
         await this.director(c,a);
-        if (!inserted.rowCount) {
-          const r = (await c.query(`SELECT command_hash,status,result FROM people_command_receipts WHERE actor_user_id=$1 AND request_id=$2`,[a.userId,requestId])).rows[0];
-          if (r.command_hash !== hash) throw httpError(409,'idempotency_payload_mismatch');
-          return {status:r.status,body:r.result};
-        }
+        if (!inserted) return replayCommand(c,a,requestId,hash);
         const body = await run(c);
-        await c.query(`UPDATE people_command_receipts SET status=$3,result=$4 WHERE actor_user_id=$1 AND request_id=$2`,[a.userId,requestId,status,JSON.stringify(body)]);
-        return {status,body};
+        return completeCommand(c,a,requestId,status,body);
       });
     } catch (error: any) {
       if (error.code === '23505') throw httpError(409,error.constraint === 'crew_member_one_active' ? 'crew_conflict' : 'conflict');
