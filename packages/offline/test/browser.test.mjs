@@ -14,7 +14,7 @@ if (!process.env.HELIOS_OFFLINE_TEST_CHILD) {
 }
 const suite = process.env.HELIOS_OFFLINE_SUITE;
 // Incomplete suites fail explicitly until their sequential task adds its assertions.
-assert.ok(['tracer','mechanics'].includes(suite), `Suite ${suite} is not implemented yet (Task3 pending); no scenarios skipped`);
+assert.ok(['tracer','mechanics','evidence'].includes(suite), `Suite ${suite} is not implemented yet (Task3 pending); no scenarios skipped`);
 const modulePath = process.env.HELIOS_PLAYWRIGHT_MODULE;
 assert.ok(modulePath, 'HELIOS_PLAYWRIGHT_MODULE must point to an existing Playwright runtime');
 assert.ok(process.env.PLAYWRIGHT_BROWSERS_PATH, 'PLAYWRIGHT_BROWSERS_PATH is required');
@@ -381,6 +381,31 @@ if(suite==='mechanics') tests.push(
     });assert.equal(result.code,'storage_upgrade_blocked');assert.equal(result.info.persistenceSupported,false);assert.equal(result.info.persisted,null);assert.equal(result.info.estimate,null);assert.equal(result.info.persistenceGranted,null);assert.equal(result.info.error,null);
   }],
 );
+const evidenceTests = [
+  ['atomic event and actual PNG Blob survive persistent reopen with frozen stage identities',async(engine,profile,origin,n)=>{
+    let {page,context}=await openPage(engine,profile,origin);const command=event(n);
+    const saved=await page.evaluate(async c=>{
+      const assertEvidence=typeof queue.enqueueEvidence;const blob=new Blob([new Uint8Array([137,80,78,71,13,10,26,10,42])],{type:'image/png'});
+      await queue.enqueueEvent(c,{evidence:[{projectId:c.projectId,employeeId:c.employeeId,filename:'front.png',contentType:'image/png',blob,dependencyRequestId:c.requestId,target:{kind:'execution_event',actorUserId:session.actorUserId,requestId:c.requestId}}]});
+      return {method:assertEvidence,rows:await queue.list()};
+    },command);
+    assert.equal(saved.method,'function','standalone evidence authoring must exist');assert.equal(saved.rows.length,2,'event and photo must commit together');
+    const photo=saved.rows.find(r=>r.stage!=='event');assert.ok(photo);assert.equal(photo.stage,'queued');assert.notEqual(photo.reserve.requestId,photo.attach.requestId);
+    await closeContext(context);({page,context}=await openPage(engine,profile,origin));
+    const retained=await page.evaluate(async id=>{const row=await queue.get(id);return {...row,blob:Array.from(new Uint8Array(await row.blob.arrayBuffer()))};},photo.id);
+    assert.deepEqual(retained.blob,[137,80,78,71,13,10,26,10,42]);assert.equal(retained.reserve.sha256,await page.evaluate(async()=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new Uint8Array([137,80,78,71,13,10,26,10,42]))),b=>b.toString(16).padStart(2,'0')).join('')));
+    assert.deepEqual(retained.reserve,photo.reserve);assert.deepEqual(retained.attach,photo.attach);assert.deepEqual(retained.target,photo.target);
+  }],
+  ['native evidence request success followed by abort leaves neither event nor Blob nor stream tail',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin);const command=event(n);
+    const result=await page.evaluate(async c=>{
+      const original=IDBObjectStore.prototype.add;let succeeded=false;IDBObjectStore.prototype.add=function(...args){const r=original.apply(this,args);if(this.name==='evidence')r.addEventListener('success',()=>{succeeded=true;this.transaction.abort();},{once:true});return r;};
+      let rejected=false;try{await queue.enqueueEvent(c,{evidence:[{projectId:c.projectId,employeeId:c.employeeId,filename:'x.png',contentType:'image/png',blob:new Blob(['png'],{type:'image/png'}),dependencyRequestId:c.requestId,target:{kind:'execution_event',actorUserId:session.actorUserId,requestId:c.requestId}}]});}catch{rejected=true;}finally{IDBObjectStore.prototype.add=original;}
+      return {succeeded,rejected,rows:await queue.list(),resaved:await queue.enqueueEvent(c).then(()=>true,()=>false)};
+    },command);assert.equal(result.succeeded,true,'must reach real evidence request success');assert.equal(result.rejected,true);assert.deepEqual(result.rows,[]);assert.equal(result.resaved,true);
+  }],
+];
+if(suite==='evidence') tests.splice(0,tests.length,...evidenceTests);else if(suite==='mechanics')tests.push(...evidenceTests);
 let failed=0;
 try {
   compiled=join(temporary,'compiled');
