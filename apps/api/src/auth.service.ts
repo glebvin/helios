@@ -60,6 +60,7 @@ export class AuthService {
 
 export type ActorRequest = {
   headers: Record<string, unknown>;
+  rawHeaders?: string[];
   actor?: Actor;
   sessionToken?: string;
 };
@@ -70,6 +71,9 @@ export class TenantGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest<ActorRequest>();
+    const headerNames = (request.rawHeaders ?? []).filter((_, index) => index % 2 === 0).map((name) => name.toLowerCase());
+    if (headerNames.filter((name) => name === "authorization").length > 1) throw httpError(401, "unauthorized");
+    if (headerNames.filter((name) => name === "x-tenant-id").length > 1) throw httpError(400, "invalid_uuid");
     const header = request.headers.authorization;
     if (typeof header !== "string" || !/^Bearer [0-9a-f]{64}$/i.test(header)) throw httpError(401, "unauthorized");
     const tenantId = uuid(request.headers["x-tenant-id"]);

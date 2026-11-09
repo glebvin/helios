@@ -15,9 +15,11 @@ import { AppModule } from "../src/app.module.js";
 import { createPool, withTenant } from "../src/db.js";
 import { processReportJob } from "../src/jobs.js";
 import { WorkforceService, type Actor } from "../src/workforce.service.js";
+import { AllExceptionsFilter } from "../src/http.js";
 
 const pool = createPool();
 const app = await NestFactory.create(AppModule, { logger: false });
+app.useGlobalFilters(new AllExceptionsFilter());
 const server = await app.listen(0, "127.0.0.1");
 const address = server.address();
 const port = typeof address === "object" && address ? address.port : 0;

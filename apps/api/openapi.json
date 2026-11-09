@@ -862,7 +862,7 @@
           "email",
           "password"
         ],
-        "additionalProperties": false
+        "additionalProperties": true
       },
       "Login": {
         "type": "object",

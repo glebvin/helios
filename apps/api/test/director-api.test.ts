@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { request as rawRequest } from "node:http";
 import test from "node:test";
 import { NestFactory } from "@nestjs/core";
 import type { INestApplication } from "@nestjs/common";
@@ -231,6 +232,17 @@ test("malformed UUID, query/date/pagination/header/login inputs fail with contro
   assert.equal((await request("/api/v1/me", director, { headers: { authorization: `Bearer ${"a".repeat(64)}` } })).status, 401);
   const spoofed = await request(`/api/v1/projects/${p2}`, master, { headers: { "x-role": "director" } });
   assert.equal(spoofed.status, 404);
+  for (const [header, expected] of [["authorization", 401], ["x-tenant-id", 400]] as const) {
+    const headers: Record<string, string | string[]> = { authorization: `Bearer ${tokens.get(director)}`, "x-tenant-id": tenant };
+    headers[header] = [headers[header] as string, headers[header] as string];
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const req = rawRequest(`${base}/api/v1/me`, { headers }, (response) => {
+        response.resume(); response.on("end", () => resolve(response.statusCode));
+      });
+      req.on("error", reject); req.end();
+    });
+    assert.equal(status, expected, `duplicate ${header}`);
+  }
 });
 
 test("invalid/expired sessions are 401 and logout revokes only the presented session", async () => {
