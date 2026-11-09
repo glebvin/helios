@@ -1,0 +1,28 @@
+flowchart LR
+  %% HELIOS  ·  один код, кабинет в каждой записи
+  pwa["<b>Веб и PWA</b><br/>React · стол и поле<br/>Сводка помечена как учебная<br/>Кнопки поля от 48px"]:::client
+  outbox["<b>Очередь телефона</b><br/>кабинет и пользователь<br/>Смена и объём ждут сеть<br/>Чужой кабинет не забирает события"]:::client
+  api["<b>API NestJS</b><br/>TenantContext обязателен<br/>Заголовок только выбирает кабинет<br/>Приёмка считается в транзакции"]:::service
+  rules["<b>Правила</b><br/>packages/domain<br/>Частичная приёмка 18 и 17<br/>Не больше трёх виз"]:::rule
+  worker["<b>Worker</b><br/>тот же код, другой процесс<br/>Повтор не удваивает эффект<br/>Один тяжёлый ход на кабинет"]:::service
+  pg["<b>PostgreSQL</b><br/>данные, RLS и pg-boss<br/>tenant_id в связях<br/>set_config только внутри транзакции"]:::store
+  files["<b>Файлы</b><br/>ключ начинается с кабинета<br/>S3, когда поднят MinIO<br/>Ссылка не заменяет проверку права"]:::store
+  pwa -->|"вход"| api
+  pwa -->|"без сети"| outbox
+  outbox -.->|"после связи"| rules
+  api -->|"проверка"| rules
+  api -->|"транзакция"| pg
+  api -.->|"ключ"| files
+  pg -.->|"pg-boss"| worker
+  linkStyle 0 stroke:#79a8ff,stroke-width:1.5px
+  linkStyle 1 stroke:#e8b25d,stroke-width:1.5px
+  linkStyle 2 stroke:#6fdc8c,stroke-width:1.5px
+  linkStyle 3 stroke:#79a8ff,stroke-width:1.5px
+  linkStyle 4 stroke:#e8b25d,stroke-width:1.5px
+  linkStyle 5 stroke:#e8b25d,stroke-width:1.5px
+  linkStyle 6 stroke:#6fdc8c,stroke-width:1.5px
+  classDef client fill:#0e141b,stroke:#79a8ff,color:#c9d1d9
+  classDef service fill:#0e141b,stroke:#5ad1e6,color:#c9d1d9
+  classDef rule fill:#0e141b,stroke:#6fdc8c,color:#c9d1d9
+  classDef store fill:#0e141b,stroke:#e8b25d,color:#c9d1d9
+  classDef none fill:#0e141b,stroke:#3a4450,color:#c9d1d9

@@ -1,0 +1,123 @@
+{
+  "lang": "ru",
+  "width": 1080,
+  "pageTitle": "HELIOS — архитектура фундамента",
+  "title": "HELIOS  ·  один код, кабинет в каждой записи",
+  "subtitle": "NestJS и worker из одной базы · PostgreSQL хранит данные и очередь pg-boss · файлы отдельно",
+  "statusLabels": { "none": "дальше", "dev": "в срезе", "ok": "есть", "warn": "проверка" },
+  "layers": [
+    { "id": "client", "label": "Телефон и браузер", "color": "blue" },
+    { "id": "service", "label": "Сервер", "color": "cyan" },
+    { "id": "rule", "label": "Правила", "color": "green" },
+    { "id": "store", "label": "Данные", "color": "amber" }
+  ],
+  "flows": [
+    { "id": "call", "label": "запрос", "color": "blue" },
+    { "id": "event", "label": "событие", "color": "green", "dash": true },
+    { "id": "write", "label": "запись", "color": "amber" }
+  ],
+  "log": { "title": "Сквозной день", "live": true },
+  "footer": { "cwd": "Helios", "cmd": "pnpm db:up && pnpm db:migrate && pnpm db:seed", "note": "два тестовых кабинета, один живой пилот" },
+  "nodes": [
+    {
+      "id": "pwa",
+      "layer": "client",
+      "x": 36,
+      "y": 168,
+      "w": 300,
+      "h": 118,
+      "title": "Веб и PWA",
+      "sub": "React · стол и поле",
+      "lines": ["Сводка помечена как учебная", "Кнопки поля от 48px"],
+      "status": "dev",
+      "short": "PWA"
+    },
+    {
+      "id": "outbox",
+      "layer": "client",
+      "x": 460,
+      "y": 168,
+      "w": 280,
+      "h": 118,
+      "title": "Очередь телефона",
+      "sub": "кабинет и пользователь",
+      "lines": ["Смена и объём ждут сеть", "Чужой кабинет не забирает события"],
+      "status": "dev",
+      "short": "Телефон"
+    },
+    {
+      "id": "api",
+      "layer": "service",
+      "x": 36,
+      "y": 360,
+      "w": 320,
+      "h": 140,
+      "title": "API NestJS",
+      "sub": "TenantContext обязателен",
+      "lines": ["Заголовок только выбирает кабинет", "Приёмка считается в транзакции"],
+      "status": "dev",
+      "short": "API"
+    },
+    {
+      "id": "rules",
+      "layer": "rule",
+      "x": 460,
+      "y": 360,
+      "w": 250,
+      "h": 140,
+      "title": "Правила",
+      "sub": "packages/domain",
+      "lines": ["Частичная приёмка 18 и 17", "Не больше трёх виз"],
+      "status": "ok",
+      "short": "Правила"
+    },
+    {
+      "id": "worker",
+      "layer": "service",
+      "x": 760,
+      "y": 360,
+      "w": 280,
+      "h": 140,
+      "title": "Worker",
+      "sub": "тот же код, другой процесс",
+      "lines": ["Повтор не удваивает эффект", "Один тяжёлый ход на кабинет"],
+      "status": "dev",
+      "short": "Worker"
+    },
+    {
+      "id": "pg",
+      "layer": "store",
+      "x": 36,
+      "y": 600,
+      "w": 680,
+      "h": 124,
+      "title": "PostgreSQL",
+      "sub": "данные, RLS и pg-boss",
+      "lines": ["tenant_id в связях", "set_config только внутри транзакции"],
+      "status": "dev",
+      "short": "Postgres"
+    },
+    {
+      "id": "files",
+      "layer": "store",
+      "x": 760,
+      "y": 600,
+      "w": 280,
+      "h": 124,
+      "title": "Файлы",
+      "sub": "ключ начинается с кабинета",
+      "lines": ["S3, когда поднят MinIO", "Ссылка не заменяет проверку права"],
+      "status": "dev",
+      "short": "Файлы"
+    }
+  ],
+  "edges": [
+    { "from": "pwa.b", "to": "api.t", "flow": "call", "label": "вход", "labelPos": [200, 330] },
+    { "from": "pwa.r", "to": "outbox.l", "flow": "write", "label": "без сети", "labelPos": [388, 210] },
+    { "from": "outbox.b", "to": "rules.t", "flow": "event", "label": "после связи", "labelPos": [640, 320] },
+    { "from": "api.r", "to": "rules.l", "flow": "call", "label": "проверка", "labelPos": [388, 420] },
+    { "from": "api.b", "to": "pg.t", "flow": "write", "label": "транзакция", "labelPos": [48, 528] },
+    { "from": "api.b", "to": "files.l", "flow": "write", "label": "ключ", "dash": true, "via": [[176, 552], [748, 552]], "labelPos": [430, 536] },
+    { "from": "pg.t@640px", "to": "worker.b", "flow": "event", "label": "pg-boss", "via": [[676, 552], [900, 552]], "labelPos": [800, 536] }
+  ]
+}

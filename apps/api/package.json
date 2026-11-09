@@ -1,0 +1,32 @@
+{
+  "name": "@helios/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./db": "./src/db.ts",
+    "./jobs": "./src/jobs.ts"
+  },
+  "scripts": {
+    "dev": "tsx src/main.ts",
+    "migrate": "tsx src/migrate.ts",
+    "seed": "tsx src/seed.ts",
+    "test": "tsx --test test/foundation.test.ts"
+  },
+  "dependencies": {
+    "@helios/domain": "workspace:*",
+    "@nestjs/common": "^11.1.6",
+    "@nestjs/core": "^11.1.6",
+    "@nestjs/platform-express": "^11.1.6",
+    "pg": "^8.16.3",
+    "pg-boss": "12.38.1",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "@types/pg": "^8.15.5",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}

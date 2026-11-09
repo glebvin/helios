@@ -1,0 +1,30 @@
+:root {
+  --bg: #f8f8f8;
+  --surface: #ffffff;
+  --selected: #eaeae6;
+  --hover: #f1f1ee;
+  --hairline: #e5e7e1;
+  --control: #ededed;
+  --ink: #1d1d1d;
+  --muted: #757575;
+  --faint: #a1a1a1;
+  --section: #b8b8b8;
+  --brand: #8965de;
+  --brand-strong: #7a55d4;
+  --inbox: #aee9f4;
+  --inbox-ink: #28555d;
+  --done: #bde7db;
+  --done-ink: #005c42;
+  --review: #e3daf7;
+  --review-ink: #594290;
+  --today: #fdd8b8;
+  --today-ink: #774317;
+  --danger: #ef4747;
+  --ok: #0f6e56;
+  --warn: #8a5a12;
+  color: var(--ink);
+  background: var(--bg);
+  font-family: "Geist", system-ui, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
