@@ -310,6 +310,17 @@ test('XLSX rendering holds no database scope locks; post-render current ACL fail
  }
 });
 test('XLSX captured snapshot remains attributable after valid03a event arrives during unlocked rendering',async()=>{
+ // This race must also run under --test-name-pattern, without earlier lifecycle/admission tests.
+ await admin.query(`INSERT INTO managed_execution_streams(tenant_id,employee_id) VALUES($1,$2) ON CONFLICT DO NOTHING`,[tenant,otherEmployee]);
+ const person=(await admin.query(`SELECT user_id,status FROM employees WHERE tenant_id=$1 AND id=$2`,[tenant,otherEmployee])).rows[0];assert.equal(person.status,'active');
+ if(person.user_id===null)await admin.query(`UPDATE employees SET user_id=$3 WHERE tenant_id=$1 AND id=$2`,[tenant,otherEmployee,master]);else assert.equal(person.user_id,master);
+ const assignment=(await must(`/projects/${p}/assignments?limit=100`,undefined,'GET')).items.find((a:any)=>a.employeeId===otherEmployee);
+ if(assignment?.status!=='active'||!assignment.currentAdmission.eligible){
+  const existing=await req(`/projects/${p}/admission-template`,undefined,director);assert.ok([200,404].includes(existing.status),JSON.stringify(existing));
+  const template=existing.status===200?existing.body:await must(`/projects/${p}/admission-template`,{requestId:id(),code:'time',title:'Safe',items:[{id:'safe',label:'Safe',critical:true}],requiredQualificationCodes:[]});
+  const check=await must(`/employees/${otherEmployee}/admission-checks`,{requestId:id(),projectId:p,templateVersion:template.version,answers:template.items.map((item:any)=>({itemId:item.id,value:true}))});
+  await must(`/projects/${p}/assignments/${otherEmployee}`,{requestId:id(),expectedVersion:assignment?.version??0,status:'active',admissionCheckId:check.id},'PUT');
+ }
  const day='2026-11-08',sh=id();await accept(await interval('shift_start',sh,day+'T09:00:00Z'));await accept(await interval('shift_end',sh,day+'T10:00:00Z'));assert.equal((await approval(day,{},otherEmployee)).status,201);const s=await source(day,otherEmployee);
  const original=TimeXlsx.prototype.render;let release!:()=>void,entered!:(s:any)=>void;const gate=new Promise<void>(r=>release=r),seen=new Promise<any>(r=>entered=r);let pending:Promise<any>|undefined;
  TimeXlsx.prototype.render=async function(s){entered(s);await gate;return original.call(this,s);};
