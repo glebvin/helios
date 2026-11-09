@@ -119,7 +119,7 @@ class WorkforceController {
     { provide: BOSS, useFactory: (host: BossHost) => host.boss, inject: [BossHost] },
     { provide: AuthService, useFactory: (pool: Pool) => new AuthService(pool), inject: [APP_POOL] },
     { provide: DirectorApiService, useFactory: (pool: Pool) => new DirectorApiService(pool), inject: [APP_POOL] },
-    { provide: TasksService, useFactory: (pool:Pool,api:DirectorApiService) => new TasksService(pool,api), inject:[APP_POOL,DirectorApiService] },
+    { provide: TasksService, useFactory: (pool:Pool,api:DirectorApiService,people:PeopleService) => new TasksService(pool,api,people), inject:[APP_POOL,DirectorApiService,PeopleService] },
     { provide: PeopleService, useFactory: (pool: Pool, api: DirectorApiService) => new PeopleService(pool,api), inject: [APP_POOL,DirectorApiService] },
     {
       provide: WorkforceService,

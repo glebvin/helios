@@ -26,3 +26,22 @@ export function taskInput(input:unknown,update=false) {
 }
 const taskStatuses=['draft','pending_approval','published','cancelled','in_progress','submitted','in_review','accepted','closed','suspended','needs_fix','partially_accepted'];
 export function taskStatus(value:unknown) {if(value===undefined)return undefined;if(typeof value!=='string' || !taskStatuses.includes(value))throw httpError(400,'invalid_status');return value;}
+export function frontTemplateInput(input:unknown,update=false) {
+  const b=object(input,['requestId','title','items',update?'expectedVersion':'code']);
+  if(!Array.isArray(b.items) || b.items.length<1 || b.items.length>100)throw httpError(400,'invalid_items');
+  const items=b.items.map(v=>{const i=object(v,['id','label','critical']);return {id:text(i.id,80),label:text(i.label,500),critical:boolean(i.critical)};});
+  if(new Set(items.map(i=>i.id)).size!==items.length)throw httpError(400,'duplicate_item');
+  return {requestId:id(b.requestId),title:text(b.title),items,...(update?{expectedVersion:integer(b.expectedVersion)}:{code:text(b.code,80)})};
+}
+export function frontCheckInput(input:unknown) {
+  const b=object(input,['requestId','expectedVersion','templateVersion','answers']);
+  if(!Array.isArray(b.answers) || b.answers.length<1 || b.answers.length>100)throw httpError(400,'invalid_answers');
+  const answers=b.answers.map(v=>{const i=object(v,['itemId','value']);return {itemId:text(i.itemId,80),value:boolean(i.value)};});
+  if(new Set(answers.map(i=>i.itemId)).size!==answers.length)throw httpError(400,'duplicate_item');
+  return {requestId:id(b.requestId),expectedVersion:integer(b.expectedVersion),templateVersion:integer(b.templateVersion),answers};
+}
+export type TaskAction='submit'|'reject'|'reopen'|'cancel'|'publish';
+export function taskActionInput(input:unknown,action:TaskAction) {
+  const reason=['reject','reopen','cancel'].includes(action),b=object(input,['requestId','expectedVersion',...(reason?['reason']:[])]);
+  return {requestId:id(b.requestId),expectedVersion:integer(b.expectedVersion),...(reason?{reason:text(b.reason,500)}:{})};
+}

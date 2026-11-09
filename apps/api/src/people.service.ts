@@ -189,7 +189,8 @@ export class PeopleService {
       return {items,total,...pg};
     });
   }
-  private async eligibility(c:PoolClient,e:Row,p:string,checkId:string|null) {
+  // Internal same-transaction evaluator. Caller owns project/employee/member locks; no write authority is granted.
+  async eligibility(c:PoolClient,e:Row,p:string,checkId:string|null) {
     const reasons:string[]=[];
     const t=(await c.query(`SELECT version,code FROM admission_templates WHERE project_id=$1`,[p])).rows[0];
     const row=checkId?(await c.query(`SELECT snapshot FROM employee_admission_checks WHERE employee_id=$1 AND project_id=$2 AND id=$3`,[e.id,p,checkId])).rows[0]:undefined;
