@@ -36,7 +36,7 @@ function event(n) {
 }
 function resultFor(command) {
   return {...Object.fromEntries(['requestId','employeeId','projectId','shiftId','kind','occurredAt'].map(k=>[k,command[k]])),
-    version:command.expectedVersion+1, receivedAt:'2027-01-15T06:00:01.000Z',
+    version:command.expectedVersion+1, occurredAt:new Date(command.occurredAt).toISOString(), receivedAt:'2027-01-15T06:00:01.000Z',
     reviewFlags:{delayed:false,future:false,suspicious:false,geoTimeMismatch:false,abovePlannedQuantity:false}};
 }
 let compiled;
@@ -116,6 +116,9 @@ const tests = [
     },command);
     assert.equal(result.requestSucceeded,true,'injection must reach an actual IDB request success');
     assert.equal(result.rejected,true,'transaction abort cannot resolve save');assert.equal(result.row,null);
+    // The aborted transaction must also roll back the employee tail and identity.
+    assert.equal(await page.evaluate(command=>globalThis.queue.enqueueEvent(command).then(()=>true,()=>false),command),true);
+    assert.deepEqual(await page.evaluate(id=>globalThis.queue.get(id).then(row=>row.event),command.requestId),command);
     await closeContext(context);
   }],
   ['wrong requestId HTTP200 retains exact unacknowledged event', async (engine,profile,origin,n) => {
