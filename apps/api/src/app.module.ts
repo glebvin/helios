@@ -29,6 +29,10 @@ import {TasksController} from "./tasks.controller.js";
 import {ExecutionService} from "./execution.service.js";
 import {ExecutionController} from "./execution.controller.js";
 
+import {EvidenceController} from './evidence.controller.js';
+import {EvidenceService} from './evidence.service.js';
+import {EvidenceStorage} from './evidence-storage.js';
+
 export const APP_POOL = "APP_POOL";
 export const BOSS = "BOSS";
 
@@ -105,7 +109,7 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [AuthController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController],
+  controllers: [AuthController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController],
   providers: [
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
@@ -120,6 +124,8 @@ class WorkforceController {
       useFactory: (pool: Pool, boss: PgBoss) => new WorkforceService(pool, boss),
       inject: [APP_POOL, BOSS],
     },
+    EvidenceStorage,
+    {provide:EvidenceService,useFactory:(pool:Pool,storage:EvidenceStorage)=>new EvidenceService(pool,storage),inject:[APP_POOL,EvidenceStorage]},
     TenantGuard,
   ],
 })
