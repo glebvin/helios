@@ -1,0 +1,13 @@
+{
+  "runtime": "codex",
+  "mode": "yolo",
+  "response_language": "ru",
+  "commit_docs": true,
+  "parallelization": false,
+  "workflow": {
+    "use_worktrees": false
+  },
+  "git": {
+    "branching_strategy": "none"
+  }
+}
