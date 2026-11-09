@@ -2,8 +2,9 @@
 
 | Phase | Result | State |
 |---|---|---|
-| 01 | Versioned read API, access, real overview and contract | implemented; local HTTP/PG checks passed, independent review pending |
-| 02 | People, admission, crews, task creation/readiness | pending |
+| 01 | Versioned read API, access, real overview and contract | complete; independent verification passed |
+| 02a | People, admission and project/crew assignments | complete; independent verification passed |
+| 02b | Task creation/readiness with admission enforcement | pending |
 | 03 | Shifts/downtime/result, offline concurrency and files | pending |
 | 04 | Quality, routes/authority, materials/ID/AOSR | pending |
 | 05 | Full reporting/security/operations and acceptance | pending |
