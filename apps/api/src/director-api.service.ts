@@ -28,6 +28,7 @@ const employeeFields = `e.id, e.full_name AS "fullName", e.phone, e.organization
 
 export class DirectorApiService {
   constructor(private readonly pool: Pool) {}
+  projectVisibility() { return projectVisible; }
 
   private with<T>(actor: Actor, fn: (client: PoolClient) => Promise<T>) {
     return withTenant(this.pool, actor.tenantId, actor.userId, fn);

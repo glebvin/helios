@@ -33,3 +33,30 @@ export function qualificationInput(value: unknown, update = false) {
     validUntil: b.validUntil === null || (!update && b.validUntil === undefined) ? null : day(b.validUntil)!,
     ...(update ? { expectedVersion: integer(b.expectedVersion), status: status(b.status,'revoked') } : { code: text(b.code,80) }) };
 }
+function array(value: unknown, min = 0): unknown[] {
+  if (!Array.isArray(value) || value.length < min || value.length > 100) throw httpError(400,'invalid_array');
+  return value;
+}
+function unique(values: string[]) { if(new Set(values).size!==values.length) throw httpError(400,'duplicate_item'); }
+function boolean(value: unknown): boolean { if(typeof value!=='boolean') throw httpError(400,'invalid_boolean');return value; }
+export function templateInput(value: unknown,update=false) {
+  const b=object(value,['requestId','title','items','requiredQualificationCodes',update?'expectedVersion':'code']);
+  const items=array(b.items,1).map(value=>{const i=object(value,['id','label','critical']);return {id:text(i.id,80),label:text(i.label,500),critical:boolean(i.critical)};});
+  const requiredQualificationCodes=array(b.requiredQualificationCodes).map(c=>text(c,80));
+  unique(items.map(i=>i.id));unique(requiredQualificationCodes);
+  return {requestId:uuid(b.requestId).toLowerCase(),title:text(b.title),items,requiredQualificationCodes,...(update?{expectedVersion:integer(b.expectedVersion)}:{code:text(b.code,80)})};
+}
+export function checkInput(value:unknown) {
+  const b=object(value,['requestId','projectId','templateVersion','answers']);
+  const answers=array(b.answers,1).map(value=>{const i=object(value,['itemId','value']);return {itemId:text(i.itemId,80),value:boolean(i.value)};});
+  unique(answers.map(i=>i.itemId));
+  return {requestId:uuid(b.requestId).toLowerCase(),projectId:uuid(b.projectId).toLowerCase(),templateVersion:integer(b.templateVersion),answers};
+}
+export function membershipInput(value:unknown,assignment=false) {
+  const b=object(value,['requestId','expectedVersion','status',...(assignment?['admissionCheckId']:[])]);
+  const s=status(b.status,'revoked');
+  if(assignment && s==='revoked' && b.admissionCheckId!==undefined) throw httpError(400,'invalid_body');
+  return {requestId:uuid(b.requestId).toLowerCase(),expectedVersion:integer(b.expectedVersion,0),status:s,
+    ...(assignment && s==='active'?{admissionCheckId:uuid(b.admissionCheckId).toLowerCase()}: {})};
+}
+export function crewInput(value:unknown) {const b=object(value,['requestId','name']);return {requestId:uuid(b.requestId).toLowerCase(),name:text(b.name)};}
