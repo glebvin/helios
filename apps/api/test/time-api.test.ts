@@ -242,3 +242,7 @@ test('one captured clock records a just-opened zero interval and half-open midni
  await admin.query(`UPDATE managed_execution_streams SET last_interval_at=$3 WHERE tenant_id=$1 AND employee_id=$2`,[tenant,otherEmployee,at]);await accept(await interval('shift_end',l.shift,at));
  const previous=await source('2026-11-06',otherEmployee),today=await source('2026-11-07',otherEmployee);assert.ok(!previous.source.segments.some((s:any)=>s.shiftId===l.shift));assert.ok(today.source.segments.some((s:any)=>s.shiftId===l.shift&&s.ms==='0'));assert.equal(today.source.hasOpenIntervals,false);assert.equal((await approval('2026-11-07',{},otherEmployee)).status,201);
 });
+
+test('XLSX tracer: actual HTTP empty snapshot is a downloadable workbook',async()=>{
+ const r=await req(`/projects/${p}/time/export.xlsx?from=2026-01-01&to=2026-01-01`,undefined,director);assert.equal(r.status,200,JSON.stringify(r));assert.ok(Buffer.isBuffer(r.body));assert.equal(r.body.subarray(0,2).toString(),'PK');
+});
