@@ -1,9 +1,9 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "HELIOS API v1 — people, daily tasks and safe publication",
-    "version": "1.2.0",
-    "description": "Scoped read, personnel and task preparation/publication slices; legacy execution remains limited to existing legacy fixtures. All protected routes require active tenant membership. Directors see their tenant, master/PTO need active project membership, workers additionally need own active employee assignment for projects/tasks. Own employee profile may be read without assignment. Details hide inaccessible rows with 404. Counts use authorized rows. Overview uses civil day in tenant timezone with half-open timestamp bounds. reviewedReportsForDay means accepted_quantity IS NOT NULL, including zero, not completed tasks. currentOpenShifts is current across days. Null acceptedQuantity means no report in the group has been reviewed. No mixed-unit sum. Unavailable metrics are intentional capability declarations. Phase02a adds director-only people commands with durable requestId replay, expectedVersion, immutable yes/no admission evidence, project assignments and crews. Document references are metadata only. Current admission requires latest attempt/template and exact active qualification id/version, inclusive tenant civil-date expiry. Phase02b adds project catalogs, strict managed drafts, immutable front checks and atomic director publication. Legacy create is retired410; managed tasks reject legacy sync/report mutations409 before replay/effects. 52 v1 operations plus one deprecated legacy creation route. Execution/files/offline/material/ID/full pilot remain pending."
+    "title": "HELIOS API v1 — people, plans and managed execution",
+    "version": "1.3.0",
+    "description": "Scoped read, personnel and task preparation/publication slices; legacy execution remains limited to existing legacy fixtures. All protected routes require active tenant membership. Directors see their tenant, master/PTO need active project membership, workers additionally need own active employee assignment for projects/tasks. Own employee profile may be read without assignment. Details hide inaccessible rows with 404. Counts use authorized rows. Overview uses civil day in tenant timezone with half-open timestamp bounds. reviewedReportsForDay means accepted_quantity IS NOT NULL, including zero, not completed tasks. currentOpenShifts is current across days. Null acceptedQuantity means no report in the group has been reviewed. No mixed-unit sum. Unavailable metrics are intentional capability declarations. Phase02a adds director-only people commands with durable requestId replay, expectedVersion, immutable yes/no admission evidence, project assignments and crews. Document references are metadata only. Current admission requires latest attempt/template and exact active qualification id/version, inclusive tenant civil-date expiry. Phase02b adds project catalogs, strict managed drafts, immutable front checks and atomic director publication. Legacy create is retired410; managed tasks reject legacy sync/report mutations409 before replay/effects. 57 v1 operations plus one deprecated legacy creation route (58 total). Server03a adds ordered managed execution events, exact provisional civil-time reads and additive managedExecution overview. Browser queue/files/hour approval remain03b; acceptance/material/ID remain04; full pilot remains pending."
   },
   "servers": [
     {
@@ -5001,6 +5001,496 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{p}/execution/shifts": {
+      "get": {
+        "operationId": "listExecutionShifts",
+        "summary": "listExecutionShifts",
+        "description": "Current SQL role/scope: director tenant-wide; master/PTO active project grants; worker current own active employee link plus active tenant/project membership and assignment. Unknown/repeated query keys rejected400. Hidden resources404. Paged reads default25/max100, ordered ascending time then UUID; totals/items informational READ COMMITTED. Shift/day version is current employee stream across projects without exposing other project details. Interval timestamps are client-reported event times, never approved presence.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "name": "employeeId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionShiftList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed/unknown/repeated query, UUID, civil day, pagination or strict asOf; future_as_of for day.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/execution/shifts/{shift}/segments": {
+      "get": {
+        "operationId": "listExecutionSegments",
+        "summary": "listExecutionSegments",
+        "description": "Current SQL role/scope: director tenant-wide; master/PTO active project grants; worker current own active employee link plus active tenant/project membership and assignment. Unknown/repeated query keys rejected400. Hidden resources404. Paged reads default25/max100, ordered ascending time then UUID; totals/items informational READ COMMITTED. Shift/day version is current employee stream across projects without exposing other project details. Interval timestamps are client-reported event times, never approved presence.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "shift",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionSegmentList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed/unknown/repeated query, UUID, civil day, pagination or strict asOf; future_as_of for day.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/execution/reports": {
+      "get": {
+        "operationId": "listExecutionReports",
+        "summary": "listExecutionReports",
+        "description": "Current SQL role/scope: director tenant-wide; master/PTO active project grants; worker current own active employee link plus active tenant/project membership and assignment. Unknown/repeated query keys rejected400. Hidden resources404. Paged reads default25/max100, ordered ascending time then UUID; totals/items informational READ COMMITTED. Shift/day version is current employee stream across projects without exposing other project details. Report day/source uses submission event occurredAt in tenant timezone, never receipt/shift workDate. AcceptedQuantity remains null.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "name": "employeeId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "taskId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "day",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionReportList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed/unknown/repeated query, UUID, civil day, pagination or strict asOf; future_as_of for day.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_tenant_timezone; no fallback timezone.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/execution/employees/{employee}/day": {
+      "get": {
+        "operationId": "readExecutionDay",
+        "summary": "readExecutionDay",
+        "description": "Current SQL role/scope: director tenant-wide; master/PTO active project grants; worker current own active employee link plus active tenant/project membership and assignment. Unknown/repeated query keys rejected400. Hidden resources404. Paged reads default25/max100, ordered ascending time then UUID; totals/items informational READ COMMITTED. Shift/day version is current employee stream across projects without exposing other project details. Day durations clip every segment half-open to each independently computed tenant-civil boundary and min(end,asOf); default server clock at millisecond precision, future asOf400, invalid tenant timezone422. Open flags refer to intervals intersecting the selected day at asOf, all values provisional. Exact integer decimal strings; per-task work/downtime only. No24h assumptions.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "employee",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "day",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "asOf",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ExecutionInstant"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionDay"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed/unknown/repeated query, UUID, civil day, pagination or strict asOf; future_as_of for day.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden tenant/project resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_tenant_timezone; no fallback timezone.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/execution/events": {
+      "post": {
+        "operationId": "ingestExecutionEvents",
+        "summary": "Ordered atomic managed execution events",
+        "description": "Server03a only. Entire strict tagged batch prevalidated; each item then separate ordered transaction, HTTP200 results preserve order and prior independent successes. Shared tenant/actor/requestId canonical namespace with people/tasks; exact authorized replay returns original201 result as duplicate. Changed payload/kind/path409 idempotency_payload_mismatch. previousEventId requires committed managed event by same actor/employee/project; missing_dependency409 retryable=true consumes no receipt/version/effect. Every successful kind increments employee stream once; stale_version409 never auto-overwrites. Failed item leaves no row/event/audit/receipt/version;500 retryable. Worker own only; director/granted master another employee requires nonblank onBehalfReason; PTO read-only. Fresh role/link/grant checked after ordered lock waits. Start active assignment/admission; work/final report own published managed task and current exact admission plus workDate evidence. Cleanup/end/switch-out and exact replay have current actor authority but no renewed task/admission gate; managers can close archived/revoked target. One open employee project shift across tenant; start idle, changes contiguous half-open modes, zero lengths allowed, chronological interval marks. Reports do not advance interval chronology. Final volume only after shift_end, occurredAt>=end, positive closed same-shift work; one immutable report/task/shift, above-plan allowed flagged provisional, acceptedQuantity null; no background job. receivedAt server clock and occurredAt client retained separately. Review delayed>24h, future>5min, geo mismatch absolute>5min, suspicious any of these; exact thresholds normal. Client geo/assertions are not proof. Published/cancelled task plan and snapshot unchanged. Browser queue/files/hour approval and acceptance remain03b/04.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecutionBatchInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionBatchResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Whole batch malformed, unknown query/body fields, invalid strict union/UUID/instant/decimal or duplicate requestId; zero item effects.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5479,6 +5969,9 @@
           },
           "idReadiness": {
             "$ref": "#/components/schemas/UnavailableMetric"
+          },
+          "managedExecution": {
+            "$ref": "#/components/schemas/ManagedExecutionOverview"
           }
         },
         "required": [
@@ -5496,7 +5989,8 @@
           "reportDateSource",
           "quality",
           "downtimeDuration",
-          "idReadiness"
+          "idReadiness",
+          "managedExecution"
         ],
         "additionalProperties": false
       },
@@ -8100,6 +8594,1439 @@
           "total",
           "limit",
           "offset"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionInstant": {
+        "type": "string",
+        "format": "date-time",
+        "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+        "description": "Real calendar/time/offset; explicit offset, at most millisecond precision; normalized UTC in results. Original offset remains in immutable original payload."
+      },
+      "ExecutionGeo": {
+        "type": "object",
+        "properties": {
+          "latitude": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 90
+          },
+          "longitude": {
+            "type": "number",
+            "minimum": -180,
+            "maximum": 180
+          },
+          "accuracyMeters": {
+            "type": "number",
+            "minimum": 0
+          },
+          "capturedAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          }
+        },
+        "required": [
+          "latitude",
+          "longitude",
+          "accuracyMeters",
+          "capturedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionStartInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occurredAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "previousEventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "onBehalfReason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "shift_start"
+            ]
+          },
+          "geo": {
+            "$ref": "#/components/schemas/ExecutionGeo"
+          }
+        },
+        "required": [
+          "requestId",
+          "employeeId",
+          "projectId",
+          "shiftId",
+          "expectedVersion",
+          "occurredAt",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionEndInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occurredAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "previousEventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "onBehalfReason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "shift_end"
+            ]
+          },
+          "geo": {
+            "$ref": "#/components/schemas/ExecutionGeo"
+          }
+        },
+        "required": [
+          "requestId",
+          "employeeId",
+          "projectId",
+          "shiftId",
+          "expectedVersion",
+          "occurredAt",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionIdleInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occurredAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "previousEventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "onBehalfReason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "segment_change"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "idle"
+            ]
+          }
+        },
+        "required": [
+          "requestId",
+          "employeeId",
+          "projectId",
+          "shiftId",
+          "expectedVersion",
+          "occurredAt",
+          "kind",
+          "mode"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionBreakInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occurredAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "previousEventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "onBehalfReason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "segment_change"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "break"
+            ]
+          }
+        },
+        "required": [
+          "requestId",
+          "employeeId",
+          "projectId",
+          "shiftId",
+          "expectedVersion",
+          "occurredAt",
+          "kind",
+          "mode"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionWorkInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occurredAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "previousEventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "onBehalfReason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "segment_change"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "work"
+            ]
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "requestId",
+          "employeeId",
+          "projectId",
+          "shiftId",
+          "expectedVersion",
+          "occurredAt",
+          "kind",
+          "mode",
+          "taskId"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionDowntimeInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occurredAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "previousEventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "onBehalfReason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "segment_change"
+            ]
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "downtime"
+            ]
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reasonCode": {
+            "type": "string",
+            "enum": [
+              "materials",
+              "equipment",
+              "front",
+              "safety",
+              "weather",
+              "other"
+            ]
+          },
+          "comment": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "requestId",
+          "employeeId",
+          "projectId",
+          "shiftId",
+          "expectedVersion",
+          "occurredAt",
+          "kind",
+          "mode",
+          "reasonCode",
+          "comment"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionVolumeInput": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occurredAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "previousEventId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "onBehalfReason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "submit_volume"
+            ]
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reportId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "submittedQuantity": {
+            "type": "string",
+            "pattern": "^(?!0+(?:\\.0+)?$)[0-9]{1,11}(?:\\.[0-9]{1,3})?$",
+            "description": "Strict positive decimal JSON string numeric(14,3); no number/exponent/sign/rounding. Output normalized to three places."
+          }
+        },
+        "required": [
+          "requestId",
+          "employeeId",
+          "projectId",
+          "shiftId",
+          "expectedVersion",
+          "occurredAt",
+          "kind",
+          "taskId",
+          "reportId",
+          "submittedQuantity"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionEventInput": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ExecutionStartInput"
+          },
+          {
+            "$ref": "#/components/schemas/ExecutionEndInput"
+          },
+          {
+            "$ref": "#/components/schemas/ExecutionIdleInput"
+          },
+          {
+            "$ref": "#/components/schemas/ExecutionBreakInput"
+          },
+          {
+            "$ref": "#/components/schemas/ExecutionWorkInput"
+          },
+          {
+            "$ref": "#/components/schemas/ExecutionDowntimeInput"
+          },
+          {
+            "$ref": "#/components/schemas/ExecutionVolumeInput"
+          }
+        ]
+      },
+      "ExecutionBatchInput": {
+        "type": "object",
+        "properties": {
+          "events": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/ExecutionEventInput"
+            },
+            "description": "Unique requestIds across the complete syntactically validated batch; duplicate or malformed item rejects whole batch400 before transactions."
+          }
+        },
+        "required": [
+          "events"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionReviewFlags": {
+        "type": "object",
+        "properties": {
+          "delayed": {
+            "type": "boolean"
+          },
+          "future": {
+            "type": "boolean"
+          },
+          "suspicious": {
+            "type": "boolean"
+          },
+          "geoTimeMismatch": {
+            "type": "boolean"
+          },
+          "abovePlannedQuantity": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "delayed",
+          "future",
+          "suspicious",
+          "geoTimeMismatch",
+          "abovePlannedQuantity"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionIntervalResult": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "shift_start",
+              "segment_change",
+              "shift_end"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occurredAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "receivedAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "reviewFlags": {
+            "$ref": "#/components/schemas/ExecutionReviewFlags"
+          }
+        },
+        "required": [
+          "requestId",
+          "employeeId",
+          "projectId",
+          "shiftId",
+          "kind",
+          "version",
+          "occurredAt",
+          "receivedAt",
+          "reviewFlags"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionVolumeResult": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "submit_volume"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "occurredAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "receivedAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "reviewFlags": {
+            "$ref": "#/components/schemas/ExecutionReviewFlags"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reportId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "submittedQuantity": {
+            "type": "string",
+            "pattern": "^[0-9]{1,11}\\.[0-9]{3}$",
+            "description": "Exact positive normalized submitted decimal."
+          },
+          "acceptedQuantity": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              null
+            ]
+          },
+          "provisional": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "requestId",
+          "employeeId",
+          "projectId",
+          "shiftId",
+          "kind",
+          "version",
+          "occurredAt",
+          "receivedAt",
+          "reviewFlags",
+          "taskId",
+          "reportId",
+          "submittedQuantity",
+          "acceptedQuantity",
+          "provisional"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionResult": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ExecutionIntervalResult"
+          },
+          {
+            "$ref": "#/components/schemas/ExecutionVolumeResult"
+          }
+        ]
+      },
+      "ExecutionSuccess": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "success",
+              "duplicate"
+            ]
+          },
+          "status": {
+            "type": "integer",
+            "enum": [
+              201
+            ]
+          },
+          "result": {
+            "$ref": "#/components/schemas/ExecutionResult"
+          }
+        },
+        "required": [
+          "requestId",
+          "outcome",
+          "status",
+          "result"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionFailure": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "error"
+            ]
+          },
+          "status": {
+            "type": "integer",
+            "enum": [
+              400,
+              403,
+              404,
+              409,
+              422,
+              500
+            ]
+          },
+          "code": {
+            "type": "string"
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "requestId",
+          "outcome",
+          "status",
+          "code",
+          "retryable"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionBatchResult": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ExecutionSuccess"
+                },
+                {
+                  "$ref": "#/components/schemas/ExecutionFailure"
+                }
+              ]
+            }
+          }
+        },
+        "required": [
+          "results"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionShift": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "startedAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "endedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "description": "Real calendar/time/offset; explicit offset, at most millisecond precision; normalized UTC in results. Original offset remains in immutable original payload.",
+            "nullable": true
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "startEvent": {
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "actorUserId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "occurredAt": {
+                "$ref": "#/components/schemas/ExecutionInstant"
+              },
+              "receivedAt": {
+                "$ref": "#/components/schemas/ExecutionInstant"
+              },
+              "reviewFlags": {
+                "$ref": "#/components/schemas/ExecutionReviewFlags"
+              }
+            },
+            "required": [
+              "requestId",
+              "actorUserId",
+              "occurredAt",
+              "receivedAt",
+              "reviewFlags"
+            ],
+            "additionalProperties": false,
+            "nullable": true,
+            "description": "Client interval mark and server receipt time/flags; null only if no corresponding event exists (historical fixture)."
+          },
+          "endEvent": {
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "actorUserId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "occurredAt": {
+                "$ref": "#/components/schemas/ExecutionInstant"
+              },
+              "receivedAt": {
+                "$ref": "#/components/schemas/ExecutionInstant"
+              },
+              "reviewFlags": {
+                "$ref": "#/components/schemas/ExecutionReviewFlags"
+              }
+            },
+            "required": [
+              "requestId",
+              "actorUserId",
+              "occurredAt",
+              "receivedAt",
+              "reviewFlags"
+            ],
+            "additionalProperties": false,
+            "nullable": true,
+            "description": "Client interval mark and server receipt time/flags; null only if no corresponding event exists (historical fixture)."
+          }
+        },
+        "required": [
+          "id",
+          "employeeId",
+          "projectId",
+          "startedAt",
+          "endedAt",
+          "version",
+          "startEvent",
+          "endEvent"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionSegment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "work",
+              "break",
+              "downtime"
+            ]
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "reasonCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "comment": {
+            "type": "string",
+            "nullable": true
+          },
+          "startedAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "endedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,3})?(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "description": "Real calendar/time/offset; explicit offset, at most millisecond precision; normalized UTC in results. Original offset remains in immutable original payload.",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "employeeId",
+          "projectId",
+          "shiftId",
+          "mode",
+          "taskId",
+          "reasonCode",
+          "comment",
+          "startedAt",
+          "endedAt"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionReport": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actorUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "submittedQuantity": {
+            "type": "string",
+            "pattern": "^[0-9]{1,11}\\.[0-9]{3}$",
+            "description": "Exact positive normalized submitted decimal."
+          },
+          "unit": {
+            "type": "string"
+          },
+          "acceptedQuantity": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              null
+            ]
+          },
+          "provisional": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "occurredAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "receivedAt": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "reviewFlags": {
+            "$ref": "#/components/schemas/ExecutionReviewFlags"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "managed_execution_events.occurred_at"
+            ]
+          }
+        },
+        "required": [
+          "reportId",
+          "employeeId",
+          "projectId",
+          "shiftId",
+          "taskId",
+          "requestId",
+          "actorUserId",
+          "submittedQuantity",
+          "unit",
+          "acceptedQuantity",
+          "provisional",
+          "occurredAt",
+          "receivedAt",
+          "reviewFlags",
+          "source"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionShiftList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionShift"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionSegmentList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionSegment"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionReportList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExecutionReport"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "additionalProperties": false
+      },
+      "ExecutionDay": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "asOf": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "server_as_of"
+            ]
+          },
+          "provisional": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "presenceMs": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Exact nonnegative integer milliseconds as a decimal string; provisional, never approved hours."
+          },
+          "idleMs": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Exact nonnegative integer milliseconds as a decimal string; provisional, never approved hours."
+          },
+          "workMs": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Exact nonnegative integer milliseconds as a decimal string; provisional, never approved hours."
+          },
+          "breakMs": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Exact nonnegative integer milliseconds as a decimal string; provisional, never approved hours."
+          },
+          "downtimeMs": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Exact nonnegative integer milliseconds as a decimal string; provisional, never approved hours."
+          },
+          "hasOpenIntervals": {
+            "type": "boolean"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "taskId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "workMs": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$",
+                  "description": "Exact nonnegative integer milliseconds as a decimal string; provisional, never approved hours."
+                },
+                "downtimeMs": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$",
+                  "description": "Exact nonnegative integer milliseconds as a decimal string; provisional, never approved hours."
+                }
+              },
+              "required": [
+                "taskId",
+                "workMs",
+                "downtimeMs"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "day",
+          "timezone",
+          "asOf",
+          "source",
+          "provisional",
+          "employeeId",
+          "projectId",
+          "version",
+          "presenceMs",
+          "idleMs",
+          "workMs",
+          "breakMs",
+          "downtimeMs",
+          "hasOpenIntervals",
+          "tasks"
+        ],
+        "additionalProperties": false
+      },
+      "ManagedExecutionOverview": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "asOf": {
+            "$ref": "#/components/schemas/ExecutionInstant"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "server_as_of"
+            ]
+          },
+          "provisional": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "presenceMs": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Exact nonnegative integer milliseconds as a decimal string; provisional, never approved hours."
+          },
+          "idleMs": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Exact nonnegative integer milliseconds as a decimal string; provisional, never approved hours."
+          },
+          "workMs": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Exact nonnegative integer milliseconds as a decimal string; provisional, never approved hours."
+          },
+          "breakMs": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Exact nonnegative integer milliseconds as a decimal string; provisional, never approved hours."
+          },
+          "downtimeMs": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Exact nonnegative integer milliseconds as a decimal string; provisional, never approved hours."
+          },
+          "hasOpenIntervals": {
+            "type": "boolean"
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "taskId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "workMs": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$",
+                  "description": "Exact nonnegative integer milliseconds as a decimal string; provisional, never approved hours."
+                },
+                "downtimeMs": {
+                  "type": "string",
+                  "pattern": "^[0-9]+$",
+                  "description": "Exact nonnegative integer milliseconds as a decimal string; provisional, never approved hours."
+                }
+              },
+              "required": [
+                "taskId",
+                "workMs",
+                "downtimeMs"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "employeesStartedShiftsForDay": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "currentOpenShifts": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "submittedReportsForDay": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "quantities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "unit": {
+                  "type": "string"
+                },
+                "submittedQuantity": {
+                  "type": "string",
+                  "pattern": "^[0-9]+\\.[0-9]{3}$",
+                  "description": "Exact decimal sum within one unit; may exceed individual numeric(14,3) report capacity."
+                },
+                "acceptedQuantity": {
+                  "type": "string",
+                  "nullable": true,
+                  "enum": [
+                    null
+                  ]
+                }
+              },
+              "required": [
+                "unit",
+                "submittedQuantity",
+                "acceptedQuantity"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "reportDateSource": {
+            "type": "string",
+            "enum": [
+              "managed_execution_events.occurred_at"
+            ]
+          },
+          "shiftStartSource": {
+            "type": "string",
+            "enum": [
+              "managed_shifts.started_at"
+            ]
+          }
+        },
+        "required": [
+          "day",
+          "timezone",
+          "asOf",
+          "source",
+          "provisional",
+          "presenceMs",
+          "idleMs",
+          "workMs",
+          "breakMs",
+          "downtimeMs",
+          "hasOpenIntervals",
+          "tasks",
+          "employeesStartedShiftsForDay",
+          "currentOpenShifts",
+          "submittedReportsForDay",
+          "quantities",
+          "reportDateSource",
+          "shiftStartSource"
         ],
         "additionalProperties": false
       }

@@ -6,6 +6,8 @@ import {withTenant} from './db.js';
 import {httpError} from './errors.js';
 import {reserveCommand,replayCommand,completeCommand} from './durable-command.js';
 import {executionBatch,type ExecutionEvent} from './execution-input.js';
+import type {Page} from './api-input.js';
+import {executionScope,executionJoin,executionClock,executionTotals} from './execution-read.js';
 import {PeopleService} from './people.service.js';
 type Row=Record<string,any>;
 export function executionReviewFlags(occurredAt:string,receivedAt:Date,capturedAt?:string,abovePlannedQuantity=false){
@@ -15,6 +17,50 @@ export function executionReviewFlags(occurredAt:string,receivedAt:Date,capturedA
 }
 export class ExecutionService {
   constructor(private readonly pool:Pool,private readonly people:PeopleService){}
+  private async readScope(c:PoolClient,a:Actor,projectId:string,employeeId?:string){
+    const visible=(await c.query(`SELECT p.id FROM projects p LEFT JOIN employees e ON e.tenant_id=p.tenant_id WHERE ${executionScope} LIMIT 1`,[a.tenantId,a.userId,projectId])).rows[0];
+    if(!visible)throw httpError(404,'not_found');
+    if(employeeId&&!(await c.query(`SELECT e.id FROM employees e JOIN projects p ON p.tenant_id=e.tenant_id WHERE ${executionScope} AND e.id=$4`,[a.tenantId,a.userId,projectId,employeeId])).rowCount)throw httpError(404,'not_found');
+  }
+  shifts(a:Actor,projectId:string,page:Page,employeeId?:string){
+    return withTenant(this.pool,a.tenantId,a.userId,async c=>{
+      await this.readScope(c,a,projectId,employeeId);
+      const v=[a.tenantId,a.userId,projectId,employeeId??null],from=`FROM managed_shifts s ${executionJoin} JOIN managed_execution_streams st ON st.tenant_id=s.tenant_id AND st.employee_id=s.employee_id WHERE ${executionScope} AND ($4::uuid IS NULL OR e.id=$4)`;
+      const total=(await c.query(`SELECT count(*)::int n ${from}`,v)).rows[0].n;
+      const items=(await c.query(`SELECT s.id,s.project_id AS "projectId",s.employee_id AS "employeeId",s.started_at AS "startedAt",s.ended_at AS "endedAt",st.version::float8 AS "version",
+        (SELECT jsonb_build_object('requestId',ev.request_id,'actorUserId',ev.actor_user_id,'occurredAt',ev.occurred_at,'receivedAt',ev.received_at,'reviewFlags',ev.review_flags) FROM managed_execution_events ev WHERE ev.tenant_id=s.tenant_id AND ev.project_id=s.project_id AND ev.employee_id=s.employee_id AND ev.shift_id=s.id AND ev.kind='shift_start') AS "startEvent",
+        (SELECT jsonb_build_object('requestId',ev.request_id,'actorUserId',ev.actor_user_id,'occurredAt',ev.occurred_at,'receivedAt',ev.received_at,'reviewFlags',ev.review_flags) FROM managed_execution_events ev WHERE ev.tenant_id=s.tenant_id AND ev.project_id=s.project_id AND ev.employee_id=s.employee_id AND ev.shift_id=s.id AND ev.kind='shift_end') AS "endEvent"
+        ${from} ORDER BY s.started_at,s.id LIMIT $5 OFFSET $6`,[...v,page.limit,page.offset])).rows;
+      return {items,total,...page};
+    });
+  }
+  segments(a:Actor,projectId:string,shiftId:string,page:Page){
+    return withTenant(this.pool,a.tenantId,a.userId,async c=>{
+      await this.readScope(c,a,projectId);
+      if(!(await c.query(`SELECT s.id FROM managed_shifts s ${executionJoin} WHERE ${executionScope} AND s.id=$4`,[a.tenantId,a.userId,projectId,shiftId])).rowCount)throw httpError(404,'not_found');
+      const v=[a.tenantId,a.userId,projectId,shiftId],from=`FROM managed_segments s ${executionJoin} WHERE ${executionScope} AND s.shift_id=$4`;
+      const total=(await c.query(`SELECT count(*)::int n ${from}`,v)).rows[0].n;
+      const items=(await c.query(`SELECT s.id,s.shift_id AS "shiftId",s.employee_id AS "employeeId",s.project_id AS "projectId",s.mode,s.task_id AS "taskId",s.reason_code AS "reasonCode",s.comment,s.started_at AS "startedAt",s.ended_at AS "endedAt" ${from} ORDER BY s.started_at,s.id LIMIT $5 OFFSET $6`,[...v,page.limit,page.offset])).rows;
+      return {items,total,...page};
+    });
+  }
+  reports(a:Actor,projectId:string,page:Page,employeeId?:string,taskId?:string,day?:string){
+    return withTenant(this.pool,a.tenantId,a.userId,async c=>{
+      await this.readScope(c,a,projectId,employeeId);const clock=await executionClock(c,a,day);
+      const v=[a.tenantId,a.userId,projectId,employeeId??null,taskId??null,day??null,clock.timezone];
+      const from=`FROM managed_execution_reports s ${executionJoin} JOIN managed_execution_events ev ON ev.tenant_id=s.tenant_id AND ev.actor_user_id=s.actor_user_id AND ev.request_id=s.request_id JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.project_id=s.project_id AND t.id=s.task_id WHERE ${executionScope} AND ($4::uuid IS NULL OR e.id=$4) AND ($5::uuid IS NULL OR t.id=$5) AND ($6::date IS NULL OR (ev.occurred_at>=($6::date::timestamp AT TIME ZONE $7) AND ev.occurred_at<(($6::date+1)::timestamp AT TIME ZONE $7)))`;
+      const total=(await c.query(`SELECT count(*)::int n ${from}`,v)).rows[0].n;
+      const items=(await c.query(`SELECT s.report_id AS "reportId",s.project_id AS "projectId",s.employee_id AS "employeeId",s.shift_id AS "shiftId",s.task_id AS "taskId",s.request_id AS "requestId",s.actor_user_id AS "actorUserId",s.submitted_quantity::text AS "submittedQuantity",t.unit,NULL AS "acceptedQuantity",true provisional,ev.occurred_at AS "occurredAt",ev.received_at AS "receivedAt",ev.review_flags AS "reviewFlags",'managed_execution_events.occurred_at' AS source ${from} ORDER BY ev.occurred_at,s.report_id LIMIT $8 OFFSET $9`,[...v,page.limit,page.offset])).rows;
+      return {items,total,...page};
+    });
+  }
+  day(a:Actor,projectId:string,employeeId:string,day:string,asOf?:string){
+    return withTenant(this.pool,a.tenantId,a.userId,async c=>{
+      await this.readScope(c,a,projectId,employeeId);const clock=await executionClock(c,a,day,asOf);
+      const version=Number((await c.query(`SELECT version FROM managed_execution_streams WHERE tenant_id=$1 AND employee_id=$2`,[a.tenantId,employeeId])).rows[0]?.version??0);
+      return {employeeId,projectId,...clock,version,...await executionTotals(c,a,projectId,clock,employeeId)};
+    });
+  }
   async ingest(a:Actor,input:unknown){
     const events=executionBatch(input),results:Row[]=[];
     for(const b of events){

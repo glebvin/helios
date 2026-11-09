@@ -1,3 +1,4 @@
+import {managedOverview} from './execution-read.js';
 import type { Pool, PoolClient } from "pg";
 import { withTenant } from "./db.js";
 import { httpError } from "./errors.js";
@@ -105,26 +106,27 @@ export class DirectorApiService {
   overview(actor: Actor, projectId?: string, requestedDay?: string) {
     return this.with(actor, async (client) => {
       if (projectId) await this.projectExists(client, actor, projectId);
-      const tenant = await client.query(`SELECT timezone, to_char(now() AT TIME ZONE timezone, 'YYYY-MM-DD') AS day
+      const tenant = await client.query(`SELECT timezone
         FROM tenants WHERE id = $1`, [actor.tenantId]);
       const timezone = tenant.rows[0].timezone as string;
-      const day = requestedDay ?? tenant.rows[0].day as string;
+      if(!(await client.query('SELECT 1 FROM pg_timezone_names WHERE name=$1',[timezone])).rowCount)throw httpError(422,'invalid_tenant_timezone');
+      const day = requestedDay ?? (await client.query("SELECT to_char(now() AT TIME ZONE $1,'YYYY-MM-DD') AS day",[timezone])).rows[0].day as string;
       const values = [actor.role, actor.userId, projectId ?? null, day, timezone];
       const scope = `${taskVisible} AND ($3::uuid IS NULL OR p.id = $3)`;
       const boundary = `created_at >= ($4::date::timestamp AT TIME ZONE $5)
         AND created_at < (($4::date + 1)::timestamp AT TIME ZONE $5)`;
       const counts = await client.query(`WITH visible_tasks AS (
-          SELECT t.id, t.tenant_id, t.project_id, t.work_date ${taskJoin} WHERE ${scope}
+          SELECT t.id, t.tenant_id, t.project_id, t.work_date,t.workflow_kind ${taskJoin} WHERE ${scope}
         ), visible_shifts AS (
           SELECT s.* FROM shifts s JOIN visible_tasks t ON t.tenant_id = s.tenant_id AND t.id = s.task_id
           JOIN employees se ON se.tenant_id = s.tenant_id AND se.id = s.employee_id
-          WHERE ($1 <> 'worker' OR (se.user_id = $2 AND EXISTS (
+          WHERE t.workflow_kind='legacy' AND ($1 <> 'worker' OR (se.user_id = $2 AND EXISTS (
             SELECT 1 FROM employee_project_assignments a WHERE a.tenant_id = s.tenant_id
               AND a.project_id = t.project_id AND a.employee_id = s.employee_id AND a.status = 'active'
           )))
         ), daily_reports AS (
           SELECT r.* FROM work_reports r JOIN visible_tasks t ON t.tenant_id = r.tenant_id AND t.id = r.task_id
-          WHERE ${boundary}
+          WHERE t.workflow_kind='legacy' AND ${boundary}
         ) SELECT
           (SELECT count(*)::int FROM visible_tasks WHERE work_date = $4::date) AS "tasksForDay",
           (SELECT count(DISTINCT employee_id)::int FROM visible_shifts
@@ -143,12 +145,13 @@ export class DirectorApiService {
         FROM work_reports r JOIN daily_tasks t ON t.tenant_id = r.tenant_id AND t.id = r.task_id
         JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
         JOIN employees e ON e.tenant_id = t.tenant_id AND e.id = t.assignee_employee_id
-        WHERE ${scope} AND ${boundary} GROUP BY t.unit ORDER BY t.unit`, values);
+        WHERE ${scope} AND t.workflow_kind='legacy' AND ${boundary} GROUP BY t.unit ORDER BY t.unit`, values);
       const unavailable = (source: string) => ({ status: "unavailable", value: null, source });
       return {
         day, timezone, projectId: projectId ?? null,
         assignedEmployees: employees.rows[0].n,
         ...counts.rows[0], quantities: quantities.rows,
+        managedExecution: await managedOverview(client,actor,projectId,day),
         shiftStartSource: "occurred_started_at with started_at fallback",
         reportDateSource: "work_reports.created_at",
         quality: unavailable("quality inspections not implemented"),

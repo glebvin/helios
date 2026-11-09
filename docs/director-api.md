@@ -1,6 +1,6 @@
 # HELIOS API v1 — handoff интерфейсу
 
-Срезы **02a: люди → квалификации → допуск → назначение → бригада** и **02b: каталоги → план → готовность фронта → согласование → публикация** сохраняют первый API чтения. Контракт `apps/api/openapi.json` доступен через `GET /api/v1/openapi.json`: **53 операции — 52 v1 (30 прежних + 22 новых) и один retired legacy-create endpoint**. Защищённые v1-маршруты требуют действующей сессии и активного членства в кабинете. Это ещё не готовый пилот.
+Срезы **02a: люди → квалификации → допуск → назначение → бригада** и **02b: каталоги → план → готовность фронта → согласование → публикация** сохраняют первый API чтения. Контракт `apps/api/openapi.json` доступен через `GET /api/v1/openapi.json`: **58 операций — 57 v1 (53 прежние операции плюс POST и четыре GET execution) и один retired legacy-create endpoint**. Защищённые v1-маршруты требуют действующей сессии и активного членства в кабинете. Это ещё не готовый пилот.
 
 ## Вход и кабинет
 
@@ -225,6 +225,55 @@ POST /projects/${project}/tasks/${task}/publish
 {"requestId":"${r7}","expectedVersion":3}
 ```
 
-Последний запрос выполняет директор. Worker теперь видит только собственную published задачу, включая v1 overview и touched legacy counts. Смена/отчёт по managed задаче пока закрыты409: phase03 execution, достоверный offline, файлы, quality inspections, authority routes, реальный material/ID/AOSR/hold-point процесс, multiple executors, нормы, MFA/backup/load и полная приёмка пилота остаются впереди. Эти возможности не заменяются front yes/no или тестовыми legacy отчётами.
+Последний запрос выполняет директор. Worker теперь видит только собственную published задачу, включая v1 overview и touched legacy counts. Legacy смена/отчёт по managed задаче закрыты409; новый серверный execution03a описан ниже. Достоверный browser offline, файлы, quality inspections, authority routes, реальный material/ID/AOSR/hold-point процесс, multiple executors, нормы, MFA/backup/load и полная приёмка пилота остаются впереди. Эти возможности не заменяются front yes/no или тестовыми legacy отчётами.
 
 В текущем install layout отдельная команда domain `tsc --noEmit` не находит types/node (TS2688), хотя API typecheck и domain runtime tests проходят. Без установки/изменения зависимостей подтверждён вариант с уже установленными типами: `corepack pnpm --filter @helios/domain exec tsc --noEmit --typeRoots ../../apps/api/node_modules/@types`. Это ограничение локального resolution, не утверждение о прохождении исходной команды.
+
+## Управляемое выполнение03a
+
+Контракт содержит58 операций: прежние53 сохранены, добавлены POST `/api/v1/execution/events` и четыре GET ниже. Legacy `/api/shifts/*` и `/api/work-reports` по-прежнему отвергают managed задачи409, legacy create410. Новые данные находятся только в managed таблицах; published/cancelled план и publication snapshot не меняются. Исполнение не означает приёмку.
+
+POST body строго `{events:[...]}`,1–50 уникальных UUID requestId. Весь синтаксис проверяется до записи: неизвестное поле, невалидный instant/UUID/quantity или повтор requestId даёт400 без эффектов всего batch. Затем каждый item — отдельная транзакция в исходном порядке. HTTP200 `{results:[{requestId,outcome:"success"|"duplicate",status:201,result}|{requestId,outcome:"error",status,code,retryable}]}`. Неудача не отменяет уже успешные независимые items и не расходует version/receipt. RequestId одновременно идентификатор события; отдельного eventId нет.
+
+Общие поля item: `kind,requestId,employeeId,projectId,shiftId,expectedVersion,occurredAt`, необязательные `previousEventId,onBehalfReason`. ShiftId задаёт клиент до старта. Version — единый поток employee по всем проектам tenant,0 только до первого события; каждый принятый kind повышает его на1. Instants требуют настоящий календарь и явный Z/offset, максимум3 дробных знака. Исходный payload/offset, occurredAt и server receivedAt сохраняются раздельно. Quantity — положительная decimal JSON строка, до11 целых/3 дробных, без округления; ответ содержит3 знака.
+
+| Kind | Дополнительные поля |
+|---|---|
+| shift_start | необязательный geo; открывает idle |
+| segment_change | mode idle/work/break/downtime; work требует taskId; downtime требует reasonCode/comment, taskId необязателен |
+| shift_end | необязательный geo; закрывает текущий сегмент и смену |
+| submit_volume | taskId,reportId,submittedQuantity; только после закрытия смены и положительного закрытого work этого task в ней |
+
+Geo строго `{latitude,longitude,accuracyMeters,capturedAt}`: диапазоны±90/±180, конечная accuracy>=0, capturedAt strict instant. Это утверждение клиента. Downtime reasonCode: materials/equipment/front/safety/weather/other; trimmed comment1–500 символов, атрибуция task только после prior work в той же смене. Дополнительные task/reason/geo поля вне своей формы запрещены. Одна открытая проектная смена employee на tenant; сегменты `[start,end)` непрерывны, нулевая длина допустима; interval marks не идут назад и новый start>=предыдущего end. Volume не меняет interval chronology. Один неизменяемый итоговый report на task/shift; incremental/corrections позже. Report occurredAt>=shift end; выше плана допускается с review flag. `acceptedQuantity:null, provisional:true`.
+
+Worker действует только за своего active employee с текущими tenant/project memberships. Director или master с текущим project grant может действовать за другого с непустым onBehalfReason1–500. PTO только читает. Start требует active assignment/current admission; work/final volume дополнительно требуют own published managed task и точное текущее evidence, действующее сегодня и на task.workDate. Обычный выход в idle/break/downtime/end не требует нового admission. Director/granted master может закрыть время archived/revoked employee. Revoked worker теряет право отправки. Replay проверяет текущие actor/link/project права и возвращает исходный result после последующих изменений admission/task/version. Shared requestId namespace с people/tasks: иной payload/kind/operation даёт409 `idempotency_payload_mismatch`.
+
+Review flags: delayed при receivedAt−occurredAt>24h, future при occurredAt−receivedAt>5min, geoTimeMismatch при абсолютном capturedAt−occurredAt>5min; suspicious объединяет эти три. Равенство порогам нормально. abovePlannedQuantity относится к submitted volume. Время не переписывается и не становится доказательством/подтверждёнными часами.
+
+Все GET имеют префикс `/api/v1/projects/:p/execution`:
+
+| Путь | Query |
+|---|---|
+| `/shifts` | optional employeeId,limit,offset |
+| `/shifts/:shift/segments` | limit,offset |
+| `/reports` | optional employeeId,taskId,day,limit,offset |
+| `/employees/:employee/day` | required day; optional asOf strict instant |
+
+Первые три возвращают `{items,total,limit,offset}`, default25/max100, сортировка ascending timestamp+UUID. Неизвестные/повторные query запрещены400. Director читает tenant, master/PTO — текущие granted projects, worker — только own employee при active link/project membership/assignment. Скрытые ресурсы404. Shifts также возвращает startEvent/endEvent с client occurredAt, server receivedAt и reviewFlags (endEvent null у открытой смены). Shift и day возвращают текущий employee stream version, включая продвижение в другом проекте без его деталей. Read snapshots информационные; totals/items могут меняться между SQL/запросами.
+
+Day: `{employeeId,projectId,day,timezone,asOf,source:"server_as_of",version,presenceMs,idleMs,workMs,breakMs,downtimeMs,tasks:[{taskId,workMs,downtimeMs}],provisional:true,hasOpenIntervals}`. Все Ms — точные целые decimal **строки**, presence=sum четырёх modes. Обе границы гражданского дня вычисляются независимо в проверенной timezone tenant, включая23/25h DST; интервалы обрезаются по `[dayStart,dayEnd)` и min(end,asOf). Default asOf — server clock до миллисекунд; future asOf400, invalid tenant timezone422. Время до начала даёт0. hasOpenIntervals указывает открытый интервал, пересекающий выбранный день на asOf. Пустой день корректно даёт0 и tasks[]. Это provisional, approval/accepted hours отсутствуют.
+
+Reports day и `overview.managedExecution.submittedReportsForDay` используют **submission event occurredAt** в timezone tenant, не workDate/shift start/receivedAt. Reports явно возвращают source, occurredAt,receivedAt,reviewFlags. Overview сохраняет прежние top-level legacy shift/report meanings и добавляет managedExecution с отдельными counts, exact time breakdown, per-task totals, provisional/source/asOf. Quantity суммируется только внутри unit; acceptedQuantity остаётся null. Quality/ID и старый downtimeDuration остаются unavailable. Managed записи не копируются в legacy shifts/work_reports и не считаются дважды.
+
+Копируемый batch после подготовки assignment/admission/published task (замените employee/project/task UUID существующими; version0 допустим только для нового employee stream):
+
+```json
+{"events":[
+ {"kind":"shift_start","requestId":"10000000-0000-4000-8000-000000000001","employeeId":"20000000-0000-4000-8000-000000000001","projectId":"30000000-0000-4000-8000-000000000001","shiftId":"40000000-0000-4000-8000-000000000001","expectedVersion":0,"occurredAt":"2026-11-09T09:00:00+03:00"},
+ {"kind":"segment_change","requestId":"10000000-0000-4000-8000-000000000002","previousEventId":"10000000-0000-4000-8000-000000000001","employeeId":"20000000-0000-4000-8000-000000000001","projectId":"30000000-0000-4000-8000-000000000001","shiftId":"40000000-0000-4000-8000-000000000001","expectedVersion":1,"occurredAt":"2026-11-09T09:00:00+03:00","mode":"work","taskId":"50000000-0000-4000-8000-000000000001"},
+ {"kind":"shift_end","requestId":"10000000-0000-4000-8000-000000000003","previousEventId":"10000000-0000-4000-8000-000000000002","employeeId":"20000000-0000-4000-8000-000000000001","projectId":"30000000-0000-4000-8000-000000000001","shiftId":"40000000-0000-4000-8000-000000000001","expectedVersion":2,"occurredAt":"2026-11-09T10:00:00+03:00"},
+ {"kind":"submit_volume","requestId":"10000000-0000-4000-8000-000000000004","previousEventId":"10000000-0000-4000-8000-000000000003","employeeId":"20000000-0000-4000-8000-000000000001","projectId":"30000000-0000-4000-8000-000000000001","shiftId":"40000000-0000-4000-8000-000000000001","expectedVersion":3,"occurredAt":"2026-11-09T10:05:00+03:00","taskId":"50000000-0000-4000-8000-000000000001","reportId":"60000000-0000-4000-8000-000000000001","submittedQuantity":"1.250"}
+]}
+```
+
+Если сначала отправлен второй item, отсутствующий predecessor даёт409 `missing_dependency,retryable:true` без effects. Сохраните failed/pending items, отправьте первый и повторите **тот же** второй payload/requestId; получите success. Точное повторение успешного item — duplicate с исходным result. Unrelated receipt или event другого actor/employee/project зависимостью не является. При stale_version409 прочитайте shifts/day текущую version, покажите пользователю конфликт устройств и разрешите его явно; не повышайте версии автоматически и не удаляйте failed items. Retriable500 после rollback допускает точное повторение. Browser durable queue, files/photos, device checks, hours approval/Excel относятся к03b; quality acceptance/material/ID —04. Сервер03a не является полной phase03/приёмкой пилота.
