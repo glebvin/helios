@@ -98,7 +98,7 @@ export async function openOfflineQueue(options: QueueOptions) {
     const stage=outcome.state==='synced'?(row.stage==='queued'?'reserved':row.stage==='reserved'?'uploaded':'synced'):row.stage;
     const patch={stage,state:outcome.state==='synced'&&stage!=='synced'?'pending' as const:outcome.state,attemptCount:attempts,
       nextAttemptAt:outcome.state==='retry_wait'?Date.now()+retryDelay(attempts,retryAfter):null,lastError:outcome.code};
-    await updateEvidence(store,scope,epoch,row,patch,check);return {...row,...patch};
+    const blob=await updateEvidence(store,scope,epoch,row,patch,check);return {...row,...patch,blob};
   }
   async function flush() {
     const check = capture();

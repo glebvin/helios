@@ -98,7 +98,7 @@ export function evidenceDependency(store: NativeStore, scope: string, epoch: num
   });});
 }
 export async function updateEvidence(store: NativeStore, scope: string, epoch: number, row: StoredEvidence,
-  patch: Pick<StoredEvidence,'state'|'attemptCount'|'nextAttemptAt'|'lastError'|'stage'>, check: () => void): Promise<void> {
+  patch: Pick<StoredEvidence,'state'|'attemptCount'|'nextAttemptAt'|'lastError'|'stage'>, check: () => void): Promise<Blob> {
   // Re-putting an IDB-backed Blob reference can lose its backing bytes in WebKit on reopen.
   // Materialize the bounded bytes before the transaction; never replace them with metadata alone.
   check();const bytes=await row.blob.arrayBuffer();check();const blob=new Blob([bytes],{type:row.blob.type});
@@ -108,7 +108,9 @@ export async function updateEvidence(store: NativeStore, scope: string, epoch: n
       if(!r.result || r.result.commandHash!==row.commandHash || r.result.stage!==row.stage)fail('local_identity_conflict');
       files.put({...r.result,...patch,blob});
       if(patch.state==='synced')for(const [id,role] of [[row.id,'file'],[row.reserve.requestId,'reserve'],[row.attach.requestId,'attach']])meta.put({key:identityKey(scope,id),value:{canonical:row.canonical,commandHash:row.commandHash,role,acknowledged:true}});
-      result(undefined);
+      // Carry the same fresh bytes into the next stage; the overwritten IDB reference
+      // may no longer be readable in WebKit even within this still-running flush.
+      result(blob);
     });
   });
 }

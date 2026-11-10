@@ -6,7 +6,7 @@ import {mkdtemp, readFile, rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
-import {execFileSync,spawnSync} from 'node:child_process';
+import {execFileSync,spawnSync,spawn} from 'node:child_process';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 if (!process.env.HELIOS_OFFLINE_TEST_CHILD) {
@@ -14,8 +14,7 @@ if (!process.env.HELIOS_OFFLINE_TEST_CHILD) {
   process.exit(run.status??1);
 }
 const suite = process.env.HELIOS_OFFLINE_SUITE;
-// Incomplete suites fail explicitly until their sequential task adds its assertions.
-assert.ok(['tracer','mechanics','evidence'].includes(suite), `Suite ${suite} is not implemented yet (Task3 pending); no scenarios skipped`);
+assert.ok(['tracer','mechanics','evidence','real','all'].includes(suite), `Unknown required suite ${suite}`);
 const modulePath = process.env.HELIOS_PLAYWRIGHT_MODULE;
 assert.ok(modulePath, 'HELIOS_PLAYWRIGHT_MODULE must point to an existing Playwright runtime');
 assert.ok(process.env.PLAYWRIGHT_BROWSERS_PATH, 'PLAYWRIGHT_BROWSERS_PATH is required');
@@ -52,13 +51,28 @@ function resultFor(command) {
     version:command.expectedVersion+1, occurredAt:new Date(command.occurredAt).toISOString(), receivedAt:'2027-01-15T06:00:01.000Z',
     reviewFlags:{delayed:false,future:false,suspicious:false,geoTimeMismatch:false,abovePlannedQuantity:false}};
 }
-let compiled;
+let compiled,real;
+const realJournal=[],realDrops=new Set();
 const server = createServer(async (req,res) => {
   try {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     const bytes = Buffer.concat(chunks), raw = bytes.toString();
     if (req.url.startsWith('/api/v1/')) {
+      if(real){
+        const response=await fetch(real.base+req.url,{method:req.method,headers:Object.fromEntries(['authorization','x-tenant-id','content-type'].filter(k=>req.headers[k]).map(k=>[k,req.headers[k]])),...(['GET','HEAD'].includes(req.method)?{}:{body:bytes}),redirect:'error'});
+        // Read the whole Nest response first: the real database commit precedes injection.
+        const answer=Buffer.from(await response.arrayBuffer());
+        const parsed=response.headers.get('content-type')?.includes('application/json')?JSON.parse(answer.toString()):null;
+        realJournal.push({method:req.method,path:req.url,raw:raw,bytes,tenant:req.headers['x-tenant-id'],status:response.status,answer:parsed});
+        const body=req.method==='POST'?JSON.parse(raw):null;
+        const key=body?.events?.[0]?.requestId??body?.requestId??(req.method==='PUT'?req.url.split('/').at(-2):null);
+        if(realDrops.delete(key)){
+          assert.ok(response.ok,'loss injection requires a real committed successful response');
+          res.writeHead(response.status,{'Content-Type':'application/json','Content-Length':String(answer.length+100)});res.write('{',()=>req.socket.destroy());return;
+        }
+        res.writeHead(response.status,Object.fromEntries([...response.headers].filter(([k])=>!['connection','keep-alive','transfer-encoding','content-length'].includes(k))));res.end(answer);return;
+      }
       journal.push({method:req.method,path:req.url,raw,tenant:req.headers['x-tenant-id'],authorized:req.headers.authorization===`Bearer ${token}`});
       assert.equal(req.headers.authorization, `Bearer ${token}`);
       assert.equal(req.headers['x-tenant-id'],tenantId);
@@ -201,7 +215,7 @@ const tests = [
     assert.notEqual(retained.state,'synced');assert.deepEqual(retained.event,command);await closeContext(reopened.context);
   }],
 ];
-if(suite==='mechanics') tests.push(
+if(suite==='mechanics'||suite==='all') tests.push(
   ['four exact shapes, explicit external predecessor, immutable idempotence and retained acknowledgement',async(engine,profile,origin,n)=>{
     const {page}=await openPage(engine,profile,origin);const first={...event(n),expectedVersion:7,previousEventId:crypto.randomUUID()};
     assert.equal(await page.evaluate(c=>queue.enqueueEvent(c).then(()=>true,()=>false),first),true,'explicit initial external predecessor must save unchanged');
@@ -547,7 +561,126 @@ const evidenceTests = [
     },command);assert.deepEqual(result,{overflow:'capacity_exceeded',absent:null,saved:true,count:8});
   }],
 ];
-if(suite==='evidence') tests.splice(0,tests.length,...evidenceTests);else if(suite==='mechanics')tests.push(...evidenceTests);
+async function startRealFixture(){
+  const child=spawn(process.execPath,['--import',pathToFileURL(join(root,'apps/api/node_modules/tsx/dist/loader.mjs')).href,join(root,'packages/offline/test/real-api.ts')],{cwd:join(root,'apps/api'),env:{...process.env,TSX_TSCONFIG_PATH:join(root,'apps/api/tsconfig.json')},stdio:['ignore','ignore','inherit','ipc']});
+  const pending=new Map();let nextId=0,exitCode;
+  const exited=new Promise(resolve=>child.once('exit',(code,signal)=>{exitCode=code;for(const {reject,timer}of pending.values()){clearTimeout(timer);reject(new Error(`Owned real fixture exited ${code}/${signal}`));}pending.clear();resolve({code,signal});}));
+  const ready=await new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>reject(new Error('Real fixture startup timed out')),30000);
+    child.once('error',e=>{clearTimeout(timer);reject(e);});
+    child.once('exit',code=>{clearTimeout(timer);reject(new Error(`Real fixture startup exited ${code}`));});
+    child.on('message',message=>{
+      if(message.ready){clearTimeout(timer);resolve(message);return;}
+      const call=pending.get(message.id);if(!call)return;pending.delete(message.id);clearTimeout(call.timer);
+      if(message.error)call.reject(new Error(message.error));else call.resolve(message.result);
+    });
+  }).catch(async error=>{if(child.connected)child.disconnect();await exited;throw error;});
+  function call(method,args={}){return new Promise((resolve,reject)=>{
+    const id=++nextId,timer=setTimeout(()=>{pending.delete(id);reject(new Error(`Real fixture ${method} timed out`));},30000);
+    pending.set(id,{resolve,reject,timer});child.send({id,method,args},error=>{if(error){clearTimeout(timer);pending.delete(id);reject(error);}});
+  });}
+  console.log(`Owned real Nest PID ${ready.pid}, random listener; locked PG54339 identity passed`);
+  return {base:ready.base,call,async close(){
+    try{assert.equal((await call('close')).cleaned,true);}finally{if(child.connected)child.disconnect();const result=await exited;assert.equal(result.code,0,`owned fixture exit ${exitCode}`);}
+    console.log('Owned real Nest/IPC/pools/private storage closed; fixture rows removed');
+  }};
+}
+async function openRealPage(engine,profile,origin,f){
+  const context=await engine.launchPersistentContext(profile,{headless:true});contexts.add(context);
+  const page=context.pages()[0]??await context.newPage();await page.goto(origin);
+  await page.evaluate(async f=>{
+    const {openOfflineQueue}=await import('/index.js');globalThis.session={token:f.token,tenantId:f.tenantId,actorUserId:f.actorUserId,generation:1};
+    globalThis.queue=await openOfflineQueue({audience:`${location.origin}/api/v1`,tenantId:f.tenantId,actorUserId:f.actorUserId,getSession:()=>session});
+  },f);return {context,page};
+}
+async function disconnectRealApi(context,page){
+  // WebKit's setOffline(true) also breaks new Blob.arrayBuffer() without this module.
+  // Abort actual API network requests only; leave native local I/O intact.
+  await context.route('**/api/v1/**',route=>route.abort('internetdisconnected'));
+  assert.equal(await page.evaluate(()=>fetch('/api/v1/me').then(()=>false,()=>true)),true,'real browser API transport must be unavailable before offline authoring');
+}
+function realChain(f){
+  const shiftId=crypto.randomUUID(),reportId=crypto.randomUUID(),requestIds=Array.from({length:4},()=>crypto.randomUUID());
+  return ['shift_start','segment_change','shift_end','submit_volume'].map((kind,i)=>({kind,requestId:requestIds[i],projectId:f.projectId,employeeId:f.employeeId,shiftId,expectedVersion:i,occurredAt:`2027-01-15T${['09:00','09:05','10:00','10:00'][i]}:00+03:00`,...(i?{previousEventId:requestIds[i-1]}:{}),...(i===1?{mode:'work',taskId:f.taskId}:{}),...(i===3?{taskId:f.taskId,reportId,submittedQuantity:'1.250'}:{})}));
+}
+const realPng=Buffer.from('89504e470d0a1a0a0000000d49484452','hex');
+async function saveRealChain(page,chain,actor){
+  return page.evaluate(async({chain,actor,bytes})=>{
+    const photos=[];
+    for(const [i,command]of chain.entries()){
+      const evidence=i===0||i===3?[{projectId:command.projectId,employeeId:command.employeeId,filename:'real-photo.png',contentType:'image/png',blob:new Blob([new Uint8Array(bytes)],{type:'image/png'}),dependencyRequestId:command.requestId,target:i===0?{kind:'execution_event',actorUserId:actor,requestId:command.requestId}:{kind:'final_report',reportId:command.reportId}}]:[];
+      await queue.enqueueEvent(command,{evidence});
+      if(evidence.length){const row=(await queue.list()).find(r=>r.stage!=='event'&&r.dependencyRequestId===command.requestId);photos.push({id:row.id,reserve:row.reserve,attach:row.attach,target:row.target});}
+    }return photos;
+  },{chain,actor,bytes:[...realPng]});
+}
+async function assertRealLocal(page,chain,photos,synced){
+  const rows=await page.evaluate(async({chain,photos})=>({events:await Promise.all(chain.map(c=>queue.get(c.requestId))),photos:await Promise.all(photos.map(async p=>{const r=await queue.get(p.id);return {id:r.id,stage:r.stage,state:r.state,bytes:[...new Uint8Array(await r.blob.arrayBuffer())]};}))}),{chain,photos});
+  assert.deepEqual(rows.events.map(r=>r.event),chain,'real delivery never rewrites frozen commands');
+  assert.deepEqual(rows.photos.map(r=>r.bytes),photos.map(()=>[...realPng]));
+  if(synced){assert.ok(rows.events.every(r=>r.state==='synced'));assert.ok(rows.photos.every(r=>r.stage==='synced'&&r.state==='synced'));}
+  return rows;
+}
+const realTests=[
+  ['real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once',async(engine,profile,origin)=>{
+    const f=await real.call('create'),chain=realChain(f),start=realJournal.length;
+    let {context,page}=await openRealPage(engine,profile,origin,f);await disconnectRealApi(context,page);
+    const photos=await saveRealChain(page,chain,f.actorUserId);await assertRealLocal(page,chain,photos,false);await closeContext(context);
+    ({context,page}=await openRealPage(engine,profile,origin,f));await assertRealLocal(page,chain,photos,false);
+    // Each fresh loss is observed after Nest returned a successful committed response.
+    let failedId=chain[0].requestId;
+    for(const [key,id,stage]of [[chain[0].requestId,chain[0].requestId,'event'],[photos[0].reserve.requestId,photos[0].id,'queued'],[photos[0].id,photos[0].id,'reserved'],[photos[0].attach.requestId,photos[0].id,'uploaded']]){
+      console.log(`real committed-reply replay boundary ${stage}`);
+      realDrops.add(key);await page.evaluate(id=>queue.retry(id),failedId);
+      const flushed=await page.evaluate(()=>queue.flush().then(result=>({result}),async error=>({error:{name:error.name,code:error.code,message:error.message,stack:error.stack},rows:(await queue.list()).map(({id,stage,state,lastError})=>({id,stage,state,lastError}))})));
+      assert.equal(flushed.error,undefined,JSON.stringify(flushed));failedId=id;
+      const row=await page.evaluate(id=>queue.get(id),id);assert.equal(row.state,'retry_wait');assert.equal(row.stage,stage);
+      assert.equal(realDrops.has(key),false,'required real response loss was exercised');
+      await closeContext(context);({context,page}=await openRealPage(engine,profile,origin,f));await assertRealLocal(page,chain,photos,false);
+    }
+    await page.evaluate(id=>queue.retry(id),photos[0].id);await page.evaluate(()=>queue.flush());await assertRealLocal(page,chain,photos,true);
+    const snapshot=await real.call('snapshot',f);
+    assert.deepEqual(snapshot.events.map(r=>r.original_payload),chain);assert.deepEqual(snapshot.events.map(r=>r.version),[1,2,3,4]);
+    assert.deepEqual(snapshot.segments.map(r=>[r.mode,r.ms]),[['idle','300000.000000'],['work','3300000.000000']]);
+    assert.deepEqual(snapshot.reports,[{id:chain[3].reportId,quantity:'1.250'}]);
+    for(const c of chain){assert.equal(snapshot.receipts.filter(r=>r.request_id===c.requestId).length,1);assert.equal(snapshot.audits.filter(r=>r.details?.requestId===c.requestId).length,1);}
+    for(const photo of photos){
+      assert.equal(snapshot.files.filter(r=>r.id===photo.id&&r.state==='ready').length,1);
+      assert.equal(snapshot.attachments.filter(r=>r.file_id===photo.id).length,1);
+      const binding=snapshot.attachments.find(r=>r.file_id===photo.id);
+      assert.equal(binding.project_id,f.projectId);assert.equal(binding.employee_id,f.employeeId);assert.equal(binding.attached_by,f.actorUserId);assert.equal(binding.target_kind,photo.target.kind);
+      if(photo.target.kind==='execution_event'){assert.equal(binding.event_actor_user_id,f.actorUserId);assert.equal(binding.event_request_id,chain[0].requestId);assert.equal(binding.report_id,null);}
+      else {assert.equal(binding.report_id,chain[3].reportId);assert.equal(binding.event_actor_user_id,null);assert.equal(binding.event_request_id,null);}
+      for(const requestId of [photo.reserve.requestId,photo.attach.requestId]){assert.equal(snapshot.receipts.filter(r=>r.request_id===requestId).length,1);assert.equal(snapshot.audits.filter(r=>r.details?.requestId===requestId).length,1);}
+      assert.equal(snapshot.audits.filter(r=>r.object_id===photo.id&&r.action==='evidence_ready').length,1);
+      const download=await page.evaluate(async({f,id})=>{const r=await fetch(`/api/v1/projects/${f.projectId}/evidence/${id}/content`,{headers:{authorization:`Bearer ${session.token}`,'x-tenant-id':f.tenantId}});return {status:r.status,bytes:[...new Uint8Array(await r.arrayBuffer())]};},{f,id:photo.id});
+      assert.equal(download.status,200);assert.deepEqual(download.bytes,[...realPng]);assert.equal(createHash('sha256').update(Buffer.from(download.bytes)).digest('hex'),snapshot.files.find(r=>r.id===photo.id).sha256);
+    }
+    const calls=realJournal.slice(start),eventCalls=calls.filter(r=>r.path==='/api/v1/execution/events');
+    assert.equal(eventCalls.length,5);assert.deepEqual(eventCalls.slice(0,2).map(r=>JSON.parse(r.raw)),[{events:[chain[0]]},{events:[chain[0]]}]);assert.deepEqual(eventCalls.slice(0,2).map(r=>r.answer.results[0].outcome),['success','duplicate']);
+    for(const [path,method]of [[`/api/v1/projects/${f.projectId}/evidence`,'POST'],[`/api/v1/projects/${f.projectId}/evidence/${photos[0].id}/content`,'PUT'],[`/api/v1/projects/${f.projectId}/evidence/${photos[0].id}/attachment`,'POST']]){
+      const copies=calls.filter(r=>r.path===path&&r.method===method&&(path.endsWith('/evidence')?JSON.parse(r.raw).fileId===photos[0].id:true));assert.equal(copies.length,2);assert.deepEqual(copies[0].bytes,copies[1].bytes);assert.deepEqual(copies[0].answer,copies[1].answer);
+    }
+    const before=realJournal.length;await closeContext(context);({context,page}=await openRealPage(engine,profile,origin,f));await assertRealLocal(page,chain,photos,true);await page.evaluate(()=>queue.flush());assert.equal(realJournal.slice(before).filter(r=>r.method!=='GET').length,0);
+  }],
+  ...['stale','revoked','expired'].map(kind=>[`real Nest/PG: ${kind} authority/conflict retains original events and Blobs and fences successors`,async(engine,profile,origin)=>{
+    const f=await real.call('create'),chain=realChain(f);
+    let {context,page}=await openRealPage(engine,profile,origin,f);await disconnectRealApi(context,page);const photos=await saveRealChain(page,chain,f.actorUserId);await closeContext(context);
+    await real.call({stale:'advance',revoked:'revoke',expired:'expire'}[kind],f);
+    ({context,page}=await openRealPage(engine,profile,origin,f));const start=realJournal.length;await page.evaluate(()=>queue.flush());
+    const rows=await assertRealLocal(page,chain,photos,false);
+    assert.ok(rows.events.every(r=>r.state!=='synced'));assert.ok(rows.photos.every(r=>r.stage==='queued'));
+    assert.equal(rows.events[0].state,kind==='expired'?'auth-required':'blocked');
+    if(kind==='stale')assert.equal(rows.events[0].lastError,'stale_version');
+    const calls=realJournal.slice(start);assert.equal(calls.filter(r=>r.path==='/api/v1/execution/events').length,kind==='stale'?1:0);assert.equal(calls.filter(r=>r.path.includes('/evidence')).length,0);
+    const snapshot=await real.call('snapshot',f);assert.equal(snapshot.events.length,kind==='stale'?1:0);assert.equal(snapshot.files.length,0);assert.equal(snapshot.attachments.length,0);assert.equal(snapshot.reports.length,0);
+    for(const c of chain){assert.equal(snapshot.receipts.filter(r=>r.request_id===c.requestId).length,0);assert.equal(snapshot.audits.filter(r=>r.details?.requestId===c.requestId).length,0);}
+    await closeContext(context);({context,page}=await openRealPage(engine,profile,origin,f));await assertRealLocal(page,chain,photos,false);
+  }]),
+];
+if(suite==='evidence')tests.splice(0,tests.length,...evidenceTests);
+else if(suite==='mechanics'||suite==='all')tests.push(...evidenceTests);
+if(suite==='real')tests.splice(0,tests.length,...realTests);else if(suite==='all')tests.push(...realTests);
 let failed=0;
 try {
   compiled=join(temporary,'compiled');
@@ -558,11 +691,13 @@ try {
   for (const engineName of ['chromium','webkit']) {
     let passed=0;
     for (const [name,test] of tests) {
+      if(name.startsWith('real Nest/PG:')&&!real)real=await startRealFixture();
+      if(!name.startsWith('real Nest/PG:')&&real){await real.close();real=null;}
       const profile=join(temporary,`${engineName}-${number}`);
       await browserTest(`${engineName} ${suite}: ${name}`,async()=>{
         try {await test(playwright[engineName],profile,origin,number);passed++;}
         catch(error){failed++;throw error;}
-        finally {for(const gate of gates)gate.release();gates.clear();meAction=null;actions.clear();for(const context of [...contexts]) await closeContext(context);}
+        finally {for(const gate of gates)gate.release();gates.clear();meAction=null;actions.clear();realDrops.clear();for(const context of [...contexts]) await closeContext(context);}
       });
       number++;
     }
@@ -571,6 +706,7 @@ try {
   assert.equal(fixtureErrors.length,0,`owned fixture must not hide protocol assertion failures: ${fixtureErrors.map(error=>error.message).join('; ')}`);
 } finally {
   for(const context of [...contexts]) await closeContext(context);
+  if(real){await real.close();real=null;}
   server.closeAllConnections();await new Promise(resolve=>server.close(resolve));
   await rm(temporary,{recursive:true,force:true});
 }
