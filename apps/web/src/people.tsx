@@ -148,7 +148,6 @@ function Timesheet({ data, dayStep, onOpen }: { data: Desk; dayStep: "prepare" |
     <>
       <div className="object-tools">
         <DeskSelect label="Период" value={day} options={(dates.length ? dates : [todayKey()]).map((item) => ({ value: item, label: labelDay(item) }))} onChange={(value) => { setDay(value); setSelected(null); }} />
-        <DeskSelect label="Бригада" value="" options={[{ value: "", label: "Бригад нет" }]} onChange={() => {}} />
         {dayStep === "prepare" ? <SmoothButton onClick={() => update((item) => item.preparedDays.includes(day) ? item : { ...item, preparedDays: [...item.preparedDays, day] })}>{book.preparedDays.includes(day) ? "Закрытие подготовлено" : "Подготовить закрытие дня"}</SmoothButton> : null}
         {dayStep === "close" ? <SmoothButton onClick={() => update((item) => item.closedDays.includes(day) ? item : { ...item, closedDays: [...item.closedDays, day] })}>{book.closedDays.includes(day) ? "День закрыт в браузере" : "Закрыть день"}</SmoothButton> : null}
         {dayStep === "none" ? <DeskBadge>Утверждение табеля пока не реализовано</DeskBadge> : null}

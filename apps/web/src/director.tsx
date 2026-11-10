@@ -11,6 +11,7 @@ import { Quality } from "./quality";
 import { Settings } from "./settings";
 import { Mark } from "./mark";
 import { People, type PersonCard } from "./people";
+import { CatalogDesk, StaffDesk, labelDay, useCabinetScope } from "./staff";
 import { DayFlow } from "./dayflow";
 import { RoleSwitch, accessOf, roleTitle, serverRights, type Section, type View } from "./roles";
 import { minutesLabel, useBook } from "./book";
@@ -68,8 +69,9 @@ export function DirectorDesk({
   onDemoAccount: (email: string, password: string) => void;
 }) {
   const tasks = dayTasks(data);
-  const project = data.projects[0]?.name ?? "Объект";
-  const date = new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+  const scope = useCabinetScope(session);
+  const project = scope.projects.find((item) => item.id === scope.projectId)?.name ?? (scope.loading ? "Загрузка" : "Объект не выбран");
+  const date = scope.day ? labelDay(scope.day) : "День кабинета";
   const waiting = data.reports.filter((report) => tasks.some((task) => task.id === report.task_id) && !report.accepted_quantity);
   const onShift = new Set(data.shifts.filter((shift) => shift.status === "open").map((shift) => shift.employee_id).filter(Boolean));
   const accepted = tasks.filter((task) => laneOf(task.id, data) === "accepted").length;
@@ -131,7 +133,16 @@ export function DirectorDesk({
       </aside>
       <div className="workspace">
         <header className="topbar">
-          <DeskSelect label="Объект" value={project} options={[{ value: project, label: project }]} onChange={() => {}} />
+          <DeskSelect
+            label="Объект"
+            value={scope.projectId}
+            options={scope.projects.length ? scope.projects.map((item) => ({ value: item.id, label: item.name })) : [{ value: "", label: scope.loading ? "Загрузка" : "Нет доступных объектов" }]}
+            onChange={(value) => { if (value) void scope.chooseProject(value); }}
+          />
+          <label className="desk-select">
+            <span>День</span>
+            <input type="date" aria-label="Гражданский день кабинета" value={scope.day} disabled={!scope.day} onChange={(event) => scope.chooseDay(event.target.value)} />
+          </label>
           <span className="grow" />
           {demo ? <RoleSwitch view={view} onView={onRole} /> : null}
           {demo ? <DemoAccounts email={session.email} onAccount={onDemoAccount} /> : null}
@@ -176,24 +187,48 @@ export function DirectorDesk({
               onOpenDocuments={() => onSection("documents")}
             />
           ) : null}
-          {page === "objects" ? <Objects data={data} canEdit={canPlace} normsNote={access.normsNote} onSavePlace={onSavePlace} onTasks={() => onSection("tasks")} /> : null}
+          {page === "objects" ? (
+            <>
+              <Objects data={data} canEdit={canPlace} normsNote={access.normsNote} onSavePlace={onSavePlace} onTasks={() => onSection("tasks")} />
+              {scope.projectId ? <CatalogDesk session={session} projectId={scope.projectId} canManage={!preview && session.role === "director"} /> : null}
+            </>
+          ) : null}
           {page === "people" ? (
-            <People
-              key={view}
-              session={session}
-              data={data}
-              onOpenTask={(id) => { setOpenTask({ id, token: Date.now() }); onSection("tasks"); }}
-              inviteWorker={canInviteWorker}
-              inviteForeman={canInviteForeman}
-              peopleTabs={access.peopleTabs}
-              admitStep={canPrepareAdmit ? "prepare" : "none"}
-              dayStep={canPrepareDay ? "prepare" : canCloseDay ? "close" : "none"}
-              canExport={access.exportPeople}
-              admissions={admissions}
-              onAdmit={(employeeId, until) => setAdmissions((list) => [...list.filter((item) => item.employeeId !== employeeId), { employeeId, until }])}
-              cards={cards}
-              onCard={(card) => setCards((list) => [...list.filter((item) => item.employeeId !== card.employeeId), card])}
-            />
+            <>
+              {scope.error ? <p className="alert" role="alert">{scope.error}</p> : null}
+              {scope.truncated ? <p className="quiet">В списке объектов показаны первые 2000.</p> : null}
+              {scope.timezone ? <p className="quiet">Гражданский день считается в поясе кабинета {scope.timezone}, не в поясе компьютера.</p> : null}
+              {scope.projectId ? (
+                <StaffDesk
+                  key={`${scope.projectId}:${scope.epoch}`}
+                  session={session}
+                  projectId={scope.projectId}
+                  epoch={scope.epoch}
+                  organizations={data.organizations}
+                  canManage={!preview && session.role === "director"}
+                  inviteWorker={canInviteWorker}
+                  inviteForeman={canInviteForeman}
+                />
+              ) : null}
+              {access.peopleTabs.some((item) => item === "sheet" || item === "contractors") ? (
+                <People
+                  key={view}
+                  session={session}
+                  data={data}
+                  onOpenTask={(id) => { setOpenTask({ id, token: Date.now() }); onSection("tasks"); }}
+                  inviteWorker={false}
+                  inviteForeman={false}
+                  peopleTabs={access.peopleTabs.filter((item) => item === "sheet" || item === "contractors")}
+                  admitStep="none"
+                  dayStep={canPrepareDay ? "prepare" : canCloseDay ? "close" : "none"}
+                  canExport={false}
+                  admissions={admissions}
+                  onAdmit={(employeeId, until) => setAdmissions((list) => [...list.filter((item) => item.employeeId !== employeeId), { employeeId, until }])}
+                  cards={cards}
+                  onCard={(card) => setCards((list) => [...list.filter((item) => item.employeeId !== card.employeeId), card])}
+                />
+              ) : null}
+            </>
           ) : null}
           {page === "tasks" ? (
             <WorkBoard
