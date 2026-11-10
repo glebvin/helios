@@ -93,6 +93,15 @@ class WorkforceController {
     return this.workforce.employee(actorOf(request), id);
   }
 
+  @Post("projects/:id/place")
+  savePlace(
+    @Req() request: ActorRequest,
+    @Param("id") id: string,
+    @Body() body: { address?: unknown; latitude?: unknown; longitude?: unknown },
+  ) {
+    return this.workforce.savePlace(actorOf(request), id, body);
+  }
+
   @Post("tasks")
   createTask(
     @Req() request: ActorRequest,

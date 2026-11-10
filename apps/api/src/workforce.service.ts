@@ -13,6 +13,7 @@ import type { PgBoss } from "pg-boss";
 import { queryClient, withTenant } from "./db.js";
 import { httpError, mapPgError } from "./errors.js";
 import { reportJob } from "./jobs.js";
+import { parsePlace } from "./place.js";
 
 export type Actor = {
   userId: string;
@@ -88,7 +89,9 @@ export class WorkforceService {
       );
       const cabinet = await client.query(`SELECT name FROM tenants WHERE id = $1`, [actor.tenantId]);
       const organizations = await client.query(`SELECT id, name, kind FROM organizations ORDER BY name`);
-      const projects = await client.query(`SELECT id, name FROM projects ORDER BY name`);
+      const projects = await client.query(
+        `SELECT id, name, address, latitude, longitude FROM projects ORDER BY name`,
+      );
       const files =
         actor.role === "worker"
           ? { rows: [] }
@@ -107,6 +110,24 @@ export class WorkforceService {
         reports: reports.rows,
         summary,
       };
+    });
+  }
+
+  savePlace(actor: Actor, projectId: string, input: { address?: unknown; latitude?: unknown; longitude?: unknown }) {
+    if (actor.role !== "director" && actor.role !== "master") throw httpError(403, "role_denied");
+    const place = parsePlace(input);
+    if (!place) throw httpError(422, "invalid_place");
+    return this.with(actor, async (client) => {
+      const updated = await client.query(
+        `UPDATE projects
+         SET address = $2, latitude = $3, longitude = $4
+         WHERE id = $1
+         RETURNING id, name, address, latitude, longitude`,
+        [projectId, place.address, place.latitude, place.longitude],
+      );
+      if (!updated.rows[0]) throw httpError(404, "not_found");
+      await this.audit(client, actor, "project_place_saved", "project", projectId, "ok");
+      return updated.rows[0];
     });
   }
 

@@ -2,6 +2,22 @@ import type { Desk } from "./api";
 
 export type Lane = "assigned" | "shift" | "submitted" | "accepted";
 
+export type Admission = { employeeId: string; until: string };
+
+export type Remark = {
+  id: string;
+  taskId: string;
+  text: string;
+  due: string;
+  ownerId: string;
+  resubmitted: boolean;
+};
+
+export function permitState(until?: string | null, today = todayKey()): "none" | "ok" | "expired" {
+  if (!until) return "none";
+  return until >= today ? "ok" : "expired";
+}
+
 export function amount(value: string) {
   return value.replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
 }
@@ -41,6 +57,13 @@ export function statusLabel(lane: Lane) {
   if (lane === "submitted") return "Ждёт приёмки";
   if (lane === "accepted") return "Принято";
   return "Назначено";
+}
+
+export function laneTone(lane: Lane): "neutral" | "accent" | "warn" | "done" {
+  if (lane === "shift") return "accent";
+  if (lane === "submitted") return "warn";
+  if (lane === "accepted") return "done";
+  return "neutral";
 }
 
 export function elapsed(startedAt?: string | null, now = Date.now()) {

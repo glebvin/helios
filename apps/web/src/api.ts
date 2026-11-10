@@ -12,9 +12,9 @@ export type Desk = {
   projectId: string;
   cabinet: { name: string };
   organizations: { id: string; name: string; kind: string }[];
-  projects: { id: string; name: string }[];
+  projects: { id: string; name: string; address: string; latitude: number | null; longitude: number | null }[];
   files: { id: string; filename: string }[];
-  employees: { id: string; full_name: string; phone: string; user_id: string | null }[];
+  employees: { id: string; full_name: string; phone: string; user_id: string | null; document_number?: string | null }[];
   tasks: {
     id: string;
     title: string;
@@ -24,7 +24,7 @@ export type Desk = {
     assignee_employee_id: string;
     status: string;
   }[];
-  shifts: { id: string; task_id: string; employee_id?: string; status: string; started_at?: string | null; clock_requires_review: boolean }[];
+  shifts: { id: string; task_id: string; employee_id?: string; status: string; started_at?: string | null; finished_at?: string | null; clock_requires_review: boolean }[];
   reports: { id: string; task_id: string; submitted_quantity: string; accepted_quantity: string | null }[];
   summary: {
     sample: boolean;
@@ -80,9 +80,30 @@ export async function login(email: string, password: string): Promise<Session> {
 }
 
 export const desk = (session: Session) => request<Desk>("/api/desk", session);
-export const createTask = (session: Session, input: object) =>
-  request("/api/tasks", session, { method: "POST", body: JSON.stringify(input) });
+export type NewTask = {
+  title: string;
+  organizationId: string;
+  projectId: string;
+  zone: string;
+  employeeId: string;
+  crewId: string;
+  plannedQuantity: string;
+  unit: string;
+  workDate: string;
+  needsHiddenAct: boolean;
+  drawingCipher: string;
+  drawingSheets: string;
+  lotId: string;
+};
+
+export const createTask = (session: Session, input: NewTask) =>
+  request<{ id: string }>("/api/tasks", session, { method: "POST", body: JSON.stringify(input) });
 export const syncEvents = (session: Session, events: unknown[]) =>
   request("/api/sync/events", session, { method: "POST", body: JSON.stringify({ events }) });
 export const acceptReport = (session: Session, id: string, acceptedQuantity: string) =>
   request(`/api/reports/${id}/accept`, session, { method: "POST", body: JSON.stringify({ acceptedQuantity }) });
+export const savePlace = (
+  session: Session,
+  projectId: string,
+  place: { address: string; latitude: number; longitude: number },
+) => request(`/api/projects/${projectId}/place`, session, { method: "POST", body: JSON.stringify(place) });

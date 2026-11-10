@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
-import { acceptReport, createTask, desk, loadSession, login, saveSession, syncEvents, type Desk, type Session } from "./api";
+import { acceptReport, createTask, desk, loadSession, login, savePlace, saveSession, syncEvents, type Desk, type NewTask, type Session } from "./api";
 import { DirectorDesk, type Section } from "./director";
+import { BookProvider } from "./book";
 import { WorkerPhone } from "./field";
-import { todayKey } from "./model";
+import { Mark } from "./mark";
 import { enqueue, pendingFor, readOutbox, writeOutbox, type OutboxEvent } from "./outbox";
+import { accessOf, demoCabinets, homeView, type View } from "./roles";
 
 const entries = [
-  { role: "Руководитель", email: "director@pilot.helios", password: "pilot-director", hint: "Объект сегодня" },
-  { role: "Прораб", email: "master@pilot.helios", password: "pilot-master", hint: "Задания и сдача" },
-  { role: "Рабочий", email: "worker@pilot.helios", password: "pilot-worker", hint: "Моя смена" },
+  { account: "director" as const, role: "Руководитель", email: "director@pilot.helios", password: "pilot-director", hint: "Стол руководителя проекта" },
+  { account: "master" as const, role: "Прораб", email: "master@pilot.helios", password: "pilot-master", hint: "Свой день на объекте" },
+  { account: "worker" as const, role: "Рабочий", email: "worker@pilot.helios", password: "pilot-worker", hint: "Моя смена" },
 ];
 
 function explain(code: string) {
@@ -18,6 +20,8 @@ function explain(code: string) {
     role_denied: "Этой роли действие недоступно.",
     already_started: "Смена уже открыта.",
     invalid_shift_order: "Сначала начните смену.",
+    invalid_place: "Точка или адрес не подходят. Укажите место на карте.",
+    not_found: "Объект не найден.",
   };
   return text[code] ?? code;
 }
@@ -32,6 +36,7 @@ export function App() {
   const [error, setError] = useState("");
   const [pending, setPending] = useState(0);
   const [section, setSection] = useState<Section>("overview");
+  const [view, setView] = useState<View>(() => homeView(loadSession()?.role ?? "director"));
   const [theme, setTheme] = useState<"light" | "dark">(loadTheme);
 
   useEffect(() => {
@@ -90,17 +95,21 @@ export function App() {
   async function enter(email: string, password: string) {
     try {
       const next = await login(email, password);
+      const chosen = homeView(next.role);
       setSession(next);
-      setSection(email.startsWith("master@") ? "tasks" : "overview");
+      setView(chosen);
+      setSection(accessOf(chosen).sections[0]?.id ?? "overview");
       setError("");
     } catch (reason) {
       setError(explain(reason instanceof Error ? reason.message : "Не удалось войти"));
     }
   }
 
-  function switchRole(role: "director" | "master" | "worker") {
-    const item = entries.find((entry) => entry.role === (role === "director" ? "Руководитель" : role === "master" ? "Прораб" : "Рабочий"));
-    if (item) void enter(item.email, item.password);
+  function switchView(next: View) {
+    if (!demoCabinets) return;
+    const access = accessOf(next);
+    setView(next);
+    setSection((current) => (access.sections.some((item) => item.id === current) ? current : access.sections[0]?.id ?? "overview"));
   }
 
   function logout() {
@@ -119,20 +128,17 @@ export function App() {
             void enter(String(form.get("email")), String(form.get("password")));
           }}
         >
-          <div className="wordmark">
-            <span className="bars"><i /><i /><i /></span>
-            <div><strong>HELIOS</strong><small>WORKFORCE</small></div>
-          </div>
+          <Mark />
           <h1 style={{ fontSize: 32, letterSpacing: "-0.04em" }}>Кто входит</h1>
-          <p className="sub">Один кабинет. У руководителя и прораба стол, у рабочего телефон.</p>
-          {entries.map((item) => (
+          <p className="sub">{demoCabinets ? "Учебные входы отдельно от просмотра кабинета." : "Вход по почте и паролю."}</p>
+          {demoCabinets ? entries.map((item) => (
             <button className="role-pick" type="button" key={item.email} onClick={() => void enter(item.email, item.password)}>
               <strong>{item.role}</strong>
               <small>{item.hint}</small>
             </button>
-          ))}
-          <label className="field"><span>Почта</span><input name="email" defaultValue="director@pilot.helios" autoComplete="username" /></label>
-          <label className="field"><span>Пароль</span><input name="password" type="password" defaultValue="pilot-director" autoComplete="current-password" /></label>
+          )) : null}
+          <label className="field"><span>Почта</span><input name="email" defaultValue={demoCabinets ? "director@pilot.helios" : ""} autoComplete="username" /></label>
+          <label className="field"><span>Пароль</span><input name="password" type="password" defaultValue={demoCabinets ? "pilot-director" : ""} autoComplete="current-password" /></label>
           {error ? <div className="alert">{error}</div> : null}
           <button className="fill" type="submit">Войти</button>
           <button className="ghost" type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? "Светлая тема" : "Тёмная тема"}</button>
@@ -147,40 +153,62 @@ export function App() {
 
   const toggleTheme = () => setTheme(theme === "dark" ? "light" : "dark");
 
-  if (session.role === "worker") {
+  const shown = demoCabinets ? view : homeView(session.role);
+  const preview = demoCabinets && shown !== homeView(session.role);
+  const access = accessOf(shown);
+
+  if (access.shell === "phone") {
     return (
-      <WorkerPhone
-        session={session}
-        data={data}
-        pending={pending}
-        theme={theme}
-        onTheme={toggleTheme}
-        onLogout={logout}
-        onRole={switchRole}
-        onStart={(taskId, employeeId) => queue(session, { kind: "shift_start", payload: { taskId, employeeId } })}
-        onEnd={(taskId) => queue(session, { kind: "shift_end", payload: { taskId } })}
-        onSubmit={(taskId, quantity) => queue(session, { kind: "submit_volume", payload: { taskId, quantity } })}
-      />
+      <BookProvider tenantId={session.tenantId} userId={session.userId}>
+        <WorkerPhone
+          key={`${session.userId}:${shown}`}
+          session={session}
+          data={data}
+          pending={pending}
+          theme={theme}
+          onTheme={toggleTheme}
+          onLogout={logout}
+          view={shown}
+          demo={demoCabinets}
+          preview={preview}
+          onRole={switchView}
+          onDemoAccount={(email, password) => void enter(email, password)}
+          onStart={(taskId, employeeId) => queue(session, { kind: "shift_start", payload: { taskId, employeeId } })}
+          onEnd={(taskId) => queue(session, { kind: "shift_end", payload: { taskId } })}
+          onSubmit={(taskId, quantity) => queue(session, { kind: "submit_volume", payload: { taskId, quantity } })}
+        />
+      </BookProvider>
     );
   }
 
   const deskActions = {
     onStart: (taskId: string, employeeId: string) => queue(session, { kind: "shift_start" as const, payload: { taskId, employeeId } }),
+    onEnd: (taskId: string) => queue(session, { kind: "shift_end" as const, payload: { taskId } }),
     onSubmit: (taskId: string, quantity: string) => queue(session, { kind: "submit_volume" as const, payload: { taskId, quantity } }),
-    onAccept: async (reportId: string) => {
-      await acceptReport(session, reportId, "17");
+    onAccept: async (reportId: string, acceptedQuantity: string) => {
+      await acceptReport(session, reportId, acceptedQuantity);
       await refresh();
     },
-    onCreate: async (title: string, employeeId: string) => {
-      await createTask(session, { title, employeeId, plannedQuantity: "40", unit: "м²", workDate: todayKey() });
+    onCreate: async (input: NewTask) => {
+      const created = await createTask(session, input);
+      await refresh();
+      return created.id;
+    },
+    onSavePlace: async (projectId: string, place: { address: string; latitude: number; longitude: number }) => {
+      await savePlace(session, projectId, place);
       await refresh();
     },
   };
 
   return (
-    <>
+    <BookProvider tenantId={session.tenantId} userId={session.userId}>
       {error ? <div className="alert" style={{ margin: 12 }}>{error}</div> : null}
       <DirectorDesk
+        key={`${session.userId}:${shown}`}
+        view={shown}
+        preview={preview}
+        demo={demoCabinets}
+        onDemoAccount={(email, password) => void enter(email, password)}
         session={session}
         data={data}
         section={section}
@@ -188,9 +216,9 @@ export function App() {
         theme={theme}
         onTheme={toggleTheme}
         onLogout={logout}
-        onRole={switchRole}
+        onRole={switchView}
         {...deskActions}
       />
-    </>
+    </BookProvider>
   );
 }

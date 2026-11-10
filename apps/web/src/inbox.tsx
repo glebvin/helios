@@ -1,9 +1,11 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import type { Desk } from "./api";
+import { useBook } from "./book";
 import { Icon, paths } from "./icons";
-import { Dialog } from "./dialog";
-import { amount, laneOf, personName, todayKey } from "./model";
+import { AcceptForm, Dialog } from "./dialog";
+import { DeskBadge, FluidTabs } from "./kit";
+import { amount, laneOf, personName, todayKey, type Remark } from "./model";
 
 type Slice = "today" | "overdue" | "all";
 type Kind = "acceptance" | "shift" | "pending";
@@ -12,11 +14,15 @@ type Item = {
   id: string;
   kind: Kind;
   title: string;
+  document: string;
   place: string;
   who: string;
   date: string;
   note: string;
+  action: string;
   reportId?: string;
+  submitted?: string;
+  unit?: string;
 };
 
 const spring = { type: "spring" as const, bounce: 0, visualDuration: 0.22 };
@@ -51,16 +57,47 @@ function dayLabel(date: string, today: string) {
   return new Date(`${date}T12:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 }
 
+function rowTone(item: Item): "neutral" | "accent" | "warn" | "done" {
+  if (item.action === "Принять" || item.action === "К приёмке") return "warn";
+  if (item.action === "Закрыть день") return "done";
+  if (item.kind === "shift" || item.action === "К акту") return "accent";
+  return "neutral";
+}
+
+function statusText(item: Item) {
+  if (item.action === "Принять") return "Сдано";
+  if (item.action === "Закрыть день") return "Смены есть";
+  if (item.kind === "shift") return "Смена открыта";
+  if (item.document === "Замечание") return "Замечание";
+  if (item.document === "АОСР") return "Черновик";
+  return "Не начато";
+}
+
+function actionClass(tone: "neutral" | "accent" | "warn" | "done") {
+  if (tone === "warn") return "fill is-warn";
+  if (tone === "done") return "fill is-done";
+  if (tone === "accent") return "fill";
+  return "ghost";
+}
+
+function actionAllowed(item: Item, access: { canAccept: boolean; canApprove: boolean; canOpenBoard: boolean; canOpenQuality: boolean; canOpenDocuments: boolean }) {
+  if (item.action === "Принять") return access.canAccept;
+  if (item.action === "Закрыть день") return access.canApprove;
+  if (item.action === "К приёмке") return access.canOpenQuality;
+  if (item.action === "К акту") return access.canOpenDocuments;
+  return access.canOpenBoard;
+}
+
 function shortName(name: string) {
   const [first, last] = name.split(" ").filter(Boolean);
   if (!last) return name;
   return `${first.slice(0, 1)}. ${last}`;
 }
 
-function itemsOf(data: Desk): Item[] {
+function itemsOf(data: Desk, remarks: Remark[]): Item[] {
   const today = todayKey();
   const place = data.projects[0]?.name ?? "Объект";
-  return data.tasks.flatMap((task): Item[] => {
+  const rows = data.tasks.flatMap((task): Item[] => {
     const lane = laneOf(task.id, data);
     if (lane === "accepted") return [];
     const date = String(task.work_date).slice(0, 10);
@@ -70,11 +107,15 @@ function itemsOf(data: Desk): Item[] {
         id: task.id,
         kind: "acceptance" as const,
         title: task.title,
+        document: "Приёмка",
         place,
-        who: personName(data, task.assignee_employee_id),
+        who: data.actor.name,
         date,
-        note: `Ждёт приёмки · сдано ${amount(report.submitted_quantity)} ${task.unit}`,
+        note: `Сдано ${amount(report.submitted_quantity)} ${task.unit} · ${personName(data, task.assignee_employee_id)}`,
+        action: "Принять",
         reportId: report.id,
+        submitted: report.submitted_quantity,
+        unit: task.unit,
       }];
     }
     if (lane === "shift") {
@@ -85,7 +126,9 @@ function itemsOf(data: Desk): Item[] {
         place,
         who: personName(data, task.assignee_employee_id),
         date,
+        document: "Задание",
         note: "Смена открыта, объём ещё не сдан",
+        action: "К заданию",
       }];
     }
     if (lane === "assigned" && date <= today) {
@@ -96,24 +139,99 @@ function itemsOf(data: Desk): Item[] {
         place,
         who: personName(data, task.assignee_employee_id),
         date,
+        document: "Задание",
         note: "Назначено и не начато",
+        action: "К заданию",
       }];
     }
     return [];
   });
+  const extra: Item[] = [
+    ...remarks.filter((item) => !item.resubmitted).map((item) => ({
+      id: item.id,
+      kind: "pending" as const,
+      title: item.text,
+      document: "Замечание",
+      place,
+      who: personName(data, item.ownerId),
+      date: item.due,
+      note: "Ждёт повторной сдачи",
+      action: "К приёмке",
+    })),
+  ];
+  return [...rows, ...extra];
+}
+
+function dayKey(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function routeItems(items: Item[], data: Desk, book: ReturnType<typeof useBook>["book"]): Item[] {
+  const today = todayKey();
+  const place = data.projects[0]?.name ?? "Объект";
+  const acts = Object.entries(book.acts).flatMap(([taskId, act]) => {
+    if (act.sent) return [];
+    const task = data.tasks.find((item) => item.id === taskId);
+    if (!task) return [];
+    return [{
+      id: `act-${taskId}`,
+      kind: "pending" as const,
+      title: task.title,
+      document: "АОСР",
+      place,
+      who: data.actor.name,
+      date: today,
+      note: act.confirmed ? "Черновик подтверждён, ждёт передачи" : "Черновик ждёт подтверждения",
+      action: "К акту",
+    }];
+  });
+  const day = data.shifts.some((shift) => dayKey(shift.started_at) === today) && !book.closedDays.includes(today)
+    ? [{
+      id: `day-${today}`,
+      kind: "pending" as const,
+      title: "Закрытие дня",
+      document: "День",
+      place,
+      who: data.actor.name,
+      date: today,
+      note: "Смены есть. Это не утверждение табеля.",
+      action: "Закрыть день",
+    }]
+    : [];
+  return [...items, ...acts, ...day];
 }
 
 export function Inbox({
   data,
+  remarks,
+  canAccept,
+  canApprove,
+  canOpenBoard,
+  canOpenQuality,
+  canOpenDocuments,
   onAccept,
   onOpenBoard,
+  onOpenQuality,
+  onOpenDocuments,
 }: {
   data: Desk;
-  onAccept: (reportId: string) => void;
+  remarks: Remark[];
+  canAccept: boolean;
+  canApprove: boolean;
+  canOpenBoard: boolean;
+  canOpenQuality: boolean;
+  canOpenDocuments: boolean;
+  onAccept: (reportId: string, acceptedQuantity: string) => void;
   onOpenBoard: () => void;
+  onOpenQuality: () => void;
+  onOpenDocuments: () => void;
 }) {
+  const { book, update } = useBook();
   const today = todayKey();
-  const items = itemsOf(data);
+  const items = routeItems(itemsOf(data, remarks), data, book);
   const [slice, setSlice] = useState<Slice>("today");
   const [enabled, setEnabled] = useState<Kind[]>(["acceptance", "shift", "pending"]);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -143,8 +261,19 @@ export function Inbox({
     setEnabled((current) => (current.includes(kind) ? current.filter((item) => item !== kind) : [...current, kind]));
   }
 
+  function run(item: Item) {
+    if (item.action === "Закрыть день") {
+      update((current) => current.closedDays.includes(item.date) ? current : { ...current, closedDays: [...current.closedDays, item.date] });
+      return;
+    }
+    if (item.action === "К приёмке") { onOpenQuality(); return; }
+    if (item.action === "К акту") { onOpenDocuments(); return; }
+    if (item.reportId) { setOpenId(item.id); return; }
+    onOpenBoard();
+  }
+
   function exportList() {
-    const text = visible.map((item) => `${item.title}\t${shortName(item.who)}\t${dayLabel(item.date, today)}\t${item.note}`).join("\n");
+    const text = visible.map((item) => `${item.document}\t${item.title}\t${shortName(item.who)}\t${dayLabel(item.date, today)}\t${item.action}`).join("\n");
     const url = URL.createObjectURL(new Blob([text || "Список пуст"], { type: "text/plain;charset=utf-8" }));
     const link = document.createElement("a");
     link.href = url;
@@ -160,28 +289,14 @@ export function Inbox({
         <p className="sub">Решения и вопросы, требующие внимания</p>
       </div>
       <div className="inbox-toolbar">
-        <div className="seg" role="tablist" aria-label="Срез дел">
-          {slices.map((item) => (
-            <button
-              key={item.id}
-              className={slice === item.id ? "is-on" : ""}
-              type="button"
-              role="tab"
-              aria-selected={slice === item.id}
-              onClick={() => setSlice(item.id)}
-            >
-              {slice === item.id ? <motion.span className="seg-pill" layoutId="inbox-tab" transition={spring} /> : null}
-              <span>{item.label}</span>
-            </button>
-          ))}
-        </div>
-        <div className="inbox-stat">
-          <Icon d={paths.alert} size={16} />
+        <FluidTabs name="inbox-tabs" label="Срез дел" value={slice} onChange={(id) => setSlice(id as Slice)} tabs={slices} />
+        <div className="inbox-stat is-warn">
+          <span className="ico is-warn"><Icon d={paths.alert} size={16} /></span>
           <b>{overdue}</b>
           <span>Просрочено</span>
         </div>
-        <div className="inbox-stat">
-          <Icon d={paths.calendar} size={16} />
+        <div className="inbox-stat is-accent">
+          <span className="ico is-accent"><Icon d={paths.calendar} size={16} /></span>
           <b>{dueToday}</b>
           <span>На сегодня</span>
         </div>
@@ -216,41 +331,55 @@ export function Inbox({
             ) : null}
           </AnimatePresence>
           <div className="inbox-list">
+            {visible.length > 0 ? (
+              <div className="inbox-head">
+                <span />
+                <span>Дело</span>
+                <span>Ответственный</span>
+                <span>Срок</span>
+                <span />
+              </div>
+            ) : null}
             <AnimatePresence initial={false} mode="popLayout">
-              {visible.map((item) => (
-                <motion.article
-                  key={item.id}
-                  className="inbox-row"
-                  layout="position"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ ...fade, layout: spring }}
-                >
-                  <span className="ico"><Icon d={kindIcon[item.kind]} /></span>
-                  <div>
-                    <b>{item.title}</b>
-                    <div className="quiet">{item.place}</div>
-                    <div className="chip"><i />{item.note}</div>
-                  </div>
-                  <div className="inbox-who">
-                    <span className="quiet">Ответственный</span>
-                    <b>{shortName(item.who)}</b>
-                  </div>
-                  <div className="inbox-when">
-                    <span className="quiet">Срок</span>
-                    <b>{dayLabel(item.date, today)}</b>
-                  </div>
-                  <motion.button className="ghost" type="button" whileTap={{ scale: 0.98 }} onClick={() => setOpenId(item.id)}>
-                    Открыть
-                  </motion.button>
-                </motion.article>
-              ))}
+              {visible.map((item) => {
+                const tone = rowTone(item);
+                return (
+                  <motion.article
+                    key={item.id}
+                    className={tone === "neutral" ? "inbox-row" : `inbox-row is-${tone}`}
+                    layout="position"
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ ...fade, layout: spring }}
+                  >
+                    <span className={tone === "neutral" ? "ico" : `ico is-${tone}`}><Icon d={kindIcon[item.kind]} /></span>
+                    <div>
+                      <b>{item.title}</b>
+                      <div className="quiet">{item.document} · {item.place}</div>
+                      <DeskBadge tone={tone}>{statusText(item)}</DeskBadge>
+                    </div>
+                    <div className="inbox-who">
+                      <span className="quiet inbox-label">Ответственный</span>
+                      <b>{shortName(item.who)}</b>
+                    </div>
+                    <div className="inbox-when">
+                      <span className="quiet inbox-label">Срок</span>
+                      <b>{dayLabel(item.date, today)}</b>
+                    </div>
+                    {actionAllowed(item, { canAccept, canApprove, canOpenBoard, canOpenQuality, canOpenDocuments }) ? (
+                      <motion.button className={actionClass(tone)} type="button" whileTap={{ scale: 0.98 }} onClick={() => run(item)}>
+                        {item.action}
+                      </motion.button>
+                    ) : <span />}
+                  </motion.article>
+                );
+              })}
             </AnimatePresence>
             {visible.length === 0 ? (
               <div className="inbox-empty">
                 <p>{slice === "overdue" ? "Просроченных дел нет." : slice === "today" ? "На сегодня решений нет." : "Открытых дел нет."}</p>
-                <button className="ghost" type="button" onClick={onOpenBoard}>К заданиям</button>
+                {canOpenBoard ? <button className="ghost" type="button" onClick={onOpenBoard}>К заданиям</button> : null}
               </div>
             ) : null}
           </div>
@@ -264,30 +393,31 @@ export function Inbox({
         <aside className="deadlines">
           <h2>Ближайшие сроки</h2>
           {deadlines.length === 0 ? <p className="quiet">Сроков нет: принятая работа сюда не попадает.</p> : null}
-          {deadlines.map((task) => (
+          {deadlines.map((task) => {
+            const late = String(task.work_date).slice(0, 10) < today;
+            return (
             <div className="deadline" key={task.id}>
-              <span className="ico"><Icon d={paths.calendar} size={16} /></span>
+              <span className={late ? "ico is-warn" : "ico is-accent"}><Icon d={paths.calendar} size={16} /></span>
               <div>
                 <b>{dayLabel(String(task.work_date).slice(0, 10), today)}</b>
                 <div>{task.title}</div>
                 <span className="quiet">{shortName(personName(data, task.assignee_employee_id))} · {data.projects[0]?.name ?? "Объект"}</span>
               </div>
             </div>
-          ))}
+            );
+          })}
         </aside>
       </div>
       {open ? (
         <Dialog title={open.title} onClose={() => setOpenId(null)}>
           <p className="quiet">{open.place} · {shortName(open.who)} · {dayLabel(open.date, today)}</p>
           <p>{open.note}</p>
-          <div className="rowline">
-            {open.reportId ? (
-              <button className="fill" type="button" onClick={() => { onAccept(open.reportId!); setOpenId(null); }}>Принять 17</button>
-            ) : (
-              <button className="fill" type="button" onClick={onOpenBoard}>К заданию</button>
-            )}
-            <button className="ghost" type="button" onClick={() => setOpenId(null)}>Закрыть</button>
-          </div>
+          {open.reportId && open.submitted && open.unit ? (
+            <AcceptForm submitted={open.submitted} unit={open.unit} onSubmit={(quantity) => { onAccept(open.reportId!, quantity); setOpenId(null); }} />
+          ) : (
+            <button className="fill" type="button" onClick={() => run(open)}>{open.action}</button>
+          )}
+          <button className="ghost" type="button" onClick={() => setOpenId(null)}>Закрыть</button>
         </Dialog>
       ) : null}
     </section>

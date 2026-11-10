@@ -11,7 +11,7 @@
     "dev": "tsx src/main.ts",
     "migrate": "tsx src/migrate.ts",
     "seed": "tsx src/seed.ts",
-    "test": "tsx --test test/foundation.test.ts"
+    "test": "tsx --test test/foundation.test.ts test/place.test.ts"
   },
   "dependencies": {
     "@helios/domain": "workspace:*",

@@ -1,21 +1,16 @@
 import { useEffect, useState } from "react";
 import type { Desk, Session } from "./api";
 import { Icon, paths } from "./icons";
-import { RoleSwitch } from "./roles";
-import { amount, clock, dayTasks, elapsed, laneOf, personName, progress, statusLabel } from "./model";
+import { Mark } from "./mark";
+import { minutesLabel, readCheck, useBook, writeCheck, type Check } from "./book";
+import { RoleSwitch, type View } from "./roles";
+import { amount, clock, dayTasks, elapsed, laneOf, personName, progress, statusLabel, todayKey } from "./model";
 
 type WorkerTab = "shift" | "task" | "profile";
 type MasterTab = "today" | "crew" | "accept" | "more";
 
-const checkKey = (tenantId: string, taskId: string) => `helios.check.${tenantId}.${taskId}`;
-
-function readCheck(tenantId: string, taskId: string) {
-  const raw = localStorage.getItem(checkKey(tenantId, taskId));
-  return raw ? (JSON.parse(raw) as { flat: boolean; seam: boolean; photo: boolean; sent: boolean }) : { flat: false, seam: false, photo: false, sent: false };
-}
-
 export function WorkerPhone({
-  session, data, pending, theme, onTheme, onLogout, onRole, onStart, onEnd, onSubmit,
+  session, data, pending, theme, onTheme, onLogout, view, demo = false, preview = false, onRole, onDemoAccount, onStart, onEnd, onSubmit,
 }: {
   session: Session;
   data: Desk;
@@ -23,7 +18,11 @@ export function WorkerPhone({
   theme: "light" | "dark";
   onTheme: () => void;
   onLogout: () => void;
-  onRole: (role: "director" | "master" | "worker") => void;
+  view: View;
+  demo?: boolean;
+  preview?: boolean;
+  onRole: (view: View) => void;
+  onDemoAccount?: (email: string, password: string) => void;
   onStart: (taskId: string, employeeId: string) => void;
   onEnd: (taskId: string) => void;
   onSubmit: (taskId: string, quantity: string) => void;
@@ -33,8 +32,10 @@ export function WorkerPhone({
   const [breakOn, setBreakOn] = useState(false);
   const [problem, setProblem] = useState("");
   const [problemOpen, setProblemOpen] = useState(false);
-  const [quantity, setQuantity] = useState("12");
+  const [quantity, setQuantity] = useState("");
+  const [stopOpen, setStopOpen] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
+  const { book, update } = useBook();
   const tasks = dayTasks(data);
   const current = tasks.find((task) => laneOf(task.id, data) === "shift") ?? tasks.find((task) => laneOf(task.id, data) === "assigned") ?? tasks[0];
   const shift = current ? data.shifts.find((item) => item.task_id === current.id && item.status === "open") : undefined;
@@ -49,8 +50,17 @@ export function WorkerPhone({
   return (
     <div className="phone">
       <div className="phone-body">
-        <RoleSwitch role={session.role} onRole={onRole} />
-        <div className="wordmark"><span className="bars"><i /><i /><i /></span><strong>HELIOS</strong></div>
+        {demo ? <RoleSwitch view={view} onView={onRole} /> : null}
+        {demo && onDemoAccount ? (
+          <div className="roles" role="group" aria-label="Учебный вход">
+            <span className="roles-label">Учебный вход</span>
+            <button type="button" onClick={() => onDemoAccount("director@pilot.helios", "pilot-director")}>Анна</button>
+            <button type="button" onClick={() => onDemoAccount("master@pilot.helios", "pilot-master")}>Павел</button>
+            <button type="button" onClick={() => onDemoAccount("worker@pilot.helios", "pilot-worker")}>Иван</button>
+          </div>
+        ) : null}
+        {preview ? <p className="quiet">Просмотр кабинета. Смена и объём от этого вида не записываются: вход остаётся {session.name}.</p> : null}
+        <Mark compact />
         {tab === "shift" && current ? (
           <>
             <h1>Моя смена</h1>
@@ -68,7 +78,7 @@ export function WorkerPhone({
               <div className="quiet">{personName(data, current.assignee_employee_id)}</div>
               <div className="track"><span style={{ width: `${progress(current, report)}%` }} /></div>
               <div className="rowline quiet"><span /><span>{report ? amount(report.submitted_quantity) : "0"} из {amount(current.planned_quantity)} {current.unit}</span></div>
-              {shift ? (
+              {preview ? null : shift ? (
                 <button className="fill wide" type="button" onClick={() => setVolumeOpen(true)}>Сдать работу</button>
               ) : (
                 <button className="fill wide" type="button" onClick={() => onStart(current.id, current.assignee_employee_id)}>Начать смену</button>
@@ -78,6 +88,10 @@ export function WorkerPhone({
               <button className="ghost" type="button" onClick={() => setBreakOn((value) => !value)}>{breakOn ? "Перерыв идёт" : "Перерыв"}</button>
               <button className="ghost" type="button" onClick={() => setProblemOpen(true)}>Сообщить о проблеме</button>
             </div>
+            {preview ? null : <button className="ghost wide" type="button" onClick={() => setStopOpen(true)}>Записать простой</button>}
+            {current ? book.downtime.filter((item) => item.taskId === current.id).map((item) => (
+              <p className="quiet" key={item.id}>Простой {minutesLabel(item.minutes)} · {item.cause}</p>
+            )) : null}
             {shift ? <button className="ghost wide" type="button" onClick={() => onEnd(current.id)}>Завершить смену</button> : null}
             {pending ? <div className="alert-note"><Icon d={paths.alert} /><div><b>Нет сети</b><div>Отметка сохранится на телефоне и уйдёт в этот кабинет.</div></div></div> : null}
             {problem ? <p className="quiet">Проблема на телефоне: {problem}</p> : null}
@@ -123,6 +137,28 @@ export function WorkerPhone({
           </div>
         </form>
       ) : null}
+      {stopOpen && current ? (
+        <form className="dialog-back" onSubmit={(event) => {
+          event.preventDefault();
+          const form = event.currentTarget;
+          const cause = (form.elements.namedItem("cause") as HTMLInputElement).value.trim();
+          const minutes = Number((form.elements.namedItem("minutes") as HTMLInputElement).value);
+          if (!cause || !Number.isInteger(minutes) || minutes <= 0) return;
+          update((item) => ({
+            ...item,
+            downtime: [{ id: crypto.randomUUID(), taskId: current.id, day: todayKey(), minutes, cause }, ...item.downtime],
+          }));
+          setStopOpen(false);
+        }}>
+          <div className="dialog">
+            <h2>Простой</h2>
+            <label className="field"><span>Минуты</span><input name="minutes" inputMode="numeric" /></label>
+            <label className="field"><span>Причина</span><input name="cause" /></label>
+            <button className="fill wide" type="submit">Записать</button>
+            <button className="ghost" type="button" onClick={() => setStopOpen(false)}>Закрыть</button>
+          </div>
+        </form>
+      ) : null}
       {problemOpen ? (
         <form className="dialog-back" onSubmit={(event) => { event.preventDefault(); setProblem((event.currentTarget.elements.namedItem("problem") as HTMLTextAreaElement).value); setProblemOpen(false); }}>
           <div className="dialog">
@@ -138,17 +174,18 @@ export function WorkerPhone({
 }
 
 export function ForemanPhone({
-  session, data, theme, onTheme, onLogout, onRole, onCreate, onSubmit, onAccept,
+  session, data, theme, onTheme, onLogout, view, onRole, onCreate, onSubmit, onAccept,
 }: {
   session: Session;
   data: Desk;
   theme: "light" | "dark";
   onTheme: () => void;
   onLogout: () => void;
-  onRole: (role: "director" | "master" | "worker") => void;
+  view: View;
+  onRole: (view: View) => void;
   onCreate: (title: string, employeeId: string) => Promise<void>;
   onSubmit: (taskId: string, quantity: string) => void;
-  onAccept: (reportId: string) => Promise<void>;
+  onAccept: (reportId: string, acceptedQuantity: string) => Promise<void>;
 }) {
   const [tab, setTab] = useState<MasterTab>("today");
   const [filter, setFilter] = useState<"all" | "work" | "ready">("all");
@@ -174,6 +211,7 @@ export function ForemanPhone({
         data={data}
         task={review}
         onBack={() => setReviewId(null)}
+        view={view}
         onRole={onRole}
         onSubmit={onSubmit}
         onAccept={onAccept}
@@ -186,15 +224,15 @@ export function ForemanPhone({
       <div className="phone-body">
         {tab === "today" ? (
           <>
-            <RoleSwitch role={session.role} onRole={onRole} />
-            <div className="rowline"><strong>HELIOS</strong><span className="quiet">{session.name.split(" ")[0]}</span></div>
+            <RoleSwitch view={view} onView={onRole} />
+            <div className="rowline"><strong>GELIOS</strong><span className="quiet">{session.name.split(" ")[0]}</span></div>
             <h1>Сегодня</h1>
             <div className="quiet">{project}</div>
             <article className="job-card">
               <b>Бригада</b>
               <div className="quiet">{data.employees.length} человек · {onShift} на смене</div>
             </article>
-            <div className="filters">
+            <div className="roles">
               <button className={filter === "all" ? "is-on" : ""} type="button" onClick={() => setFilter("all")}>Все</button>
               <button className={filter === "work" ? "is-on" : ""} type="button" onClick={() => setFilter("work")}>В работе</button>
               <button className={filter === "ready" ? "is-on" : ""} type="button" onClick={() => setFilter("ready")}>К сдаче</button>
@@ -267,30 +305,32 @@ export function ForemanPhone({
 }
 
 function Review({
-  session, data, task, onBack, onRole, onSubmit, onAccept,
+  session, data, task, onBack, view, onRole, onSubmit, onAccept,
 }: {
   session: Session;
   data: Desk;
   task: Desk["tasks"][number];
   onBack: () => void;
-  onRole: (role: "director" | "master" | "worker") => void;
+  view: View;
+  onRole: (view: View) => void;
   onSubmit: (taskId: string, quantity: string) => void;
-  onAccept: (reportId: string) => Promise<void>;
+  onAccept: (reportId: string, acceptedQuantity: string) => Promise<void>;
 }) {
-  const [check, setCheck] = useState(() => readCheck(session.tenantId, task.id));
-  const [quantity, setQuantity] = useState("18");
+  const [check, setCheck] = useState(() => readCheck(session.tenantId, session.userId, task.id));
+  const [quantity, setQuantity] = useState("");
   const report = data.reports.find((item) => item.task_id === task.id);
+  const [taken, setTaken] = useState(report ? amount(report.submitted_quantity) : "");
   const ready = check.flat && check.seam && check.photo;
 
-  function save(next: typeof check) {
+  function save(next: Check) {
     setCheck(next);
-    localStorage.setItem(checkKey(session.tenantId, task.id), JSON.stringify(next));
+    writeCheck(session.tenantId, session.userId, task.id, next);
   }
 
   return (
     <div className="phone">
       <div className="phone-body">
-        <RoleSwitch role={session.role} onRole={onRole} />
+        <RoleSwitch view={view} onView={onRole} />
         <button className="back" type="button" onClick={onBack}>← Проверка работы</button>
         <div className="rowline"><h1 style={{ fontSize: 28 }}>{task.title}</h1><b>{amount(task.planned_quantity)} {task.unit}</b></div>
         <div className="quiet">{personName(data, task.assignee_employee_id)}</div>
@@ -300,7 +340,10 @@ function Review({
             <button className="fill" type="submit">Сдать работу</button>
           </form>
         ) : (
-          <p className="quiet">Сдано {amount(report.submitted_quantity)} {task.unit}{report.accepted_quantity ? ` · принято ${amount(report.accepted_quantity)}` : ""}</p>
+          <>
+            <p className="quiet">Сдано {amount(report.submitted_quantity)} {task.unit}{report.accepted_quantity ? ` · принято ${amount(report.accepted_quantity)}` : ""}</p>
+            {report.accepted_quantity ? null : <label className="field"><span>Принять, {task.unit}</span><input value={taken} inputMode="decimal" onChange={(event) => setTaken(event.target.value)} /></label>}
+          </>
         )}
         <h2>Самоконтроль</h2>
         <label className="check"><input type="checkbox" checked={check.flat} onChange={(event) => save({ ...check, flat: event.target.checked })} /> Ровность поверхности</label>
@@ -313,11 +356,13 @@ function Review({
           disabled={!ready || !report || Boolean(report.accepted_quantity)}
           onClick={async () => {
             if (!report) return;
-            await onAccept(report.id);
+            const value = taken.trim().replace(",", ".");
+            if (!value || Number(value) < 0 || Number(value) > Number(report.submitted_quantity)) return;
+            await onAccept(report.id, value);
             save({ ...check, sent: true });
           }}
         >
-          {report?.accepted_quantity ? "Передано" : "Передать в ПТО"}
+          {report?.accepted_quantity ? "Передано" : "Передать на проверку"}
         </button>
       </div>
     </div>
