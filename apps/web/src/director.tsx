@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Desk, NewTask, Session } from "./api";
-import { WorkBoard } from "./board";
+import { TaskDesk } from "./work";
 import { Inbox } from "./inbox";
 import { Icon, paths } from "./icons";
 import { DeskBadge, DeskEmpty, DeskProgress, DeskSelect, PageShift, ProfileMenu, StatGrid, ThemeButton } from "./kit";
@@ -11,7 +11,7 @@ import { Quality } from "./quality";
 import { Settings } from "./settings";
 import { Mark } from "./mark";
 import { People, type PersonCard } from "./people";
-import { CatalogDesk, StaffDesk, labelDay, useCabinetScope } from "./staff";
+import { AccessDesk, CatalogDesk, StaffDesk, labelDay, useCabinetScope } from "./staff";
 import { DayFlow } from "./dayflow";
 import { RoleSwitch, accessOf, roleTitle, serverRights, type Section, type View } from "./roles";
 import { minutesLabel, useBook } from "./book";
@@ -198,6 +198,7 @@ export function DirectorDesk({
               {scope.error ? <p className="alert" role="alert">{scope.error}</p> : null}
               {scope.truncated ? <p className="quiet">В списке объектов показаны первые 2000.</p> : null}
               {scope.timezone ? <p className="quiet">Гражданский день считается в поясе кабинета {scope.timezone}, не в поясе компьютера.</p> : null}
+              {scope.projectId && !preview && session.role === "director" ? <AccessDesk session={session} projectId={scope.projectId} /> : null}
               {scope.projectId ? (
                 <StaffDesk
                   key={`${scope.projectId}:${scope.epoch}`}
@@ -231,21 +232,17 @@ export function DirectorDesk({
             </>
           ) : null}
           {page === "tasks" ? (
-            <WorkBoard
-              data={data}
-              tasks={tasks}
-              canAccept={canAccept}
-              canCreate={canCreate}
-              onStart={onStart}
-              onEnd={onEnd}
-              onSubmit={onSubmit}
-              onAccept={onAccept}
-              onCreate={onCreate}
-              openTask={openTask}
-              admissions={admissions}
-              remarks={remarks}
-              onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
-            />
+            scope.projectId && scope.day ? (
+              <TaskDesk
+                key={`${scope.projectId}:${scope.day}:${scope.epoch}`}
+                session={session}
+                projectId={scope.projectId}
+                day={scope.day}
+                timeZone={scope.timezone || "Europe/Moscow"}
+                canPrepare={!preview && (session.role === "director" || session.role === "master")}
+                canDirect={!preview && session.role === "director"}
+              />
+            ) : <DeskEmpty title={scope.loading ? "Загружаем объект" : "Объект не выбран"} description={scope.error || "Задания появятся, когда у входа будет доступ к объекту."} />
           ) : null}
           {page === "materials" ? <Materials canEdit={canRecordSupply} /> : null}
           {page === "quality" ? (

@@ -77,10 +77,10 @@ export function DeskProgress({ value, label, compact = false, tone = "accent" }:
 
 const stageSpring = { type: "spring" as const, bounce: 0.1, duration: 0.25 };
 
-export function DeskStepper({ steps, current, done }: { steps: { label: string }[]; current: number; done?: boolean[] }) {
+export function DeskStepper({ steps, current, done, label = "Ход работы" }: { steps: { label: string }[]; current: number; done?: boolean[]; label?: string }) {
   const reduce = useReducedMotion();
   return (
-    <ol className="stage" aria-label="Ход работы">
+    <ol className="stage" aria-label={label}>
       {steps.map((step, index) => {
         const finished = done ? Boolean(done[index]) : index < current;
         const now = index === current;

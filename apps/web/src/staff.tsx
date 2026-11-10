@@ -18,6 +18,7 @@ import {
   type CurrentAdmission,
   type OverviewClock,
   type Page,
+  type ProjectMembership,
   type Qualification,
   type V1Employee,
   type V1Project,
@@ -37,7 +38,7 @@ const reasonText: Record<string, string> = {
   template_changed: "Шаблон допуска изменился, нужна новая проверка",
 };
 
-function reasonLabel(code: string) {
+export function reasonLabel(code: string) {
   if (reasonText[code]) return reasonText[code];
   const [kind, rest] = code.split(":");
   const named: Record<string, string> = {
@@ -603,8 +604,8 @@ function AssignmentPanel({
       .catch(() => {});
     return () => ac.abort();
   }, [session, person.id, projectId]);
-  const checkId = admission?.checkId ?? latestCheck;
-  const eligible = Boolean(checkId) && admission?.eligible !== false;
+  const checkId = latestCheck ?? admission?.checkId ?? null;
+  const eligible = Boolean(checkId);
   async function send(status: "active" | "revoked") {
     const payload = status === "active"
       ? { expectedVersion, status, admissionCheckId: checkId }
@@ -781,16 +782,19 @@ function WorkTypes({ session, projectId, rows, canManage, onChanged }: { session
   const [name, setName] = useState("");
   const [unit, setUnit] = useState("м2");
   const [requiresRd, setRequiresRd] = useState(true);
-  const [requiresPredecessor, setRequiresPredecessor] = useState(true);
+  const [plainName, setPlainName] = useState("");
   const [error, setError] = useState("");
-  async function create() {
-    const payload = { name: name.trim(), unit: unit.trim(), requiresRd, requiresMaterialControl: true, requiresPredecessorAcceptance: requiresPredecessor, requiresId: true };
+  async function create(plain: boolean) {
+    const payload = plain
+      ? { name: plainName.trim(), unit: unit.trim(), requiresRd: false, requiresMaterialControl: false, requiresPredecessorAcceptance: false, requiresId: false }
+      : { name: name.trim(), unit: unit.trim(), requiresRd, requiresMaterialControl: true, requiresPredecessorAcceptance: true, requiresId: true };
     if (!payload.name || !payload.unit) { setError("Нужны название и единица."); return; }
-    const key = `work-type.${projectId}.${payload.name}`;
+    const key = `work-type.${projectId}.${plain ? "plain." : ""}${payload.name}`;
     try {
       await v1(session, `/projects/${projectId}/work-types`, { ...payload, requestId: requestId(key, payload) });
       releaseRequest(key);
-      setName("");
+      if (plain) setPlainName("");
+      else setName("");
       onChanged();
     } catch (reason) { setError(apiText(reason)); }
   }
@@ -803,9 +807,11 @@ function WorkTypes({ session, projectId, rows, canManage, onChanged }: { session
           <label className="field"><span>Название</span><input value={name} maxLength={200} onChange={(event) => setName(event.target.value)} /></label>
           <label className="field"><span>Единица</span><input value={unit} maxLength={40} onChange={(event) => setUnit(event.target.value)} /></label>
           <label className="check-row"><input type="checkbox" checked={requiresRd} onChange={(event) => setRequiresRd(event.target.checked)} /><span>Нужна рабочая документация</span></label>
-          <label className="check-row"><input type="checkbox" checked={requiresPredecessor} onChange={(event) => setRequiresPredecessor(event.target.checked)} /><span>Нужна приёмка предшественника</span></label>
-          <p className="quiet">Контроль материалов и ИД включены и этой формой не снимаются.</p>
-          <button className="ghost" type="button" onClick={() => void create()}>Добавить вид работ</button>
+          <p className="quiet">Материалы, приёмка предшественника и ИД включены. Эта форма их не снимает.</p>
+          <button className="ghost" type="button" onClick={() => void create(false)}>Добавить вид работ</button>
+          <label className="field"><span>Вид без этих условий</span><input value={plainName} maxLength={200} onChange={(event) => setPlainName(event.target.value)} /></label>
+          <p className="quiet">Отдельный вид, которому материалы, предшественник и ИД не нужны. Уже созданный вид так не переключается.</p>
+          <button className="ghost" type="button" onClick={() => void create(true)}>Добавить вид без этих условий</button>
         </>
       ) : null}
       {error ? <p className="field-error">{error}</p> : null}
@@ -879,5 +885,77 @@ function TemplateEditor({ session, projectId, template, canManage, onChanged }: 
       ) : template ? <p>{template.title}. Пунктов: {template.items.length}.</p> : <p className="quiet">Шаблона нет.</p>}
       {error ? <p className="field-error" role="alert">{error}</p> : null}
     </div>
+  );
+}
+
+const roleName: Record<string, string> = { director: "Руководитель", master: "Прораб", worker: "Рабочий", pto: "ПТО" };
+
+export function AccessDesk({ session, projectId }: { session: Session; projectId: string }) {
+  const [rows, setRows] = useState<ProjectMembership[] | null>(null);
+  const [people, setPeople] = useState<V1Employee[]>([]);
+  const [employeeId, setEmployeeId] = useState("");
+  const [userId, setUserId] = useState("");
+  const [error, setError] = useState("");
+  const [note, setNote] = useState("");
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const ac = new AbortController();
+    setRows(null);
+    void (async () => {
+      try {
+        const [access, staff] = await Promise.all([
+          collectPages<ProjectMembership>(session, `/projects/${projectId}/memberships`, ac.signal),
+          collectPages<V1Employee>(session, "/employees", ac.signal),
+        ]);
+        if (ac.signal.aborted) return;
+        setRows(access.items);
+        setPeople(staff.items);
+        setError(access.truncated || staff.truncated ? "Показаны первые 2000 записей." : "");
+      } catch (reason) {
+        if (!isAbort(reason)) setError(apiText(reason));
+      }
+    })();
+    return () => ac.abort();
+  }, [session, projectId, tick]);
+  const nameOf = (id: string) => people.find((item) => item.userId === id)?.fullName ?? (id === session.userId ? session.name : "Без карточки");
+  async function grant(id: string, status: "active" | "revoked", version: number) {
+    const payload = { expectedVersion: version, status };
+    const key = `membership.${projectId}.${id}.${status}.${version}`;
+    setError("");
+    setNote("");
+    try {
+      await v1(session, `/projects/${projectId}/memberships/${id}`, { ...payload, requestId: requestId(key, payload) }, "PUT");
+      releaseRequest(key);
+      setNote(status === "active" ? "Доступ к объекту открыт." : "Доступ к объекту закрыт.");
+      setTick((value) => value + 1);
+    } catch (reason) {
+      setError(apiText(reason));
+    }
+  }
+  const linked = people.filter((item) => item.userId && !rows?.some((row) => row.userId === item.userId && row.status === "active"));
+  return (
+    <section className="panel">
+      <h2>Доступ к объекту</h2>
+      <p className="quiet">Это вход пользователя в объект. Допуск сотрудника и производственное назначение здесь не меняются.</p>
+      {rows === null && !error ? <p className="quiet">Загружаем доступы.</p> : null}
+      {rows?.length === 0 ? <DeskEmpty title="Доступов нет" description="Откройте доступ человеку, у которого уже есть вход в кабинет." /> : null}
+      {rows?.map((row) => (
+        <div className="panel-tools" key={row.userId}>
+          <span>{nameOf(row.userId)} · {roleName[row.role] ?? row.role} · {row.status === "active" ? "открыт" : "закрыт"} · версия {row.version}</span>
+          <button className="ghost" type="button" onClick={() => void grant(row.userId, row.status === "active" ? "revoked" : "active", row.version)}>{row.status === "active" ? "Закрыть" : "Открыть"}</button>
+        </div>
+      ))}
+      <label className="field"><span>Сотрудник со входом</span>
+        <select value={employeeId} onChange={(event) => setEmployeeId(event.target.value)}>
+          <option value="">Не выбран</option>
+          {linked.map((item) => <option key={item.id} value={item.userId ?? ""}>{item.fullName}</option>)}
+        </select>
+      </label>
+      <button className="ghost" type="button" disabled={!employeeId} onClick={() => void grant(employeeId, "active", rows?.find((row) => row.userId === employeeId)?.version ?? 0)}>Открыть выбранному</button>
+      <label className="field"><span>Идентификатор пользователя без карточки</span><input value={userId} spellCheck={false} onChange={(event) => setUserId(event.target.value.trim())} /></label>
+      <button className="ghost" type="button" disabled={!/^[0-9a-f-]{36}$/i.test(userId)} onClick={() => void grant(userId.toLowerCase(), "active", rows?.find((row) => row.userId === userId.toLowerCase())?.version ?? 0)}>Открыть по идентификатору</button>
+      {note ? <p className="quiet" role="status">{note}</p> : null}
+      {error ? <p className="field-error" role="alert">{error}</p> : null}
+    </section>
   );
 }

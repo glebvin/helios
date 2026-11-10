@@ -6,6 +6,7 @@ import { minutesLabel, readCheck, useBook, writeCheck, type Check } from "./book
 import { DayFlow } from "./dayflow";
 import { RoleSwitch, type View } from "./roles";
 import { amount, clock, dayTasks, elapsed, laneOf, personName, progress, statusLabel, todayKey } from "./model";
+import { WorkerTasks } from "./work";
 
 type WorkerTab = "shift" | "task" | "profile";
 type MasterTab = "today" | "crew" | "accept" | "more";
@@ -94,21 +95,7 @@ export function WorkerPhone({
           </>
         ) : null}
         {tab === "shift" && !current ? <><h1>Моя смена</h1><p className="quiet">На сегодня заданий нет. Их ставит прораб.</p></> : null}
-        {tab === "task" ? (
-          <>
-            <h1>Задание</h1>
-            {tasks.map((task) => {
-              const itemReport = data.reports.find((item) => item.task_id === task.id);
-              return (
-                <article className="job-card" key={task.id}>
-                  <b>{task.title}</b>
-                  <div className="quiet">{statusLabel(laneOf(task.id, data))} · {amount(task.planned_quantity)} {task.unit}</div>
-                  <div className="track"><span style={{ width: `${progress(task, itemReport)}%` }} /></div>
-                </article>
-              );
-            })}
-          </>
-        ) : null}
+        {tab === "task" ? <WorkerTasks session={session} /> : null}
         {tab === "profile" ? (
           <>
             <h1>Профиль</h1>

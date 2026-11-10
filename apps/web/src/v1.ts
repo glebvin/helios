@@ -118,6 +118,36 @@ export type AdmissionCheck = {
   sequence: number;
 };
 export type ProjectMembership = { projectId: string; userId: string; role: string; status: "active" | "revoked"; version: number };
+export type V1Task = {
+  id: string;
+  projectId: string;
+  title: string;
+  workDate: string;
+  plannedQuantity: string;
+  unit: string;
+  assigneeEmployeeId: string;
+  status: string;
+  version: number;
+  workflowKind: string;
+  planRevision: number | null;
+  zoneId: string | null;
+  workTypeId: string | null;
+  responsibleUserId: string | null;
+  rdReference: string | null;
+  plannedStart: string | null;
+  plannedEnd: string | null;
+  publicationSnapshotId: string | null;
+};
+export type FrontTemplate = { projectId: string; code: string; title: string; version: number; items: TemplateItem[] };
+export type FrontCheck = {
+  id: string;
+  passed: boolean;
+  reasons: string[];
+  warnings: string[];
+  templateVersion: number;
+  answers: { itemId: string; value: boolean }[];
+};
+export type Readiness = { ready: boolean; reasons: string[]; warnings: string[] };
 export type OverviewClock = { day: string; timezone: string; projectId: string };
 
 export function apiText(error: unknown) {
@@ -165,4 +195,24 @@ export function stableId(key: string) {
 
 export function moscowDay(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow" }).format(date);
+}
+
+export function civilInstant(day: string, time: string, timeZone: string) {
+  const [hour, minute] = time.split(":").map(Number);
+  const utc = Date.parse(`${day}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`);
+  const format = new Intl.DateTimeFormat("en-US", { timeZone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const zoned = (ms: number) => {
+    const bag: Record<string, string> = {};
+    for (const part of format.formatToParts(new Date(ms))) if (part.type !== "literal") bag[part.type] = part.value;
+    const clockHour = Number(bag.hour) % 24;
+    return Date.UTC(Number(bag.year), Number(bag.month) - 1, Number(bag.day), clockHour, Number(bag.minute), Number(bag.second));
+  };
+  return new Date(utc - (zoned(utc) - utc)).toISOString();
+}
+
+export function clockIn(iso: string, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso));
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
+  return `${hour === "24" ? "00" : hour}:${minute}`;
 }
