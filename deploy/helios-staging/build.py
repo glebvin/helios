@@ -11,7 +11,7 @@ out = root / '.data/staging-runtime'
 out.mkdir(parents=True, exist_ok=True)
 subprocess.run(['node','apps/api/node_modules/typescript/bin/tsc','--project','deploy/helios-staging/tsconfig.json'],cwd=root,check=True)
 subprocess.run(['node','apps/web/node_modules/typescript/bin/tsc','--project','apps/web/tsconfig.json','--noEmit'],cwd=root,check=True)
-subprocess.run(['node','node_modules/vite/bin/vite.js','build','--configLoader','runner','--outDir',str(out/'web')],cwd=root/'apps/web',check=True)
+subprocess.run(['node','node_modules/vite/bin/vite.js','build','--configLoader','runner','--emptyOutDir','--outDir',str(out/'web')],cwd=root/'apps/web',check=True)
 for name in ['apps','packages']:
     shutil.copytree(root/'.data/staging-build'/name,out/name,dirs_exist_ok=True)
 shutil.copytree(root/'apps/api/sql',out/'apps/api/sql',dirs_exist_ok=True)
