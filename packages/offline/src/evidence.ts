@@ -18,7 +18,8 @@ export function canonicalJSON(input: unknown): string {
 export async function digest(bytes: BufferSource): Promise<string> {
   return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), byte => byte.toString(16).padStart(2, '0')).join('');
 }
-export async function prepareEvidence(input: EvidenceInput, scope: string, actor: string, check: () => void): Promise<StoredEvidence> {
+/** Own all caller-controlled values synchronously; Blob bytes are immutable. */
+export function captureEvidence(input: EvidenceInput, actor: string) {
   const value = object(input, ['projectId','employeeId','filename','contentType','blob','target','dependencyRequestId','fileId','reserveRequestId','attachRequestId','onBehalfReason']);
   const projectId = uuid(value.projectId), employeeId = uuid(value.employeeId), dependencyRequestId = uuid(value.dependencyRequestId);
   const blob = value.blob;
@@ -36,9 +37,14 @@ export async function prepareEvidence(input: EvidenceInput, scope: string, actor
   const reserveId = value.reserveRequestId === undefined ? crypto.randomUUID() : uuid(value.reserveRequestId);
   const attachId = value.attachRequestId === undefined ? crypto.randomUUID() : uuid(value.attachRequestId);
   if (new Set([id,reserveId,attachId,dependencyRequestId]).size !== 4) fail('local_identity_conflict');
-  const bytes = await blob.arrayBuffer();check();const sha256 = await digest(bytes);check();
   const reason = value.onBehalfReason === undefined ? {} : {onBehalfReason: (value.onBehalfReason as string).trim()};
-  const reserve: Reservation = {requestId: reserveId, fileId: id, employeeId, filename: value.filename.trim(), contentType: value.contentType as EvidenceInput['contentType'], sizeBytes: blob.size, sha256, ...reason};
+  return {projectId, employeeId, dependencyRequestId, blob, target, id, reserveId, attachId, reason,
+    filename: value.filename.trim(), contentType: value.contentType as EvidenceInput['contentType']};
+}
+export async function prepareEvidence(input: ReturnType<typeof captureEvidence>, scope: string, check: () => void): Promise<StoredEvidence> {
+  const {projectId, employeeId, dependencyRequestId, blob, target, id, reserveId, attachId, reason, filename, contentType} = input;
+  const bytes = await blob.arrayBuffer();check();const sha256 = await digest(bytes);check();
+  const reserve: Reservation = {requestId: reserveId, fileId: id, employeeId, filename, contentType, sizeBytes: blob.size, sha256, ...reason};
   const attach: Attachment = {requestId: attachId, target, ...reason};
   const canonical = canonicalJSON({projectId, dependencyRequestId, reserve, attach});const commandHash = await digest(new TextEncoder().encode(canonical));check();
   return {key: [scope,id], scope, id, employeeId, projectId, blob, dependencyRequestId, target, reserve, attach, canonical, commandHash,

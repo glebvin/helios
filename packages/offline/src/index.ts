@@ -1,4 +1,4 @@
-import {canonicalJSON, digest, prepareEvidence, saveEvidence, listEvidence, evidenceDependency, updateEvidence, validateEvidenceReply, cleanup, type EvidenceInput, type QueueEvidence, type StoredEvidence} from './evidence.js';
+import {canonicalJSON, digest, captureEvidence, prepareEvidence, saveEvidence, listEvidence, evidenceDependency, updateEvidence, validateEvidenceReply, cleanup, type EvidenceInput, type QueueEvidence, type StoredEvidence} from './evidence.js';
 import {uuid, object, instant, quantity, validateReply, createTransport, httpOutcome, retryDelay, type DeliveryOutcome, type Session} from './transport.js';
 import {NativeStore, OfflineQueueError, fail, type EventPayload, type StoredEvent, type QueueState} from './store.js';
 export {OfflineQueueError} from './store.js';
@@ -176,13 +176,14 @@ export async function openOfflineQueue(options: QueueOptions) {
     async enqueueEvent(input: EventPayload, options: {evidence?: EvidenceInput[]} = {}): Promise<QueueEvent> {
       const check = capture();const {event, canonical} = validateEvent(input);object(options,['evidence']);
       if(options.evidence!==undefined&&(!Array.isArray(options.evidence)||options.evidence.length>32))fail('invalid_evidence');
+      const inputs=Array.from(options.evidence??[],input=>captureEvidence(input,actorUserId));
       const hash=await digest(new TextEncoder().encode(canonical));check();
-      const evidence:StoredEvidence[]=[];for(const input of options.evidence??[])evidence.push(await prepareEvidence(input,scope,actorUserId,check));
+      const evidence:StoredEvidence[]=[];for(const input of inputs)evidence.push(await prepareEvidence(input,scope,check));
       if(!evidence.length)return view(await store.enqueue(scope,epoch,event,canonical,hash,check));
       const saved=await saveEvidence(store,scope,epoch,evidence,check,{event,canonical,commandHash:hash});return view(saved.event!);
     },
     async enqueueEvidence(input: EvidenceInput): Promise<QueueEvidence>{
-      const check=capture(),row=await prepareEvidence(input,scope,actorUserId,check);
+      const check=capture(),snapshot=captureEvidence(input,actorUserId),row=await prepareEvidence(snapshot,scope,check);
       return fileView((await saveEvidence(store,scope,epoch,[row],check)).evidence[0]);
     },
     list, get, status: list, flush,
