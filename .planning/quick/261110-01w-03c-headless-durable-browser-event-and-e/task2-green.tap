@@ -1,0 +1,241 @@
+TAP version 13
+# Subtest: chromium mechanics: native save survives persistent reopen and validated HTTP acknowledgement
+ok 1 - chromium mechanics: native save survives persistent reopen and validated HTTP acknowledgement
+  ---
+  duration_ms: 663.01
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: request success followed by native transaction abort rejects and stores no event
+ok 2 - chromium mechanics: request success followed by native transaction abort rejects and stores no event
+  ---
+  duration_ms: 157.290083
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: wrong requestId HTTP200 retains exact unacknowledged event
+ok 3 - chromium mechanics: wrong requestId HTTP200 retains exact unacknowledged event
+  ---
+  duration_ms: 275.798791
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: four exact shapes, explicit external predecessor, immutable idempotence and retained acknowledgement
+ok 4 - chromium mechanics: four exact shapes, explicit external predecessor, immutable idempotence and retained acknowledgement
+  ---
+  duration_ms: 179.54125
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: atomic cross-tab project tail race and blocked employee head
+ok 5 - chromium mechanics: atomic cross-tab project tail race and blocked employee head
+  ---
+  duration_ms: 206.767
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: HTTP status before optional JSON, bounded Retry-After and exact retry exhaustion
+ok 6 - chromium mechanics: HTTP status before optional JSON, bounded Retry-After and exact retry exhaustion
+  ---
+  duration_ms: 179.639
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: ambiguous replies and permanent business errors never acknowledge
+ok 7 - chromium mechanics: ambiguous replies and permanent business errors never acknowledge
+  ---
+  duration_ms: 228.170417
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: delayed identity and event completion obey current session and handle lifecycle
+ok 8 - chromium mechanics: delayed identity and event completion obey current session and handle lifecycle
+  ---
+  duration_ms: 2174.6215
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: actual Web Lock contention and crashed tab exact receipt replay
+ok 9 - chromium mechanics: actual Web Lock contention and crashed tab exact receipt replay
+  ---
+  duration_ms: 278.657834
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: lost committed HTTP response reopens with exact command and duplicate acknowledgement
+ok 10 - chromium mechanics: lost committed HTTP response reopens with exact command and duplicate acknowledgement
+  ---
+  duration_ms: 306.55225
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: persisted authEpoch fences another tab without BroadcastChannel delivery
+ok 11 - chromium mechanics: persisted authEpoch fences another tab without BroadcastChannel delivery
+  ---
+  duration_ms: 271.45
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: authEpoch rejects an in-flight completion before commit even without broadcast
+ok 12 - chromium mechanics: authEpoch rejects an in-flight completion before commit even without broadcast
+  ---
+  duration_ms: 257.086666
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: known cross-project dependencies rejected and acknowledged pending dependencies cannot be cleaned
+ok 13 - chromium mechanics: known cross-project dependencies rejected and acknowledged pending dependencies cannot be cleaned
+  ---
+  duration_ms: 177.864583
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: strict JSON validation, segment variants and submit-volume response integrity
+ok 14 - chromium mechanics: strict JSON validation, segment variants and submit-volume response integrity
+  ---
+  duration_ms: 209.174
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: current /me authority gate, retryable item500, Retry-After date and permanent item403
+ok 15 - chromium mechanics: current /me authority gate, retryable item500, Retry-After date and permanent item403
+  ---
+  duration_ms: 183.700834
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: scope isolation, current identity on all public data methods and no stored token
+ok 16 - chromium mechanics: scope isolation, current identity on all public data methods and no stored token
+  ---
+  duration_ms: 169.874958
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: native quota boundary, strict fallback, versionchange and explicit storage capabilities
+ok 17 - chromium mechanics: native quota boundary, strict fallback, versionchange and explicit storage capabilities
+  ---
+  duration_ms: 178.889417
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: unsupported lock, unsupported storage, controlled 30s timeout and native event count cap
+ok 18 - chromium mechanics: unsupported lock, unsupported storage, controlled 30s timeout and native event count cap
+  ---
+  duration_ms: 1691.391875
+  type: 'test'
+  ...
+# chromium mechanics: 19/19 passed
+# Subtest: chromium mechanics: genuine blocked native upgrade closes late success and unsupported storage info remains explicit
+ok 19 - chromium mechanics: genuine blocked native upgrade closes late success and unsupported storage info remains explicit
+  ---
+  duration_ms: 167.36925
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: native save survives persistent reopen and validated HTTP acknowledgement
+ok 20 - webkit mechanics: native save survives persistent reopen and validated HTTP acknowledgement
+  ---
+  duration_ms: 2139.337125
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: request success followed by native transaction abort rejects and stores no event
+ok 21 - webkit mechanics: request success followed by native transaction abort rejects and stores no event
+  ---
+  duration_ms: 464.872416
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: wrong requestId HTTP200 retains exact unacknowledged event
+ok 22 - webkit mechanics: wrong requestId HTTP200 retains exact unacknowledged event
+  ---
+  duration_ms: 901.776959
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: four exact shapes, explicit external predecessor, immutable idempotence and retained acknowledgement
+ok 23 - webkit mechanics: four exact shapes, explicit external predecessor, immutable idempotence and retained acknowledgement
+  ---
+  duration_ms: 518.190042
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: atomic cross-tab project tail race and blocked employee head
+ok 24 - webkit mechanics: atomic cross-tab project tail race and blocked employee head
+  ---
+  duration_ms: 644.454917
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: HTTP status before optional JSON, bounded Retry-After and exact retry exhaustion
+ok 25 - webkit mechanics: HTTP status before optional JSON, bounded Retry-After and exact retry exhaustion
+  ---
+  duration_ms: 501.466166
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: ambiguous replies and permanent business errors never acknowledge
+ok 26 - webkit mechanics: ambiguous replies and permanent business errors never acknowledge
+  ---
+  duration_ms: 599.624917
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: delayed identity and event completion obey current session and handle lifecycle
+ok 27 - webkit mechanics: delayed identity and event completion obey current session and handle lifecycle
+  ---
+  duration_ms: 6008.404959
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: actual Web Lock contention and crashed tab exact receipt replay
+ok 28 - webkit mechanics: actual Web Lock contention and crashed tab exact receipt replay
+  ---
+  duration_ms: 657.465125
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: lost committed HTTP response reopens with exact command and duplicate acknowledgement
+ok 29 - webkit mechanics: lost committed HTTP response reopens with exact command and duplicate acknowledgement
+  ---
+  duration_ms: 971.965167
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: persisted authEpoch fences another tab without BroadcastChannel delivery
+ok 30 - webkit mechanics: persisted authEpoch fences another tab without BroadcastChannel delivery
+  ---
+  duration_ms: 825.321958
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: authEpoch rejects an in-flight completion before commit even without broadcast
+ok 31 - webkit mechanics: authEpoch rejects an in-flight completion before commit even without broadcast
+  ---
+  duration_ms: 821.231375
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: known cross-project dependencies rejected and acknowledged pending dependencies cannot be cleaned
+ok 32 - webkit mechanics: known cross-project dependencies rejected and acknowledged pending dependencies cannot be cleaned
+  ---
+  duration_ms: 487.05975
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: strict JSON validation, segment variants and submit-volume response integrity
+ok 33 - webkit mechanics: strict JSON validation, segment variants and submit-volume response integrity
+  ---
+  duration_ms: 529.294
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: current /me authority gate, retryable item500, Retry-After date and permanent item403
+ok 34 - webkit mechanics: current /me authority gate, retryable item500, Retry-After date and permanent item403
+  ---
+  duration_ms: 544.830042
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: scope isolation, current identity on all public data methods and no stored token
+ok 35 - webkit mechanics: scope isolation, current identity on all public data methods and no stored token
+  ---
+  duration_ms: 486.333875
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: native quota boundary, strict fallback, versionchange and explicit storage capabilities
+ok 36 - webkit mechanics: native quota boundary, strict fallback, versionchange and explicit storage capabilities
+  ---
+  duration_ms: 463.869292
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: unsupported lock, unsupported storage, controlled 30s timeout and native event count cap
+ok 37 - webkit mechanics: unsupported lock, unsupported storage, controlled 30s timeout and native event count cap
+  ---
+  duration_ms: 2187.506125
+  type: 'test'
+  ...
+# webkit mechanics: 19/19 passed
+# Subtest: webkit mechanics: genuine blocked native upgrade closes late success and unsupported storage info remains explicit
+ok 38 - webkit mechanics: genuine blocked native upgrade closes late success and unsupported storage info remains explicit
+  ---
+  duration_ms: 443.6065
+  type: 'test'
+  ...
+# mechanics: 38/38 required real-browser scenarios passed
+1..38
+# tests 38
+# suites 0
+# pass 38
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 28738.750417

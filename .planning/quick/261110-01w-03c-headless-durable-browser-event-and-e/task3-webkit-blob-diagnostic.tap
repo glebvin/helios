@@ -1,0 +1,352 @@
+TAP version 13
+# evidence fixture request GET /evidence.js
+# evidence fixture request GET /evidence.js
+# Subtest: chromium evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+ok 1 - chromium evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+  ---
+  duration_ms: 562.276417
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# Subtest: chromium evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+ok 2 - chromium evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+  ---
+  duration_ms: 160.212542
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/4d76ec24-6fd0-479e-b021-55a0fbf74ee7/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/4d76ec24-6fd0-479e-b021-55a0fbf74ee7/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/8b946eb6-acdf-423a-9c4c-c8b1d9965b2e/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/8b946eb6-acdf-423a-9c4c-c8b1d9965b2e/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1d8254db-b391-4608-8422-69738db0b973/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1d8254db-b391-4608-8422-69738db0b973/attachment
+# Subtest: chromium evidence: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+ok 3 - chromium evidence: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+  ---
+  duration_ms: 233.011458
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# replay boundary response/queued
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request GET /evidence.js
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/71286ca9-75a4-4189-a097-e46ae92fddff/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/71286ca9-75a4-4189-a097-e46ae92fddff/attachment
+# replay boundary response/reserved
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/10b8ad35-dba7-4c86-b570-5bfd6e59f556/content
+# evidence fixture request GET /evidence.js
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/10b8ad35-dba7-4c86-b570-5bfd6e59f556/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/10b8ad35-dba7-4c86-b570-5bfd6e59f556/attachment
+# replay boundary response/uploaded
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/02fc971d-5420-40b6-994f-def85dafe1b8/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/02fc971d-5420-40b6-994f-def85dafe1b8/attachment
+# evidence fixture request GET /evidence.js
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/02fc971d-5420-40b6-994f-def85dafe1b8/attachment
+# replay boundary local_commit/queued
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request GET /evidence.js
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/454cbbaa-2b4a-4a92-abcd-929cccabbb1a/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/454cbbaa-2b4a-4a92-abcd-929cccabbb1a/attachment
+# replay boundary local_commit/reserved
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/9de68271-bcf9-48d4-aa42-0a3ab51bca4e/content
+# evidence fixture request GET /evidence.js
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/9de68271-bcf9-48d4-aa42-0a3ab51bca4e/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/9de68271-bcf9-48d4-aa42-0a3ab51bca4e/attachment
+# replay boundary local_commit/uploaded
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/e5d19fad-b29c-41df-a941-65fca7d9e191/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/e5d19fad-b29c-41df-a941-65fca7d9e191/attachment
+# evidence fixture request GET /evidence.js
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/e5d19fad-b29c-41df-a941-65fca7d9e191/attachment
+# Subtest: chromium evidence: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+ok 4 - chromium evidence: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+  ---
+  duration_ms: 1134.471917
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/bab7bb4c-1943-4099-bf6a-2b3eb890cee0/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/bab7bb4c-1943-4099-bf6a-2b3eb890cee0/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/21205e02-277f-4963-adad-f7fc3d65ab91/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/1ddcde9c-cd13-4230-a7d9-2ef35c0d1d21/attachment
+# Subtest: chromium evidence: evidence responses require exact declaration actor timestamps state target and status at every stage
+ok 5 - chromium evidence: evidence responses require exact declaration actor timestamps state target and status at every stage
+  ---
+  duration_ms: 604.288625
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request GET /evidence.js
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/8f05b517-4d65-451a-b9d1-cde7c56bc0c0/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/8f05b517-4d65-451a-b9d1-cde7c56bc0c0/attachment
+# Subtest: chromium evidence: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+ok 6 - chromium evidence: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+  ---
+  duration_ms: 344.509667
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# Subtest: chromium evidence: known-local dependencies frozen IDs idempotence collisions and scope guards
+ok 7 - chromium evidence: known-local dependencies frozen IDs idempotence collisions and scope guards
+  ---
+  duration_ms: 167.001833
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# Subtest: chromium evidence: strict file declarations hash failures and atomic whole database 32-file count cap
+ok 8 - chromium evidence: strict file declarations hash failures and atomic whole database 32-file count cap
+  ---
+  duration_ms: 253.287125
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# chromium evidence: 9/9 passed
+# Subtest: chromium evidence: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+ok 9 - chromium evidence: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+  ---
+  duration_ms: 273.407083
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# evidence fixture request GET /evidence.js
+# Subtest: webkit evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+ok 10 - webkit evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+  ---
+  duration_ms: 1294.092542
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# Subtest: webkit evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+ok 11 - webkit evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+  ---
+  duration_ms: 494.430083
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/2b479198-eb87-41d9-b086-32c320a4aacc/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/2b479198-eb87-41d9-b086-32c320a4aacc/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/62389ae1-b585-4c63-85b0-edb9872de18b/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/62389ae1-b585-4c63-85b0-edb9872de18b/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/f5b60461-ac8c-4ded-a6d7-356c18993324/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/f5b60461-ac8c-4ded-a6d7-356c18993324/attachment
+# Subtest: webkit evidence: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+ok 12 - webkit evidence: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+  ---
+  duration_ms: 557.603291
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# replay boundary response/queued
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request GET /evidence.js
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/b54f4521-60aa-41a9-97e2-29348653261a/content
+# Subtest: webkit evidence: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+not ok 13 - webkit evidence: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+  ---
+  duration_ms: 31053.383709
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:551:13'
+  failureType: 'testCodeFailure'
+  error: |-
+    response/queued: {"id":"b54f4521-60aa-41a9-97e2-29348653261a","employeeId":"4321547c-64ee-42ff-afe8-e4f4f4f2d8a4","projectId":"55555555-5555-4555-8555-555555555555","dependencyRequestId":"3b43d318-9fcb-45cb-bf45-6d653e645b6d","target":{"kind":"execution_event","actorUserId":"22222222-2222-4222-8222-222222222222","requestId":"3b43d318-9fcb-45cb-bf45-6d653e645b6d"},"reserve":{"requestId":"072bc6f7-438c-4bfd-9ccb-900a35b0ce56","fileId":"b54f4521-60aa-41a9-97e2-29348653261a","employeeId":"4321547c-64ee-42ff-afe8-e4f4f4f2d8a4","filename":"photo.png","contentType":"image/png","sizeBytes":9,"sha256":"2a040b0881c18593d21859f4107cee1c9c5f40521161b2acdf3b392b8158e05a"},"attach":{"requestId":"e8168cfc-0977-43e4-b977-30587054b273","target":{"kind":"execution_event","actorUserId":"22222222-2222-4222-8222-222222222222","requestId":"3b43d318-9fcb-45cb-bf45-6d653e645b6d"}},"stage":"reserved","state":"retry_wait","attemptCount":1,"nextAttemptAt":1794260851320,"lastError":"network_error","requestId":"072bc6f7-438c-4bfd-9ccb-900a35b0ce56","dependency":"3b43d318-9fcb-45cb-bf45-6d653e645b6d"}
+    + actual - expected
+
+    + 'retry_wait'
+    - 'synced'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'synced'
+  actual: 'retry_wait'
+  operator: 'strictEqual'
+  stack: |-
+    evidenceTests.page.page (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:481:103)
+    async TestContext.<anonymous> (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:552:14)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:551:7
+  ...
+# evidence fixture request GET /evidence.js
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/b633c4be-2702-43b1-92fc-2a592e0a1ea9/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/b633c4be-2702-43b1-92fc-2a592e0a1ea9/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/d0fa8a1e-322a-44eb-a37c-03fa81d83b75/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/cd7aef53-9970-4d47-8123-57443f50141d/attachment
+# Subtest: webkit evidence: evidence responses require exact declaration actor timestamps state target and status at every stage
+ok 14 - webkit evidence: evidence responses require exact declaration actor timestamps state target and status at every stage
+  ---
+  duration_ms: 1255.864917
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request GET /evidence.js
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence
+# evidence fixture request PUT /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/83beacad-13a3-4efd-b232-97fcfc509561/content
+# evidence fixture request POST /api/v1/projects/55555555-5555-4555-8555-555555555555/evidence/83beacad-13a3-4efd-b232-97fcfc509561/attachment
+# Subtest: webkit evidence: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+ok 15 - webkit evidence: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+  ---
+  duration_ms: 1044.087334
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# Subtest: webkit evidence: known-local dependencies frozen IDs idempotence collisions and scope guards
+ok 16 - webkit evidence: known-local dependencies frozen IDs idempotence collisions and scope guards
+  ---
+  duration_ms: 521.556917
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# Subtest: webkit evidence: strict file declarations hash failures and atomic whole database 32-file count cap
+ok 17 - webkit evidence: strict file declarations hash failures and atomic whole database 32-file count cap
+  ---
+  duration_ms: 587.929583
+  type: 'test'
+  ...
+# evidence fixture request GET /evidence.js
+# webkit evidence: 8/9 passed
+# Subtest: webkit evidence: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+ok 18 - webkit evidence: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+  ---
+  duration_ms: 579.51425
+  type: 'test'
+  ...
+# Error: A resource generated asynchronous activity after the test ended. This activity created the error "AssertionError [ERR_ASSERTION]: owned fixture must not hide protocol assertion failures: aborted\\n\\n1 !== 0\\n" which triggered an uncaughtException event, caught by the test runner.
+1..18
+# tests 18
+# suites 0
+# pass 17
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 41706.274875

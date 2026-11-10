@@ -1,0 +1,77 @@
+TAP version 13
+# Owned real Nest PID 66529, random listener; locked PG54339 identity passed
+# real committed-reply replay boundary event
+# real committed-reply replay boundary queued
+# real committed-reply replay boundary reserved
+# real committed-reply replay boundary uploaded
+# Subtest: chromium real: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once
+ok 1 - chromium real: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once
+  ---
+  duration_ms: 1839.564542
+  type: 'test'
+  ...
+# Subtest: chromium real: real Nest/PG: stale authority/conflict retains original events and Blobs and fences successors
+ok 2 - chromium real: real Nest/PG: stale authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 664.347875
+  type: 'test'
+  ...
+# Subtest: chromium real: real Nest/PG: revoked authority/conflict retains original events and Blobs and fences successors
+ok 3 - chromium real: real Nest/PG: revoked authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 657.111291
+  type: 'test'
+  ...
+# chromium real: 4/4 passed
+# Subtest: chromium real: real Nest/PG: expired authority/conflict retains original events and Blobs and fences successors
+ok 4 - chromium real: real Nest/PG: expired authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 647.549708
+  type: 'test'
+  ...
+# real committed-reply replay boundary event
+# real committed-reply replay boundary queued
+# Subtest: webkit real: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once
+not ok 5 - webkit real: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once
+  ---
+  duration_ms: 2082.14675
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:691:13'
+  failureType: 'testCodeFailure'
+  error: 'page.evaluate: NotFoundError: The object can not be found here.'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:634:87
+    async TestContext.<anonymous> (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:692:14)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:691:7
+  ...
+# Subtest: webkit real: real Nest/PG: stale authority/conflict retains original events and Blobs and fences successors
+ok 6 - webkit real: real Nest/PG: stale authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 1678.465584
+  type: 'test'
+  ...
+# Subtest: webkit real: real Nest/PG: revoked authority/conflict retains original events and Blobs and fences successors
+ok 7 - webkit real: real Nest/PG: revoked authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 1652.892959
+  type: 'test'
+  ...
+# webkit real: 3/4 passed
+# Subtest: webkit real: real Nest/PG: expired authority/conflict retains original events and Blobs and fences successors
+ok 8 - webkit real: real Nest/PG: expired authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 1667.592708
+  type: 'test'
+  ...
+# Owned real Nest/IPC/pools/private storage closed; fixture rows removed
+# real: 7/8 required real-browser scenarios passed
+1..8
+# tests 8
+# suites 0
+# pass 7
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 11956.190458

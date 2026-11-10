@@ -1,0 +1,7 @@
+error TS2688: Cannot find type definition file for 'node'.
+  The file is in the program because:
+    Entry point of type library 'node' specified in compilerOptions
+Error: ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL
+
+  × "pnpm recursive exec" failed in /Users/Gleb/Documents/ChatGPT/sites/
+  │ helios-worktrees/codex-api/packages/domain

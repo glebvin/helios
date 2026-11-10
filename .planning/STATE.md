@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 03b-server — private evidence files, revisioned hour approval and coherent XLSX exports.
 status: "backend03b-server independently verified (6/6 must-haves) at source 7b3610a. Next: 03c durable browser queue, UI integration and physical-phone verification; Phase03 is not complete."
-last_updated: "2026-11-09T20:56:21.353Z"
-state_head: 7b3610a92c4fd6664349aab402d825ac71641f9a
+last_updated: "2026-11-10T07:59:57.040Z"
+state_head: 4d5f5dcea9fe2e75ffc3d334b28b091978d6f821
 ---
 
 # Backend state
 
-Date: 2026-11-09
+Date: 2026-11-10
 Branch: codex-api
 Base: b2ddc9f
-Current phase: 03b-server — private evidence files, revisioned hour approval and coherent XLSX exports.
-Status: backend03b-server independently verified (6/6 must-haves) at source 7b3610a. Next: 03c durable browser queue, UI integration and physical-phone verification; Phase03 is not complete.
+Current phase: 03c1 — headless durable browser event and evidence queue.
+Status:03c1 independently verified (6/6 must-haves) at source4d5f5dc, after G1 snapshot correction. Next:03c2 Cursor UI wiring, shell/cache/PWA and physical-phone validation; Phase03 and the pilot remain incomplete.
 UI worktree is independent. Avoid edits there and main.
 
 ## Quick Tasks Completed
@@ -24,13 +24,14 @@ UI worktree is independent. Avoid edits there and main.
 | 261109-cdb | Real catalogs/drafts, versioned front checks, atomic admission-gated publication, interval conflict checks and legacy fences; independently verified 6/6, domain10/API51 + tasks25 repeat + API tsc | 2026-11-09 | f2d63e2 | quick/261109-cdb-daily-task-drafts-readiness-and-safe-pub |
 | 261109-nqz | Managed execution events/shifts/segments/final provisional volumes, current authority and real races, exact day/DST reads and OpenAPI58; independently verified 6/6, domain10/API74 + execution23 repeat + API tsc | 2026-11-09 | cfcfcf2 | quick/261109-nqz-managed-task-execution-shifts-downtime-v |
 | 261109-qu2 | Private evidence, revisioned exact hours and coherent XLSX; OpenAPI69; independently verified6/6, full130 plus time28 and isolated race1 after fixture fix | 2026-11-09 | 7b3610a | [261109-qu2-private-evidence-files-revisioned-time-a](./quick/261109-qu2-private-evidence-files-revisioned-time-a/) |
+| 261110-01w | Headless native IndexedDB event/Blob queue, session and cross-tab fences, exact replay; final200 tests, independent6/6 after G1 correction; UI/devices03c2 pending | 2026-11-10 | 4d5f5dc | [261110-01w-03c-headless-durable-browser-event-and-e](./quick/261110-01w-03c-headless-durable-browser-event-and-e/) |
 
 ## Confirmed decisions
 
 - Backend uses isolated PostgreSQL54339, `.data/pg-54339`, API4327. Original UI defaults retained.
 - Workers require active project membership plus actual employee assignment for project/task reads; own employee profile stays available without assignment.
 - Missing quality/downtime/ID metrics are explicit unavailable/null. Legacy write limitations remain documented.
-- No UI edits, main merge, deployment or complete-pilot readiness claim. Next:03c durable browser queue, UI integration and physical-phone testing. Server evidence/hour approval/XLSX are complete within the locked03b scope.
+- No UI edits, main merge, deployment or complete-pilot readiness claim. Server evidence/hour approval/XLSX03b and headless durable queue03c1 are independently verified. Next:03c2 UI integration, shell/cache/PWA and physical-phone testing.
 - Backend02a uses durable atomic receipt/audit commands and ordered NO KEY UPDATE locks; current eligibility requires latest attempt/template and exact active qualification id/version on tenant civil date. Backend02b adds current+workDate evidence checks at publication. Legacy creation is retired (410), and legacy execution rejects all managed tasks before replay/effects; legacy fixture execution remains uncertified.
 - API4327 started from cfcfcf2; live health/OpenAPI58, seeded director login/projects/execution shifts/reports, additive provisional exact-string overview, malformed empty batch400 and logout smoke passed after independent verification. Isolated PG54339 retained.
 - 03a execution uses separate presence/work/break/downtime intervals, shared durable receipts, provisional final task/shift volume and immutable event ledger. All reported time/volume stays unapproved; no complete client offline/files/quality acceptance claim. Plain domain tsc retains baselineTS2688; explicit existing-typeRoots fallback passes.
@@ -42,6 +43,14 @@ The earlier03a and implementation checkpoint notes below are historical. Quick26
 Files are private JPEG/PNG/PDF up to8MiB, immutable verified local FS bytes with fresh post-I/O authority and safe retry across separate FS/PG commit boundaries; private orphans may remain. Production S3/AV/backups/orphan operations are deferred. Source/confirmed exact-ms values and revision history are separate; relevant late events stale approvals. XLSX requires every recorded row in a <=31day/10000row snapshot to be current approved; one missing/stale/revoked day blocks export. Locks release before rendering, current authority is checked afterward, captured hash/revision/time remain attributable. Current approval commands are director-only; full matrix is04.
 
 Parent started API4327 from7b3610a (Node49890/session83065), retained PG54339. Live health/spec69, login/me, evidence list, empty-day/history, actual empty XLSX, strict-query400, unauthenticated401 and logout smoke passed; downloaded OOXML independently parsed. No UI/main/merge/deploy or full-pilot claim. Remaining03c client queue/phones,04 quality/materials/routes/ID/AOSR and05 operational acceptance stay pending.
+
+##03c1 independent verification and closure — 2026-11-10
+
+The03b runtime note above is historical: this slice did not restart parent API4327. Quick261110-01w completed all three sequential tasks at source4d5f5dc. Added only dependency-free `packages/offline` and `docs/offline-queue.md`; no API/SQL/OpenAPI/UI/root dependency or lockfile changes. Native IndexedDB commits events plus actual Blobs atomically, binds audience/tenant/actor/session generations and authEpoch, coordinates tabs via Web Locks and preserves immutable employee stream versions/IDs/payloads across retries. Private evidence stages reserve→raw upload→attachment resume with exact identities. Explicit states and bounded retries/capacity/acknowledged cleanup; no pending-delete or automatic stale-version rebase.
+
+Final full sequential gate200/200 = retained domain10/API120 + browser70 (Chromium35/WebKit35), no skips. Independently initial full194/194, then unchanged public G1 probe and active evidence24/24 after correction; verifier passed6/6. G1 found mutable caller evidence metadata/array crossing async authoring; synchronous owned snapshots now precede every await, with six active native reopen regressions. Two WebKit findings are separately documented: fresh byte-identical Blob copies and carrying the current Blob after IDB state writes fix actual stage failures; global Playwright offline emulation breaks native Blob/FileReader without the module, so real tests abort actual API network requests and explicitly do not claim physical airplane-mode testing. Real Nest/PG tests inspect original payloads/versions/segments/receipts/audits/exact bindings and download SHA after committed-response loss, stale and revoked/expired authority. Test fixtures and owned processes are cleaned; retained PG54339 last observed PID65500.
+
+API/offline/fixture/typed-adapter compilers pass. Plain domainTS2688 remains, explicit existing typeRoots fallback passes. Use `--config.verifyDepsBeforeRun=false` to avoid the installed pnpm store-verification attempt and `-r --workspace-concurrency=1 --if-present test` to serialize old full-table migration snapshots against new fixture writes. No install/config workaround was applied. Storage clearing/eviction/device loss is not guaranteed against; no same-origin encryption or background delivery claim. The module is not yet consumed by Cursor UI; legacy localStorage/SW remain unchanged/unsupported for managed events. Next03c2 integrates application UI/cache and validates physical Android/iPhone;04 and05 remain pending.
 
 ## Backend02b implementation checkpoint — 2026-11-09
 

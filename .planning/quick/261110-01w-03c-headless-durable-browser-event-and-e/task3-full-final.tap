@@ -1,0 +1,826 @@
+Scope: 6 of 7 workspace projects
+$ tsx --test src/rules.test.ts
+✔ маршрут не принимает четыре визы С и двух ответственных (0.3335ms)
+✔ подпись только по действующему приказу на этот объект (0.05675ms)
+✔ публикация задания ждёт фронт, материалы и предшествующий АОСР (0.079208ms)
+✔ повторная сдача закрыта, пока замечание не проверено (0.059083ms)
+✔ два акта не удваивают закрытую площадь, пустая цена не становится нулём (0.457584ms)
+✔ частичная приёмка 18 и 17 оставляет разницу, норма не выдумывается (0.148292ms)
+✔ бригадный объём не делится на людей (0.048583ms)
+✔ офлайн-событие чужого кабинета не уходит в синхронизацию (0.07475ms)
+✔ ключ файла принадлежит кабинету и не собирается из чужого имени (0.100667ms)
+✔ одинаковое событие имеет стабильное тело (4.8325ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 63.402958
+$ node test/browser.test.mjs all
+TAP version 13
+# Subtest: chromium all: native save survives persistent reopen and validated HTTP acknowledgement
+ok 1 - chromium all: native save survives persistent reopen and validated HTTP acknowledgement
+  ---
+  duration_ms: 659.047083
+  type: 'test'
+  ...
+# Subtest: chromium all: request success followed by native transaction abort rejects and stores no event
+ok 2 - chromium all: request success followed by native transaction abort rejects and stores no event
+  ---
+  duration_ms: 161.161917
+  type: 'test'
+  ...
+# Subtest: chromium all: wrong requestId HTTP200 retains exact unacknowledged event
+ok 3 - chromium all: wrong requestId HTTP200 retains exact unacknowledged event
+  ---
+  duration_ms: 307.840625
+  type: 'test'
+  ...
+# Subtest: chromium all: four exact shapes, explicit external predecessor, immutable idempotence and retained acknowledgement
+ok 4 - chromium all: four exact shapes, explicit external predecessor, immutable idempotence and retained acknowledgement
+  ---
+  duration_ms: 176.051292
+  type: 'test'
+  ...
+# Subtest: chromium all: atomic cross-tab project tail race and blocked employee head
+ok 5 - chromium all: atomic cross-tab project tail race and blocked employee head
+  ---
+  duration_ms: 237.030083
+  type: 'test'
+  ...
+# Subtest: chromium all: HTTP status before optional JSON, bounded Retry-After and exact retry exhaustion
+ok 6 - chromium all: HTTP status before optional JSON, bounded Retry-After and exact retry exhaustion
+  ---
+  duration_ms: 192.52375
+  type: 'test'
+  ...
+# Subtest: chromium all: ambiguous replies and permanent business errors never acknowledge
+ok 7 - chromium all: ambiguous replies and permanent business errors never acknowledge
+  ---
+  duration_ms: 226.8515
+  type: 'test'
+  ...
+# Subtest: chromium all: delayed identity and event completion obey current session and handle lifecycle
+ok 8 - chromium all: delayed identity and event completion obey current session and handle lifecycle
+  ---
+  duration_ms: 2053.832792
+  type: 'test'
+  ...
+# Subtest: chromium all: actual Web Lock contention and crashed tab exact receipt replay
+ok 9 - chromium all: actual Web Lock contention and crashed tab exact receipt replay
+  ---
+  duration_ms: 202.913125
+  type: 'test'
+  ...
+# Subtest: chromium all: lost committed HTTP response reopens with exact command and duplicate acknowledgement
+ok 10 - chromium all: lost committed HTTP response reopens with exact command and duplicate acknowledgement
+  ---
+  duration_ms: 276.048584
+  type: 'test'
+  ...
+# Subtest: chromium all: persisted authEpoch fences another tab without BroadcastChannel delivery
+ok 11 - chromium all: persisted authEpoch fences another tab without BroadcastChannel delivery
+  ---
+  duration_ms: 236.550167
+  type: 'test'
+  ...
+# Subtest: chromium all: authEpoch rejects an in-flight completion before commit even without broadcast
+ok 12 - chromium all: authEpoch rejects an in-flight completion before commit even without broadcast
+  ---
+  duration_ms: 273.267375
+  type: 'test'
+  ...
+# Subtest: chromium all: known cross-project dependencies rejected and acknowledged pending dependencies cannot be cleaned
+ok 13 - chromium all: known cross-project dependencies rejected and acknowledged pending dependencies cannot be cleaned
+  ---
+  duration_ms: 179.34875
+  type: 'test'
+  ...
+# Subtest: chromium all: strict JSON validation, segment variants and submit-volume response integrity
+ok 14 - chromium all: strict JSON validation, segment variants and submit-volume response integrity
+  ---
+  duration_ms: 191.91
+  type: 'test'
+  ...
+# Subtest: chromium all: current /me authority gate, retryable item500, Retry-After date and permanent item403
+ok 15 - chromium all: current /me authority gate, retryable item500, Retry-After date and permanent item403
+  ---
+  duration_ms: 192.075208
+  type: 'test'
+  ...
+# Subtest: chromium all: scope isolation, current identity on all public data methods and no stored token
+ok 16 - chromium all: scope isolation, current identity on all public data methods and no stored token
+  ---
+  duration_ms: 158.981042
+  type: 'test'
+  ...
+# Subtest: chromium all: native quota boundary, strict fallback, versionchange and explicit storage capabilities
+ok 17 - chromium all: native quota boundary, strict fallback, versionchange and explicit storage capabilities
+  ---
+  duration_ms: 161.974083
+  type: 'test'
+  ...
+# Subtest: chromium all: unsupported lock, unsupported storage, controlled 30s timeout and native event count cap
+ok 18 - chromium all: unsupported lock, unsupported storage, controlled 30s timeout and native event count cap
+  ---
+  duration_ms: 2023.654958
+  type: 'test'
+  ...
+# Subtest: chromium all: genuine blocked native upgrade closes late success and unsupported storage info remains explicit
+ok 19 - chromium all: genuine blocked native upgrade closes late success and unsupported storage info remains explicit
+  ---
+  duration_ms: 227.019291
+  type: 'test'
+  ...
+# Subtest: chromium all: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+ok 20 - chromium all: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+  ---
+  duration_ms: 281.793708
+  type: 'test'
+  ...
+# Subtest: chromium all: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+ok 21 - chromium all: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+  ---
+  duration_ms: 177.786833
+  type: 'test'
+  ...
+# Subtest: chromium all: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+ok 22 - chromium all: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+  ---
+  duration_ms: 262.241334
+  type: 'test'
+  ...
+# replay boundary response/queued
+# replay boundary response/reserved
+# replay boundary response/uploaded
+# replay boundary local_commit/queued
+# replay boundary local_commit/reserved
+# replay boundary local_commit/uploaded
+# Subtest: chromium all: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+ok 23 - chromium all: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+  ---
+  duration_ms: 1076.31625
+  type: 'test'
+  ...
+# Subtest: chromium all: evidence responses require exact declaration actor timestamps state target and status at every stage
+ok 24 - chromium all: evidence responses require exact declaration actor timestamps state target and status at every stage
+  ---
+  duration_ms: 739.098583
+  type: 'test'
+  ...
+# Subtest: chromium all: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+ok 25 - chromium all: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+  ---
+  duration_ms: 380.050792
+  type: 'test'
+  ...
+# Subtest: chromium all: known-local dependencies frozen IDs idempotence collisions and scope guards
+ok 26 - chromium all: known-local dependencies frozen IDs idempotence collisions and scope guards
+  ---
+  duration_ms: 164.705667
+  type: 'test'
+  ...
+# Subtest: chromium all: strict file declarations hash failures and atomic whole database 32-file count cap
+ok 27 - chromium all: strict file declarations hash failures and atomic whole database 32-file count cap
+  ---
+  duration_ms: 330.989167
+  type: 'test'
+  ...
+# Subtest: chromium all: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+ok 28 - chromium all: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+  ---
+  duration_ms: 308.471167
+  type: 'test'
+  ...
+# Owned real Nest PID 70218, random listener; locked PG54339 identity passed
+# real committed-reply replay boundary event
+# real committed-reply replay boundary queued
+# real committed-reply replay boundary reserved
+# real committed-reply replay boundary uploaded
+# Subtest: chromium all: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once
+ok 29 - chromium all: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once
+  ---
+  duration_ms: 1741.874167
+  type: 'test'
+  ...
+# Subtest: chromium all: real Nest/PG: stale authority/conflict retains original events and Blobs and fences successors
+ok 30 - chromium all: real Nest/PG: stale authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 671.974834
+  type: 'test'
+  ...
+# Subtest: chromium all: real Nest/PG: revoked authority/conflict retains original events and Blobs and fences successors
+ok 31 - chromium all: real Nest/PG: revoked authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 654.75975
+  type: 'test'
+  ...
+# chromium all: 32/32 passed
+# Subtest: chromium all: real Nest/PG: expired authority/conflict retains original events and Blobs and fences successors
+ok 32 - chromium all: real Nest/PG: expired authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 705.772125
+  type: 'test'
+  ...
+# Owned real Nest/IPC/pools/private storage closed; fixture rows removed
+# Subtest: webkit all: native save survives persistent reopen and validated HTTP acknowledgement
+ok 33 - webkit all: native save survives persistent reopen and validated HTTP acknowledgement
+  ---
+  duration_ms: 1758.574375
+  type: 'test'
+  ...
+# Subtest: webkit all: request success followed by native transaction abort rejects and stores no event
+ok 34 - webkit all: request success followed by native transaction abort rejects and stores no event
+  ---
+  duration_ms: 449.92925
+  type: 'test'
+  ...
+# Subtest: webkit all: wrong requestId HTTP200 retains exact unacknowledged event
+ok 35 - webkit all: wrong requestId HTTP200 retains exact unacknowledged event
+  ---
+  duration_ms: 917.116292
+  type: 'test'
+  ...
+# Subtest: webkit all: four exact shapes, explicit external predecessor, immutable idempotence and retained acknowledgement
+ok 36 - webkit all: four exact shapes, explicit external predecessor, immutable idempotence and retained acknowledgement
+  ---
+  duration_ms: 499.017167
+  type: 'test'
+  ...
+# Subtest: webkit all: atomic cross-tab project tail race and blocked employee head
+ok 37 - webkit all: atomic cross-tab project tail race and blocked employee head
+  ---
+  duration_ms: 668.865125
+  type: 'test'
+  ...
+# Subtest: webkit all: HTTP status before optional JSON, bounded Retry-After and exact retry exhaustion
+ok 38 - webkit all: HTTP status before optional JSON, bounded Retry-After and exact retry exhaustion
+  ---
+  duration_ms: 517.038459
+  type: 'test'
+  ...
+# Subtest: webkit all: ambiguous replies and permanent business errors never acknowledge
+ok 39 - webkit all: ambiguous replies and permanent business errors never acknowledge
+  ---
+  duration_ms: 584.514625
+  type: 'test'
+  ...
+# Subtest: webkit all: delayed identity and event completion obey current session and handle lifecycle
+ok 40 - webkit all: delayed identity and event completion obey current session and handle lifecycle
+  ---
+  duration_ms: 5875.477792
+  type: 'test'
+  ...
+# Subtest: webkit all: actual Web Lock contention and crashed tab exact receipt replay
+ok 41 - webkit all: actual Web Lock contention and crashed tab exact receipt replay
+  ---
+  duration_ms: 667.470875
+  type: 'test'
+  ...
+# Subtest: webkit all: lost committed HTTP response reopens with exact command and duplicate acknowledgement
+ok 42 - webkit all: lost committed HTTP response reopens with exact command and duplicate acknowledgement
+  ---
+  duration_ms: 936.289333
+  type: 'test'
+  ...
+# Subtest: webkit all: persisted authEpoch fences another tab without BroadcastChannel delivery
+ok 43 - webkit all: persisted authEpoch fences another tab without BroadcastChannel delivery
+  ---
+  duration_ms: 800.879291
+  type: 'test'
+  ...
+# Subtest: webkit all: authEpoch rejects an in-flight completion before commit even without broadcast
+ok 44 - webkit all: authEpoch rejects an in-flight completion before commit even without broadcast
+  ---
+  duration_ms: 815.514958
+  type: 'test'
+  ...
+# Subtest: webkit all: known cross-project dependencies rejected and acknowledged pending dependencies cannot be cleaned
+ok 45 - webkit all: known cross-project dependencies rejected and acknowledged pending dependencies cannot be cleaned
+  ---
+  duration_ms: 482.519833
+  type: 'test'
+  ...
+# Subtest: webkit all: strict JSON validation, segment variants and submit-volume response integrity
+ok 46 - webkit all: strict JSON validation, segment variants and submit-volume response integrity
+  ---
+  duration_ms: 537.900458
+  type: 'test'
+  ...
+# Subtest: webkit all: current /me authority gate, retryable item500, Retry-After date and permanent item403
+ok 47 - webkit all: current /me authority gate, retryable item500, Retry-After date and permanent item403
+  ---
+  duration_ms: 533.963583
+  type: 'test'
+  ...
+# Subtest: webkit all: scope isolation, current identity on all public data methods and no stored token
+ok 48 - webkit all: scope isolation, current identity on all public data methods and no stored token
+  ---
+  duration_ms: 494.099209
+  type: 'test'
+  ...
+# Subtest: webkit all: native quota boundary, strict fallback, versionchange and explicit storage capabilities
+ok 49 - webkit all: native quota boundary, strict fallback, versionchange and explicit storage capabilities
+  ---
+  duration_ms: 465.770458
+  type: 'test'
+  ...
+# Subtest: webkit all: unsupported lock, unsupported storage, controlled 30s timeout and native event count cap
+ok 50 - webkit all: unsupported lock, unsupported storage, controlled 30s timeout and native event count cap
+  ---
+  duration_ms: 2319.797
+  type: 'test'
+  ...
+# Subtest: webkit all: genuine blocked native upgrade closes late success and unsupported storage info remains explicit
+ok 51 - webkit all: genuine blocked native upgrade closes late success and unsupported storage info remains explicit
+  ---
+  duration_ms: 471.324459
+  type: 'test'
+  ...
+# Subtest: webkit all: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+ok 52 - webkit all: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+  ---
+  duration_ms: 925.389375
+  type: 'test'
+  ...
+# Subtest: webkit all: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+ok 53 - webkit all: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+  ---
+  duration_ms: 463.963208
+  type: 'test'
+  ...
+# Subtest: webkit all: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+ok 54 - webkit all: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+  ---
+  duration_ms: 575.109375
+  type: 'test'
+  ...
+# replay boundary response/queued
+# replay boundary response/reserved
+# replay boundary response/uploaded
+# replay boundary local_commit/queued
+# replay boundary local_commit/reserved
+# replay boundary local_commit/uploaded
+# Subtest: webkit all: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+ok 55 - webkit all: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+  ---
+  duration_ms: 3574.767084
+  type: 'test'
+  ...
+# Subtest: webkit all: evidence responses require exact declaration actor timestamps state target and status at every stage
+ok 56 - webkit all: evidence responses require exact declaration actor timestamps state target and status at every stage
+  ---
+  duration_ms: 1037.716208
+  type: 'test'
+  ...
+# Subtest: webkit all: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+ok 57 - webkit all: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+  ---
+  duration_ms: 1059.153167
+  type: 'test'
+  ...
+# Subtest: webkit all: known-local dependencies frozen IDs idempotence collisions and scope guards
+ok 58 - webkit all: known-local dependencies frozen IDs idempotence collisions and scope guards
+  ---
+  duration_ms: 487.027166
+  type: 'test'
+  ...
+# Subtest: webkit all: strict file declarations hash failures and atomic whole database 32-file count cap
+ok 59 - webkit all: strict file declarations hash failures and atomic whole database 32-file count cap
+  ---
+  duration_ms: 615.671792
+  type: 'test'
+  ...
+# Subtest: webkit all: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+ok 60 - webkit all: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+  ---
+  duration_ms: 621.589833
+  type: 'test'
+  ...
+# Owned real Nest PID 70940, random listener; locked PG54339 identity passed
+# real committed-reply replay boundary event
+# real committed-reply replay boundary queued
+# real committed-reply replay boundary reserved
+# real committed-reply replay boundary uploaded
+# Subtest: webkit all: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once
+ok 61 - webkit all: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once
+  ---
+  duration_ms: 3897.002459
+  type: 'test'
+  ...
+# Subtest: webkit all: real Nest/PG: stale authority/conflict retains original events and Blobs and fences successors
+ok 62 - webkit all: real Nest/PG: stale authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 1675.931708
+  type: 'test'
+  ...
+# Subtest: webkit all: real Nest/PG: revoked authority/conflict retains original events and Blobs and fences successors
+ok 63 - webkit all: real Nest/PG: revoked authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 1684.507833
+  type: 'test'
+  ...
+# webkit all: 32/32 passed
+# Subtest: webkit all: real Nest/PG: expired authority/conflict retains original events and Blobs and fences successors
+ok 64 - webkit all: real Nest/PG: expired authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 1729.86725
+  type: 'test'
+  ...
+# Owned real Nest/IPC/pools/private storage closed; fixture rows removed
+# all: 64/64 required real-browser scenarios passed
+1..64
+# tests 64
+# suites 0
+# pass 64
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 55622.58575
+$ tsx --test --test-concurrency=1 test/*.test.ts
+✔ HTTP project tracer: director tenant scope, master explicit project scope, durable migrations (455.526542ms)
+✔ ACL foreign keys and forced tenant RLS under restricted application role (43.88075ms)
+✔ actor and paginated camelCase read contracts, active project ACL and worker ownership (57.3185ms)
+✔ overview reconciles independent real counts, DST half-open dates, lossless per-unit quantities (157.017417ms)
+✔ access is rechecked after login, including membership and assignment revocation (39.34125ms)
+✔ worker task authorization requires assignment of its actual assignee employee (51.063875ms)
+✔ malformed UUID, query/date/pagination/header/login inputs fail with controlled 4xx (59.941291ms)
+✔ invalid/expired sessions are 401 and logout revokes only the presented session (55.129541ms)
+✔ public OpenAPI is the checked-in contract and preserves ten old plus twenty people operations with additive task routes (81.5805ms)
+✔ tracer: reserve raw binary upload download and immutable existing event attachment over HTTP and PG (387.532833ms)
+✔ JPEG PNG PDF actual binary roundtrips, private modes, safe headers and paged metadata contain no storage keys (109.420459ms)
+✔ strict reservation and query forms, normalized UUIDs, immutable tenant-unique file identity and shared receipt collisions (81.93075ms)
+✔ upload rejects empty wrong size hash magic or MIME without ready effect, and preserves pending retry (63.689292ms)
+✔ real chunked bound, Content-Length early limit/mismatch, malformed HTTP framing and client abort stay retryable (328.716792ms)
+✔ concurrent identical and conflicting PUTs never overwrite and produce one ready audit, verified ready retry (79.334667ms)
+HttpException: evidence_storage_failed
+    at httpError (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/errors.ts:4:10)
+    at EvidenceStorage.put (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence-storage.ts:58:16)
+    at async EvidenceService.upload (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.service.ts:56:3)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  response: 'evidence_storage_failed',
+  status: 503,
+  options: undefined
+}
+HttpException: evidence_storage_failed
+    at httpError (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/errors.ts:4:10)
+    at EvidenceStorage.put (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence-storage.ts:58:16)
+    at async EvidenceService.upload (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.service.ts:56:3)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  response: 'evidence_storage_failed',
+  status: 503,
+  options: undefined
+}
+HttpException: evidence_storage_failed
+    at httpError (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/errors.ts:4:10)
+    at EvidenceStorage.put (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence-storage.ts:58:16)
+    at async EvidenceService.upload (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.service.ts:56:3)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  response: 'evidence_storage_failed',
+  status: 503,
+  options: undefined
+}
+HttpException: evidence_storage_failed
+    at httpError (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/errors.ts:4:10)
+    at EvidenceStorage.put (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence-storage.ts:58:16)
+    at async EvidenceService.upload (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.service.ts:56:3)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  response: 'evidence_storage_failed',
+  status: 503,
+  options: undefined
+}
+✔ real filesystem write, file/directory fsync and promotion failures clean temps; promoted orphans are retried, never deleted (144.177333ms)
+error: injected evidence audit failure
+    at /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/pg@8.23.1/node_modules/pg/lib/client.js:694:17
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async <anonymous> (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.service.ts:62:5)
+    at async withTenant (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/db.ts:21:20)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  length: 177,
+  severity: 'ERROR',
+  code: 'P0001',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: 'PL/pgSQL function evidence_fail_204aaf666b8c453dbc43692aa199eb53() line 1 at RAISE',
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'pl_exec.c',
+  line: '3923',
+  routine: 'exec_stmt_raise'
+}
+✔ post-storage audit rollback leaves verified private orphan pending, retry shares destination and commits once (46.546708ms)
+HttpException: evidence_unavailable
+    at httpError (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/errors.ts:4:10)
+    at EvidenceStorage.get (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence-storage.ts:47:503)
+    at async EvidenceService.download (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.service.ts:69:15)
+    at async EvidenceController.download (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.controller.ts:16:190)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  response: 'evidence_unavailable',
+  status: 503,
+  options: undefined
+}
+HttpException: evidence_unavailable
+    at httpError (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/errors.ts:4:10)
+    at EvidenceStorage.get (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence-storage.ts:47:503)
+    at async EvidenceService.attach (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.service.ts:82:3)
+    at async EvidenceController.attach (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.controller.ts:17:198)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  response: 'evidence_unavailable',
+  status: 503,
+  options: undefined
+}
+HttpException: evidence_storage_failed
+    at httpError (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/errors.ts:4:10)
+    at EvidenceStorage.put (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence-storage.ts:58:16)
+    at async EvidenceService.upload (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.service.ts:56:3)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  response: 'evidence_storage_failed',
+  status: 503,
+  options: undefined
+}
+HttpException: evidence_unavailable
+    at httpError (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/errors.ts:4:10)
+    at EvidenceStorage.get (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence-storage.ts:47:503)
+    at async EvidenceService.download (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.service.ts:69:15)
+    at async EvidenceController.download (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.controller.ts:16:190)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  response: 'evidence_unavailable',
+  status: 503,
+  options: undefined
+}
+HttpException: evidence_unavailable
+    at httpError (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/errors.ts:4:10)
+    at EvidenceStorage.get (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence-storage.ts:47:503)
+    at async EvidenceService.attach (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.service.ts:82:3)
+    at async EvidenceController.attach (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.controller.ts:17:198)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  response: 'evidence_unavailable',
+  status: 503,
+  options: undefined
+}
+✔ missing/corrupt ready storage fails download attachment and retry closed, paths and arbitrary traversal never leak (109.020083ms)
+✔ both exact composite event identities and final report bind once; wrong tenant/project/employee or actor cannot alias (165.965875ms)
+✔ authority matrix tenant/project/own link assignment and archive fences; granted managers retain historical access (293.046958ms)
+✔ SQL FORCE RLS narrow immutable grants and both target composite FKs; repeat migration preserves ledger and exact data (576.30575ms)
+✔ real PostgreSQL gates: reservation and attachment initial/replay reread current role link grant archive and assignment after waits (536.954208ms)
+✔ fresh post-I/O authority: paused real upload/download/attachment allow ACL changes, then deny bytes or effects after role grant/link revocation (451.885125ms)
+✔ metadata/list/download current ACL after PostgreSQL waits and manager grant replay wait fail closed (85.524292ms)
+✔ concurrent metadata receipts and immutable binding converge once, exact original reservation replay survives ready and attached states (120.394042ms)
+error: injected attachment audit failure
+    at /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/pg@8.23.1/node_modules/pg/lib/client.js:694:17
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async <anonymous> (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.service.ts:92:4)
+    at async withTenant (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/db.ts:21:20)
+    at async EvidenceController.attach (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/evidence.controller.ts:17:198)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  length: 186,
+  severity: 'ERROR',
+  code: 'P0001',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: 'PL/pgSQL function evidence_attach_fail_7e88522edead4c55998a2f82726973d8() line 1 at RAISE',
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'pl_exec.c',
+  line: '3923',
+  routine: 'exec_stmt_raise'
+}
+✔ attachment audit failure rolls back binding audit and receipt together; exact retry commits once without changing bytes (45.344083ms)
+✔ strict evidence contract covers reservation, both target forms, binary media and actual errors (3.212875ms)
+✔ tracer: own managed start/end and exact replay persist one atomic stream and immutable ledger (496.39425ms)
+✔ client clock review thresholds are exact, inclusive normal bounds; geo is only a client assertion (0.104833ms)
+✔ whole lifecycle: contiguous modes, zero edges, task work and one immutable final provisional volume (40.632833ms)
+✔ strict union: invalid outer/nested/unused fields, precision and duplicate IDs prevalidate the entire batch (73.125167ms)
+✔ ordered independent outcomes, missing dependency retry, version and chronology failures have zero effects (45.920667ms)
+✔ work, terminal report and downtime references fail atomically while cleanup needs no admission (30.791583ms)
+error: injected execution audit failure
+    at /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/pg@8.23.1/node_modules/pg/lib/client.js:694:17
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async <anonymous> (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/execution.service.ts:157:7)
+    at async withTenant (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/db.ts:21:20)
+    at async ExecutionService.ingest (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/execution.service.ts:67:24)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  length: 179,
+  severity: 'ERROR',
+  code: 'P0001',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: 'PL/pgSQL function execution_fail_b57ee03a05434ec59fcef2f7b463c531() line 1 at RAISE',
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'pl_exec.c',
+  line: '3923',
+  routine: 'exec_stmt_raise'
+}
+✔ post-ledger audit failure rolls back domain, stream, event, audit and shared receipt; exact retry succeeds once (25.6775ms)
+✔ SQL: FORCE RLS, narrow grants, tenant/project/employee/task FKs, open uniqueness and migration repeat (334.4815ms)
+✔ authority matrix, target linked master/director compatibility, mandatory manager reason and tenant/project fences (53.146792ms)
+✔ real waits: current actor role, tenant/project status, employee link and archive are reread after every prerequisite gate (104.821667ms)
+✔ real work races: assignment, template/latest admission, evidence version/status/expiry/workDate, cancellation and linked status invalidate after wait (255.994542ms)
+✔ queued same receipt, same-version devices and competing projects serialize with one winner, without deadlocks (113.203083ms)
+✔ exact replay rechecks current authority but survives business invalidation; managers close archived/revoked time with audited reason (65.637209ms)
+✔ all real people/task operation families share execution receipt namespace; unrelated receipts never satisfy dependencies (345.543417ms)
+✔ start and final volume revalidate after waits; expired admission/cancelled work never strands an authorized worker end (102.495417ms)
+✔ actual publication and employee archive commands coexist with queued starts in both lock orderings (405.488541ms)
+✔ real foreign tenant/project, draft/pending/legacy/cancelled/other-assignee task references cannot authorize work (180.680167ms)
+✔ scoped reads: deterministic pages, current own link/assignment/grants, no foreign or other employee disclosure (74.942708ms)
+✔ civil day clips exact milliseconds, cross-midnight modes and per-task attribution; zero and before-asOf edges (137.7055ms)
+✔ DST boundaries are independent: exact 23h and 25h days, open asOf clipping and future/invalid queries (234.7155ms)
+✔ reports use tenant submission occurredAt day and quantities by unit; mixed legacy overview counts each source once (205.519375ms)
+✔ OpenAPI69 retains exact old58 inventory and strict execution forms, actual paged/day/report/outcome schemas and all references (98.127916ms)
+✔ managed overview never sums incompatible units: two task reports in one shift remain separate provisional totals (188.551959ms)
+✔ кабинет A не видит человека, файл и связь кабинета B (173.998542ms)
+✔ пул не сохраняет контекст кабинета (17.557458ms)
+✔ откат записи не оставляет задачу, повтор worker не удваивает эффект (120.034ms)
+✔ tracer: authenticated employee/qualification create, read and versioned edit with durable single-effect replay (500.879834ms)
+✔ tracer: role/scope, strict inputs, rollback and terminal employee archive (56.7265ms)
+✔ complete people flow: immutable template/check, assignment grants worker project, crew and scoped histories (77.136083ms)
+✔ latest failed check defeats earlier pass; snapshots, replay and equal-time deterministic sequence survive (41.628417ms)
+✔ qualification exact versions, inclusive tenant expiry, revoke and renewal require fresh evidence (63.73675ms)
+✔ template update concurrency invalidates prior pass and serializes fresh checks/crew conflicts (35.825083ms)
+✔ assignment revoke cascades crew versions; archive is terminal, preserves histories and blocks activation (30.306667ms)
+✔ real lock races: link-edit precedes assignment without stale user grant; explicit/implicit membership and archive serialize (111.824ms)
+✔ real qualification/publication races reject stale activation and preserve all-or-nothing commands (75.529125ms)
+✔ all command roles and strict invalid bodies/queries/dates/answers are controlled 4xx; foreign references cannot leak (184.776875ms)
+✔ durable replay survives business invalidation, rejects changed operation and reauthorizes revoked actor (22.521917ms)
+✔ legacy lineage remains no_check, nonworker assignment grants no membership; archive cascades all audit/version effects (45.50075ms)
+✔ new table FORCE RLS/limited grants and composite tenant FKs; migration rerun preserves exact ledger and backend data directory (177.44975ms)
+✔ all named people schemas and paged HTTP responses match public69-operation OpenAPI (29.425959ms)
+✔ catalog receipt: director creates project catalogs with durable single effect (457.874459ms)
+✔ catalog scopes and strict replacement, tenant RLS and composite references (60.2195ms)
+✔ draft: assigned master creates and replaces an exact single employee plan; worker views hide preparation (137.575125ms)
+✔ quantity interval: malformed plans and hidden references roll back every durable effect (115.397959ms)
+✔ draft receipt replay reauthorizes scope and ignores later catalog business invalidation (43.724334ms)
+✔ draft interval race: actor revoked after Guard while waiting for employee cannot commit (17.148167ms)
+error: injected task command audit failure
+    at /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/pg@8.23.1/node_modules/pg/lib/client.js:694:17
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async TasksService.audit (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/tasks.service.ts:54:5)
+    at async <anonymous> (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/tasks.service.ts:125:7)
+    at async <anonymous> (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/tasks.service.ts:45:18)
+    at async withTenant (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/db.ts:21:20)
+    at async TasksService.command (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/tasks.service.ts:35:16)
+    at async TasksController.send (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/tasks.controller.ts:13:82)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  length: 183,
+  severity: 'ERROR',
+  code: 'P0001',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: 'PL/pgSQL function task_audit_fail_0a3b24523b4449d1aa31f8b89733cfcf() line 1 at RAISE',
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'pl_exec.c',
+  line: '3923',
+  routine: 'exec_stmt_raise'
+}
+✔ draft receipt rollback: failure after task insert rolls back task, audit and reservation (41.264167ms)
+✔ catalog migration repeat preserves ledger and data; SQL grants and composite plan constraints hold (252.922167ms)
+✔ draft views hide current-day preparation counts and controlled preexisting shifts/reports (99.757875ms)
+✔ front lifecycle: immutable complete attempts and director-only atomic publication (93.0595ms)
+✔ lifecycle reasons and roles: reject, withdraw, terminal cancellation and exact versions (105.26275ms)
+✔ front latest failed, stale plan/catalog/template and malformed answers fail closed without effects (467.322ms)
+✔ unsupported real dependencies cannot be certified by front yes answers; RD and catalog remain current (406.779625ms)
+✔ publication future workDate qualification expires inclusively and requires exact current admission evidence (286.515417ms)
+error: injected after publication writes
+    at /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/pg@8.23.1/node_modules/pg/lib/client.js:694:17
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async TasksService.audit (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/tasks.service.ts:54:5)
+    at async <anonymous> (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/tasks.service.ts:268:7)
+    at async <anonymous> (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/tasks.service.ts:45:18)
+    at async withTenant (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/db.ts:21:20)
+    at async TasksService.command (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/tasks.service.ts:35:16)
+    at async TasksController.send (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/tasks.controller.ts:13:82)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  length: 178,
+  severity: 'ERROR',
+  code: 'P0001',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: 'PL/pgSQL function publish_fail_47593bfa035e4025875567cf4545934b() line 1 at RAISE',
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'pl_exec.c',
+  line: '3923',
+  routine: 'exec_stmt_raise'
+}
+✔ publication post-write failure rolls back snapshot task receipt and audit; same request retries (123.152584ms)
+✔ publication races: current assignment, admission, employee archive/link, actor and responsible grants (427.899083ms)
+✔ publication two-tier wait rereads current member after employee wait and member snapshot (116.375708ms)
+✔ front/template and plan lifecycle serialize against publish in both valid orderings (463.38175ms)
+✔ master project grant revoked after Guard denies pending submit and completed replay (74.713667ms)
+✔ cross-project employee gate permits one overlapping publication and both adjacent intervals (381.673875ms)
+✔ immutable histories SQL privileges RLS and published plan protect old snapshots after edits (268.08425ms)
+✔ draft plan replacement and submit serialize with expectedVersion, and published assignment edits wait (176.254167ms)
+✔ legacy create is retired at HTTP and service boundaries (9.090333ms)
+✔ all managed states reject legacy execution before effects and before stored event replay (290.621125ms)
+✔ additive69-operation OpenAPI covers exact task forms responses immutable evidence and pagination (184.678291ms)
+✔ approval tracer: exact recorded source -> immutable director approval -> history (415.666917ms)
+✔ manual correction preserves exact source, immutable revoke/reapprove chain and replay attribution (126.365333ms)
+✔ strict input and optimistic source/version checks reject without receipts or revision effects (233.436333ms)
+✔ closed zero-duration records are approvable, no-source and open/future records remain distinct (208.174333ms)
+✔ equal timestamp lifecycle order, composite actor identity, carry-in flags and stable relevant hashes (170.865042ms)
+✔ exact 23/25 hour civil bounds and one-millisecond over limit; shared 03a totals stay exact (208.75425ms)
+✔ two optimistic directors serialize to one winner with one immutable revision and no loser effects (37.051792ms)
+✔ historical granted managers and current own workers; all mutation/replay checks use current director (360.646041ms)
+✔ actual PostgreSQL role/status/grant/link/archive/assignment gates reread initial, replay and history authority (601.337917ms)
+error: injected time audit failure
+    at /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/pg@8.23.1/node_modules/pg/lib/client.js:694:17
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async <anonymous> (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/time.service.ts:87:3)
+    at async withTenant (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/db.ts:21:20)
+    at async TimeController.approve (/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/apps/api/src/time.controller.ts:18:245)
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-execution-context.js:81:62
+    at async /Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/node_modules/.pnpm/@nestjs+core@11.2.8_@nestjs+common@11.2.8_reflect-metadata@0.2.2_rxjs@7.8.2__@nestjs+pl_64aa98f3b73ec814662f900af4df5a48/node_modules/@nestjs/core/router/router-proxy.js:9:17 {
+  length: 169,
+  severity: 'ERROR',
+  code: 'P0001',
+  detail: undefined,
+  hint: undefined,
+  position: undefined,
+  internalPosition: undefined,
+  internalQuery: undefined,
+  where: 'PL/pgSQL function time_fail_b1ee463c21e248139de22e2e04dcd3f3() line 1 at RAISE',
+  schema: undefined,
+  table: undefined,
+  column: undefined,
+  dataType: undefined,
+  constraint: undefined,
+  file: 'pl_exec.c',
+  line: '3923',
+  routine: 'exec_stmt_raise'
+}
+✔ post-revision audit failure rolls back revision/head/receipt together; exact retry commits once (71.744417ms)
+✔ migration009 FORCE RLS immutable revision grants and scoped head FK; repeat preserves exact ledger and rows (523.110917ms)
+✔ valid late03a events remain accepted: relevant source stales while later day, other project and final volume do not (359.914334ms)
+✔ actual source-event and approval PG waits serialize in both arrival orders, with fresh hashes and no deadlock (152.479917ms)
+✔ director revocation arriving after approval scope locks waits, then original approved attribution survives; replay denies current role (52.511083ms)
+✔ employee archive/link waits behind approval; assignment revocation preserves historical manager snapshots (194.615167ms)
+✔ one captured clock records a just-opened zero interval and half-open midnight markers exactly (79.500458ms)
+✔ XLSX tracer: actual HTTP empty snapshot is a downloadable workbook (23.406125ms)
+✔ XLSX independently parsed header-only snapshot, HTTP headers and strict civil range (91.689541ms)
+✔ XLSX complete current approved snapshot keeps zero, exact source vs override, identity and safe typed labels (760.145792ms)
+✔ XLSX refuses every missing, stale, revoked and relevant open row without filtering (298.452833ms)
+✔ XLSX historical director and granted master/PTO authority survives archived employee and assignment; workers and foreign scopes denied (121.995958ms)
+✔ XLSX fresh authority after actual PostgreSQL waits rejects role/status/grant revocation (71.761541ms)
+✔ XLSX rendering holds no database scope locks; post-render current ACL fails closed for role/status/grant changes (88.388042ms)
+✔ XLSX captured snapshot remains attributable after valid03a event arrives during unlocked rendering (177.053041ms)
+✔ XLSX actual export/source-event project lock queues serialize both arrival orders (283.51275ms)
+✔ XLSX actual civil DST 23/25-hour exports preserve exact milliseconds and hours (182.565417ms)
+✔ XLSX exact10000 recorded-day boundary renders all approvals;10001 including zero rejects; incomplete identifiers bounded (15989.19675ms)
+✔ strict time contract covers exact snapshots, immutable revisions, inputs and XLSX failures (25.923834ms)
+ℹ tests 120
+ℹ suites 0
+ℹ pass 120
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 40124.851542

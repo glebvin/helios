@@ -1,0 +1,361 @@
+TAP version 13
+# Subtest: chromium mechanics: native save survives persistent reopen and validated HTTP acknowledgement
+ok 1 - chromium mechanics: native save survives persistent reopen and validated HTTP acknowledgement
+  ---
+  duration_ms: 894.120083
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: request success followed by native transaction abort rejects and stores no event
+ok 2 - chromium mechanics: request success followed by native transaction abort rejects and stores no event
+  ---
+  duration_ms: 183.83375
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: wrong requestId HTTP200 retains exact unacknowledged event
+ok 3 - chromium mechanics: wrong requestId HTTP200 retains exact unacknowledged event
+  ---
+  duration_ms: 276.659333
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: four exact shapes, explicit external predecessor, immutable idempotence and retained acknowledgement
+ok 4 - chromium mechanics: four exact shapes, explicit external predecessor, immutable idempotence and retained acknowledgement
+  ---
+  duration_ms: 179.194875
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: atomic cross-tab project tail race and blocked employee head
+ok 5 - chromium mechanics: atomic cross-tab project tail race and blocked employee head
+  ---
+  duration_ms: 220.96575
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: HTTP status before optional JSON, bounded Retry-After and exact retry exhaustion
+ok 6 - chromium mechanics: HTTP status before optional JSON, bounded Retry-After and exact retry exhaustion
+  ---
+  duration_ms: 186.50975
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: ambiguous replies and permanent business errors never acknowledge
+ok 7 - chromium mechanics: ambiguous replies and permanent business errors never acknowledge
+  ---
+  duration_ms: 238.197125
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: delayed identity and event completion obey current session and handle lifecycle
+ok 8 - chromium mechanics: delayed identity and event completion obey current session and handle lifecycle
+  ---
+  duration_ms: 2192.175292
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: actual Web Lock contention and crashed tab exact receipt replay
+ok 9 - chromium mechanics: actual Web Lock contention and crashed tab exact receipt replay
+  ---
+  duration_ms: 204.259334
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: lost committed HTTP response reopens with exact command and duplicate acknowledgement
+ok 10 - chromium mechanics: lost committed HTTP response reopens with exact command and duplicate acknowledgement
+  ---
+  duration_ms: 287.198584
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: persisted authEpoch fences another tab without BroadcastChannel delivery
+ok 11 - chromium mechanics: persisted authEpoch fences another tab without BroadcastChannel delivery
+  ---
+  duration_ms: 242.129167
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: authEpoch rejects an in-flight completion before commit even without broadcast
+ok 12 - chromium mechanics: authEpoch rejects an in-flight completion before commit even without broadcast
+  ---
+  duration_ms: 236.722834
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: known cross-project dependencies rejected and acknowledged pending dependencies cannot be cleaned
+ok 13 - chromium mechanics: known cross-project dependencies rejected and acknowledged pending dependencies cannot be cleaned
+  ---
+  duration_ms: 186.005375
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: strict JSON validation, segment variants and submit-volume response integrity
+ok 14 - chromium mechanics: strict JSON validation, segment variants and submit-volume response integrity
+  ---
+  duration_ms: 191.716792
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: current /me authority gate, retryable item500, Retry-After date and permanent item403
+ok 15 - chromium mechanics: current /me authority gate, retryable item500, Retry-After date and permanent item403
+  ---
+  duration_ms: 179.90425
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: scope isolation, current identity on all public data methods and no stored token
+ok 16 - chromium mechanics: scope isolation, current identity on all public data methods and no stored token
+  ---
+  duration_ms: 165.330542
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: native quota boundary, strict fallback, versionchange and explicit storage capabilities
+ok 17 - chromium mechanics: native quota boundary, strict fallback, versionchange and explicit storage capabilities
+  ---
+  duration_ms: 166.502916
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: unsupported lock, unsupported storage, controlled 30s timeout and native event count cap
+ok 18 - chromium mechanics: unsupported lock, unsupported storage, controlled 30s timeout and native event count cap
+  ---
+  duration_ms: 1954.576042
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: genuine blocked native upgrade closes late success and unsupported storage info remains explicit
+ok 19 - chromium mechanics: genuine blocked native upgrade closes late success and unsupported storage info remains explicit
+  ---
+  duration_ms: 165.367708
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+ok 20 - chromium mechanics: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+  ---
+  duration_ms: 293.885125
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+ok 21 - chromium mechanics: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+  ---
+  duration_ms: 168.766042
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+ok 22 - chromium mechanics: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+  ---
+  duration_ms: 257.683417
+  type: 'test'
+  ...
+# replay boundary response/queued
+# replay boundary response/reserved
+# replay boundary response/uploaded
+# replay boundary local_commit/queued
+# replay boundary local_commit/reserved
+# replay boundary local_commit/uploaded
+# Subtest: chromium mechanics: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+ok 23 - chromium mechanics: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+  ---
+  duration_ms: 1276.833834
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: evidence responses require exact declaration actor timestamps state target and status at every stage
+ok 24 - chromium mechanics: evidence responses require exact declaration actor timestamps state target and status at every stage
+  ---
+  duration_ms: 770.132583
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+ok 25 - chromium mechanics: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+  ---
+  duration_ms: 406.014666
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: known-local dependencies frozen IDs idempotence collisions and scope guards
+ok 26 - chromium mechanics: known-local dependencies frozen IDs idempotence collisions and scope guards
+  ---
+  duration_ms: 163.698667
+  type: 'test'
+  ...
+# Subtest: chromium mechanics: strict file declarations hash failures and atomic whole database 32-file count cap
+ok 27 - chromium mechanics: strict file declarations hash failures and atomic whole database 32-file count cap
+  ---
+  duration_ms: 342.871209
+  type: 'test'
+  ...
+# chromium mechanics: 28/28 passed
+# Subtest: chromium mechanics: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+ok 28 - chromium mechanics: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+  ---
+  duration_ms: 349.491916
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: native save survives persistent reopen and validated HTTP acknowledgement
+ok 29 - webkit mechanics: native save survives persistent reopen and validated HTTP acknowledgement
+  ---
+  duration_ms: 5310.202125
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: request success followed by native transaction abort rejects and stores no event
+ok 30 - webkit mechanics: request success followed by native transaction abort rejects and stores no event
+  ---
+  duration_ms: 494.940458
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: wrong requestId HTTP200 retains exact unacknowledged event
+ok 31 - webkit mechanics: wrong requestId HTTP200 retains exact unacknowledged event
+  ---
+  duration_ms: 952.846916
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: four exact shapes, explicit external predecessor, immutable idempotence and retained acknowledgement
+ok 32 - webkit mechanics: four exact shapes, explicit external predecessor, immutable idempotence and retained acknowledgement
+  ---
+  duration_ms: 511.773459
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: atomic cross-tab project tail race and blocked employee head
+ok 33 - webkit mechanics: atomic cross-tab project tail race and blocked employee head
+  ---
+  duration_ms: 642.318959
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: HTTP status before optional JSON, bounded Retry-After and exact retry exhaustion
+ok 34 - webkit mechanics: HTTP status before optional JSON, bounded Retry-After and exact retry exhaustion
+  ---
+  duration_ms: 509.881542
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: ambiguous replies and permanent business errors never acknowledge
+ok 35 - webkit mechanics: ambiguous replies and permanent business errors never acknowledge
+  ---
+  duration_ms: 587.98375
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: delayed identity and event completion obey current session and handle lifecycle
+ok 36 - webkit mechanics: delayed identity and event completion obey current session and handle lifecycle
+  ---
+  duration_ms: 6715.078875
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: actual Web Lock contention and crashed tab exact receipt replay
+ok 37 - webkit mechanics: actual Web Lock contention and crashed tab exact receipt replay
+  ---
+  duration_ms: 1040.075041
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: lost committed HTTP response reopens with exact command and duplicate acknowledgement
+ok 38 - webkit mechanics: lost committed HTTP response reopens with exact command and duplicate acknowledgement
+  ---
+  duration_ms: 1258.844208
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: persisted authEpoch fences another tab without BroadcastChannel delivery
+ok 39 - webkit mechanics: persisted authEpoch fences another tab without BroadcastChannel delivery
+  ---
+  duration_ms: 948.4365
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: authEpoch rejects an in-flight completion before commit even without broadcast
+ok 40 - webkit mechanics: authEpoch rejects an in-flight completion before commit even without broadcast
+  ---
+  duration_ms: 966.709417
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: known cross-project dependencies rejected and acknowledged pending dependencies cannot be cleaned
+ok 41 - webkit mechanics: known cross-project dependencies rejected and acknowledged pending dependencies cannot be cleaned
+  ---
+  duration_ms: 555.403083
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: strict JSON validation, segment variants and submit-volume response integrity
+ok 42 - webkit mechanics: strict JSON validation, segment variants and submit-volume response integrity
+  ---
+  duration_ms: 598.224917
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: current /me authority gate, retryable item500, Retry-After date and permanent item403
+ok 43 - webkit mechanics: current /me authority gate, retryable item500, Retry-After date and permanent item403
+  ---
+  duration_ms: 543.902875
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: scope isolation, current identity on all public data methods and no stored token
+ok 44 - webkit mechanics: scope isolation, current identity on all public data methods and no stored token
+  ---
+  duration_ms: 509.6415
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: native quota boundary, strict fallback, versionchange and explicit storage capabilities
+ok 45 - webkit mechanics: native quota boundary, strict fallback, versionchange and explicit storage capabilities
+  ---
+  duration_ms: 560.65425
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: unsupported lock, unsupported storage, controlled 30s timeout and native event count cap
+ok 46 - webkit mechanics: unsupported lock, unsupported storage, controlled 30s timeout and native event count cap
+  ---
+  duration_ms: 2687.02725
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: genuine blocked native upgrade closes late success and unsupported storage info remains explicit
+ok 47 - webkit mechanics: genuine blocked native upgrade closes late success and unsupported storage info remains explicit
+  ---
+  duration_ms: 486.406333
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+ok 48 - webkit mechanics: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+  ---
+  duration_ms: 1042.451583
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+ok 49 - webkit mechanics: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+  ---
+  duration_ms: 475.842708
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+ok 50 - webkit mechanics: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+  ---
+  duration_ms: 597.536542
+  type: 'test'
+  ...
+# replay boundary response/queued
+# replay boundary response/reserved
+# replay boundary response/uploaded
+# replay boundary local_commit/queued
+# replay boundary local_commit/reserved
+# replay boundary local_commit/uploaded
+# Subtest: webkit mechanics: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+ok 51 - webkit mechanics: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+  ---
+  duration_ms: 3795.506166
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: evidence responses require exact declaration actor timestamps state target and status at every stage
+ok 52 - webkit mechanics: evidence responses require exact declaration actor timestamps state target and status at every stage
+  ---
+  duration_ms: 1367.763958
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+ok 53 - webkit mechanics: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+  ---
+  duration_ms: 1113.532208
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: known-local dependencies frozen IDs idempotence collisions and scope guards
+ok 54 - webkit mechanics: known-local dependencies frozen IDs idempotence collisions and scope guards
+  ---
+  duration_ms: 497.263667
+  type: 'test'
+  ...
+# Subtest: webkit mechanics: strict file declarations hash failures and atomic whole database 32-file count cap
+ok 55 - webkit mechanics: strict file declarations hash failures and atomic whole database 32-file count cap
+  ---
+  duration_ms: 592.260792
+  type: 'test'
+  ...
+# webkit mechanics: 28/28 passed
+# Subtest: webkit mechanics: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+ok 56 - webkit mechanics: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+  ---
+  duration_ms: 615.637958
+  type: 'test'
+  ...
+# mechanics: 56/56 required real-browser scenarios passed
+1..56
+# tests 56
+# suites 0
+# pass 56
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 49023.170541

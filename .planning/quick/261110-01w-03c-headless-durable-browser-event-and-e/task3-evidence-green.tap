@@ -1,0 +1,133 @@
+TAP version 13
+# Subtest: chromium evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+ok 1 - chromium evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+  ---
+  duration_ms: 656.723167
+  type: 'test'
+  ...
+# Subtest: chromium evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+ok 2 - chromium evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+  ---
+  duration_ms: 266.775916
+  type: 'test'
+  ...
+# Subtest: chromium evidence: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+ok 3 - chromium evidence: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+  ---
+  duration_ms: 399.32775
+  type: 'test'
+  ...
+# replay boundary response/queued
+# replay boundary response/reserved
+# replay boundary response/uploaded
+# replay boundary local_commit/queued
+# replay boundary local_commit/reserved
+# replay boundary local_commit/uploaded
+# Subtest: chromium evidence: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+ok 4 - chromium evidence: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+  ---
+  duration_ms: 1355.471459
+  type: 'test'
+  ...
+# Subtest: chromium evidence: evidence responses require exact declaration actor timestamps state target and status at every stage
+ok 5 - chromium evidence: evidence responses require exact declaration actor timestamps state target and status at every stage
+  ---
+  duration_ms: 646.670833
+  type: 'test'
+  ...
+# Subtest: chromium evidence: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+ok 6 - chromium evidence: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+  ---
+  duration_ms: 425.486042
+  type: 'test'
+  ...
+# Subtest: chromium evidence: known-local dependencies frozen IDs idempotence collisions and scope guards
+ok 7 - chromium evidence: known-local dependencies frozen IDs idempotence collisions and scope guards
+  ---
+  duration_ms: 205.692042
+  type: 'test'
+  ...
+# Subtest: chromium evidence: strict file declarations hash failures and atomic whole database 32-file count cap
+ok 8 - chromium evidence: strict file declarations hash failures and atomic whole database 32-file count cap
+  ---
+  duration_ms: 249.969208
+  type: 'test'
+  ...
+# chromium evidence: 9/9 passed
+# Subtest: chromium evidence: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+ok 9 - chromium evidence: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+  ---
+  duration_ms: 284.270208
+  type: 'test'
+  ...
+# Subtest: webkit evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+ok 10 - webkit evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+  ---
+  duration_ms: 1865.447583
+  type: 'test'
+  ...
+# Subtest: webkit evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+ok 11 - webkit evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+  ---
+  duration_ms: 860.07575
+  type: 'test'
+  ...
+# Subtest: webkit evidence: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+ok 12 - webkit evidence: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+  ---
+  duration_ms: 1032.053583
+  type: 'test'
+  ...
+# replay boundary response/queued
+# replay boundary response/reserved
+# replay boundary response/uploaded
+# replay boundary local_commit/queued
+# replay boundary local_commit/reserved
+# replay boundary local_commit/uploaded
+# Subtest: webkit evidence: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+ok 13 - webkit evidence: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+  ---
+  duration_ms: 3775.257
+  type: 'test'
+  ...
+# Subtest: webkit evidence: evidence responses require exact declaration actor timestamps state target and status at every stage
+ok 14 - webkit evidence: evidence responses require exact declaration actor timestamps state target and status at every stage
+  ---
+  duration_ms: 1144.768792
+  type: 'test'
+  ...
+# Subtest: webkit evidence: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+ok 15 - webkit evidence: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+  ---
+  duration_ms: 1122.149917
+  type: 'test'
+  ...
+# Subtest: webkit evidence: known-local dependencies frozen IDs idempotence collisions and scope guards
+ok 16 - webkit evidence: known-local dependencies frozen IDs idempotence collisions and scope guards
+  ---
+  duration_ms: 490.733792
+  type: 'test'
+  ...
+# Subtest: webkit evidence: strict file declarations hash failures and atomic whole database 32-file count cap
+ok 17 - webkit evidence: strict file declarations hash failures and atomic whole database 32-file count cap
+  ---
+  duration_ms: 612.760583
+  type: 'test'
+  ...
+# webkit evidence: 9/9 passed
+# Subtest: webkit evidence: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+ok 18 - webkit evidence: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+  ---
+  duration_ms: 567.704542
+  type: 'test'
+  ...
+# evidence: 18/18 required real-browser scenarios passed
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 16543.812125

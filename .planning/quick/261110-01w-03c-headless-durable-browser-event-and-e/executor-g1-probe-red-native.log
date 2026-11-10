@@ -1,0 +1,13 @@
+{"engine":"chromium","publicSaveResolved":true,"reopened":{"state":"pending","stage":"queued","declared":"text/plain","actual":"image/png","bytes":[137,80,78,71],"canonicalContainsInvalidMime":true,"commandHashMatchesCanonical":true},"arrayMutation":{"resolved":true,"evidenceCount":0,"eventOccurredAt":"2027-01-15T09:00:00+03:00"},"changedTarget":{"resolved":false,"error":"local_dependency_conflict"}}
+chromium: public save must retain a validated matching MIME declaration
++ actual - expected
+
++ 'text/plain'
+- 'image/png'
+
+{"engine":"webkit","publicSaveResolved":true,"reopened":{"state":"pending","stage":"queued","declared":"text/plain","actual":"image/png","bytes":[137,80,78,71],"canonicalContainsInvalidMime":true,"commandHashMatchesCanonical":true},"arrayMutation":{"resolved":true,"evidenceCount":0,"eventOccurredAt":"2027-01-15T09:00:00+03:00"},"changedTarget":{"resolved":false,"error":"local_dependency_conflict"}}
+webkit: public save must retain a validated matching MIME declaration
++ actual - expected
+
++ 'text/plain'
+- 'image/png'
