@@ -24,10 +24,10 @@ export type StoredEvent = {
   lastError: string | null;
 };
 type Tail = {version: number; sequence: number; projects: Record<string, string>};
-type Tombstone = {canonical: string; commandHash: string; event: EventPayload; sequence?: number; acknowledged: boolean};
+export type Tombstone = {canonical: string; commandHash: string; event: EventPayload; sequence?: number; acknowledged: boolean};
 const epochKey = (scope: string) => `epoch:${scope}`;
 const tailKey = (scope: string, employee: string) => `tail:${scope}:${employee}`;
-const identityKey = (scope: string, id: string) => `identity:${scope}:${id}`;
+export const identityKey = (scope: string, id: string) => `identity:${scope}:${id}`;
 export const DATABASE_NAME = 'helios-managed-offline';
 
 export class NativeStore {
@@ -129,56 +129,58 @@ export class NativeStore {
     });
   }
   enqueue(scope: string, epoch: number, event: EventPayload, canonical: string, commandHash: string, check: () => void): Promise<StoredEvent> {
-    return this.scoped(scope, epoch, 'readwrite', check, (tx, result, guard) => {
-      const events = tx.objectStore('events'), meta = tx.objectStore('meta');
-      const id = event.requestId.toLowerCase(), employeeId = event.employeeId.toLowerCase(), projectId = event.projectId.toLowerCase();
-      const existing = events.get([scope, id]);
-      existing.onsuccess = () => guard(() => {
-        if (existing.result) {
-          if (existing.result.canonical !== canonical) fail('local_identity_conflict');
-          result(existing.result); return;
+    return this.scoped(scope, epoch, 'readwrite', check, (tx, result, guard) => this.enqueueInTransaction(tx, scope, event, canonical, commandHash, result, guard));
+  }
+  enqueueInTransaction(tx: IDBTransaction, scope: string, event: EventPayload, canonical: string, commandHash: string, result: (row: StoredEvent) => void, guard: (fn: () => void) => void): void {
+    const events = tx.objectStore('events'), meta = tx.objectStore('meta');
+    const id = event.requestId.toLowerCase(), employeeId = event.employeeId.toLowerCase(), projectId = event.projectId.toLowerCase();
+    const existing = events.get([scope, id]);
+    existing.onsuccess = () => guard(() => {
+      if (existing.result) {
+        if (existing.result.canonical !== canonical) fail('local_identity_conflict');
+        result(existing.result); return;
+      }
+      const identity = meta.get(identityKey(scope, id));
+      identity.onsuccess = () => guard(() => {
+        if (identity.result) {
+          const retained = identity.result.value as Tombstone;
+          if (!retained.event || retained.canonical !== canonical || !retained.acknowledged) fail('local_identity_conflict');
+          result({key: [scope, id], scope, id, employeeId, projectId, event: retained.event, canonical: retained.canonical,
+            commandHash: retained.commandHash, sequence: retained.sequence ?? 0, state: 'synced', attemptCount: 0, nextAttemptAt: null, lastError: null});
+          return;
         }
-        const identity = meta.get(identityKey(scope, id));
-        identity.onsuccess = () => guard(() => {
-          if (identity.result) {
-            const retained = identity.result.value as Tombstone;
-            if (retained.canonical !== canonical || !retained.acknowledged) fail('local_identity_conflict');
-            result({key: [scope, id], scope, id, employeeId, projectId, event: retained.event, canonical: retained.canonical,
-              commandHash: retained.commandHash, sequence: retained.sequence ?? 0, state: 'synced', attemptCount: 0, nextAttemptAt: null, lastError: null});
-            return;
-          }
-          const tailRequest = meta.get(tailKey(scope, employeeId));
-          tailRequest.onsuccess = () => guard(() => {
-            const tail = tailRequest.result?.value as Tail | undefined;
-            if (tail && event.expectedVersion !== tail.version + 1) fail('local_stream_conflict');
-            const predecessor = tail?.projects[projectId];
-            if (predecessor && event.previousEventId?.toLowerCase() !== predecessor) fail('local_dependency_conflict');
-            // An unknown initial ID is the caller's explicit external acknowledgement, checked by the server on delivery.
-            // A known local ID still cannot be borrowed from another employee/project.
-            const dependency = event.previousEventId === undefined ? null : meta.get(identityKey(scope, event.previousEventId.toLowerCase()));
-            const save = () => guard(() => {
-              if (dependency?.result) {
-                const known = (dependency.result.value as Tombstone).event;
-                if (known.employeeId.toLowerCase() !== employeeId || known.projectId.toLowerCase() !== projectId) fail('local_dependency_conflict');
-              }
-              const count = events.count();
-              count.onsuccess = () => guard(() => {
-                if (count.result >= 1000) fail('capacity_exceeded');
-                const sequence = (tail?.sequence ?? 0) + 1;
-                const row: StoredEvent = {key: [scope, id], scope, id, employeeId, projectId, event, canonical, commandHash,
-                  sequence, state: 'pending', attemptCount: 0, nextAttemptAt: null, lastError: null};
-                events.add(row);
-                meta.put({key: tailKey(scope, employeeId), value: {version: event.expectedVersion, sequence, projects: {...tail?.projects, [projectId]: id}}});
-                meta.put({key: identityKey(scope, id), value: {canonical, commandHash, event, sequence, acknowledged: false} satisfies Tombstone});
-                result(row);
-              });
+        const tailRequest = meta.get(tailKey(scope, employeeId));
+        tailRequest.onsuccess = () => guard(() => {
+          const tail = tailRequest.result?.value as Tail | undefined;
+          if (tail && event.expectedVersion !== tail.version + 1) fail('local_stream_conflict');
+          const predecessor = tail?.projects[projectId];
+          if (predecessor && event.previousEventId?.toLowerCase() !== predecessor) fail('local_dependency_conflict');
+          // An unknown initial ID is the caller's explicit external acknowledgement, checked by the server on delivery.
+          // A known local ID still cannot be borrowed from another employee/project.
+          const dependency = event.previousEventId === undefined ? null : meta.get(identityKey(scope, event.previousEventId.toLowerCase()));
+          const save = () => guard(() => {
+            if (dependency?.result) {
+              const known = (dependency.result.value as Tombstone).event;
+              if (!known || known.employeeId.toLowerCase() !== employeeId || known.projectId.toLowerCase() !== projectId) fail('local_dependency_conflict');
+            }
+            const count = events.count();
+            count.onsuccess = () => guard(() => {
+              if (count.result >= 1000) fail('capacity_exceeded');
+              const sequence = (tail?.sequence ?? 0) + 1;
+              const row: StoredEvent = {key: [scope, id], scope, id, employeeId, projectId, event, canonical, commandHash,
+                sequence, state: 'pending', attemptCount: 0, nextAttemptAt: null, lastError: null};
+              events.add(row);
+              meta.put({key: tailKey(scope, employeeId), value: {version: event.expectedVersion, sequence, projects: {...tail?.projects, [projectId]: id}}});
+              meta.put({key: identityKey(scope, id), value: {canonical, commandHash, event, sequence, acknowledged: false} satisfies Tombstone});
+              result(row);
             });
-            if (dependency) dependency.onsuccess = save;else save();
           });
+          if (dependency) dependency.onsuccess = save;else save();
         });
       });
     });
   }
+
   update(scope: string, epoch: number, id: string, commandHash: string,
     patch: Pick<StoredEvent, 'state' | 'attemptCount' | 'nextAttemptAt' | 'lastError'>, check: () => void): Promise<void> {
     return this.scoped(scope, epoch, 'readwrite', check, (tx, result, guard) => {
@@ -189,21 +191,6 @@ export class NativeStore {
         if (!row || row.commandHash !== commandHash) fail('local_identity_conflict');
         events.put({...row, ...patch});
         if (patch.state === 'synced') meta.put({key: identityKey(scope, id), value: {canonical: row.canonical, commandHash, event: row.event, sequence: row.sequence, acknowledged: true} satisfies Tombstone});
-        result(undefined);
-      });
-    });
-  }
-  cleanup(scope: string, epoch: number, ids: string[], check: () => void): Promise<void> {
-    return this.scoped(scope, epoch, 'readwrite', check, (tx, result, guard) => {
-      const events = tx.objectStore('events'); const request = events.index('scope').getAll(scope);
-      request.onsuccess = () => guard(() => {
-        const rows = request.result as StoredEvent[];
-        for (const id of ids) {
-          const row = rows.find(row => row.id === id);
-          if (!row || row.state !== 'synced') fail('cleanup_requires_acknowledgement');
-          if (rows.some(other => other.state !== 'synced' && other.event.previousEventId?.toLowerCase() === id)) fail('pending_dependency');
-        }
-        for (const id of ids) events.delete([scope, id]);
         result(undefined);
       });
     });

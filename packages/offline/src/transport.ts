@@ -60,21 +60,28 @@ function retryAfter(value: string | null): number | null {
   return Number.isFinite(delay) ? Math.max(1000, Math.min(60_000, delay)) : null;
 }
 
-/** Fixed execution routes only. Credentials are captured in memory immediately before each send. */
+export type EvidenceRoute = {kind: 'reserve' | 'upload' | 'attach'; projectId: string; fileId: string};
+/** Fixed execution/evidence routes only. Credentials are captured in memory immediately before each send. */
 export function createTransport(base: string, tenantId: string, session: () => Session,
   beforeSend: (check: () => void) => Promise<unknown>, aborters: Set<AbortController>) {
-  return async function request(path: '/me' | '/execution/events', check: () => void, body?: string) {
+  return async function request(route: '/me' | '/execution/events' | EvidenceRoute, check: () => void, body?: string | Blob) {
+    check();
+    // WebKit may stall fetch on an IDB-backed Blob after reopening its persistent context.
+    // Read the bounded original bytes outside IDB, then give fetch a fresh native Blob.
+    const requestBody = body instanceof Blob ? new Blob([await body.arrayBuffer()], {type: 'application/octet-stream'}) : body;
     check();await beforeSend(check);check();const current = session();
+    const path = typeof route === 'string' ? route : `/projects/${uuid(route.projectId)}/evidence${route.kind === 'reserve' ? '' : `/${uuid(route.fileId)}/${route.kind === 'upload' ? 'content' : 'attachment'}`}`;
+    const method = typeof route !== 'string' && route.kind === 'upload' ? 'PUT' : body === undefined ? 'GET' : 'POST';
     const controller = new AbortController();aborters.add(controller);
     const timeout = setTimeout(() => controller.abort(), 30_000);
     try {
-      const response = await fetch(`${base}${path}`, {method: body === undefined ? 'GET' : 'POST',
-        headers: {Authorization: `Bearer ${current.token}`, 'x-tenant-id': tenantId, ...(body === undefined ? {} : {'Content-Type': 'application/json'})},
-        body, signal: controller.signal, credentials: 'omit', redirect: 'error'});
+      const response = await fetch(`${base}${path}`, {method,
+        headers: {Authorization: `Bearer ${current.token}`, 'x-tenant-id': tenantId, ...(body === undefined ? {} : {'Content-Type': body instanceof Blob ? 'application/octet-stream' : 'application/json'})},
+        body: requestBody, signal: controller.signal, credentials: 'omit', redirect: 'error'});
       check();
       // An auth/permanent HTTP failure is authoritative even when its body is empty or not JSON.
       let payload: unknown;
-      if (response.status === 200) {
+      if (response.status === 200 || response.status === 201) {
         try {payload = await response.json();}
         catch {check();throw new OfflineQueueError('ambiguous_response');}
       } else void response.body?.cancel().catch(() => {});

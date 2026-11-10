@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {test as browserTest} from 'node:test';
 import {createServer} from 'node:http';
 import {mkdtemp, readFile, rm} from 'node:fs/promises';
@@ -25,6 +26,7 @@ const temporary = await mkdtemp(join(tmpdir(), 'helios-offline-tracer-'));
 const journal = [];
 const wrongIds = new Set();
 const receipts = new Map();
+const evidenceReceipts = new Map(), evidenceFiles = new Map();
 const actions = new Map();
 const gates = new Set(), fixtureErrors = [];
 let meAction = null;
@@ -55,7 +57,7 @@ const server = createServer(async (req,res) => {
   try {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
-    const raw = Buffer.concat(chunks).toString();
+    const bytes = Buffer.concat(chunks), raw = bytes.toString();
     if (req.url.startsWith('/api/v1/')) {
       journal.push({method:req.method,path:req.url,raw,tenant:req.headers['x-tenant-id'],authorized:req.headers.authorization===`Bearer ${token}`});
       assert.equal(req.headers.authorization, `Bearer ${token}`);
@@ -65,6 +67,38 @@ const server = createServer(async (req,res) => {
         if (meAction?.status) {res.statusCode=meAction.status;res.end(meAction.raw??'');return;}
         if (meAction?.body) {res.end(JSON.stringify(meAction.body));return;}
         res.setHeader('Content-Type','application/json');res.end(JSON.stringify({userId:actorUserId,tenantId}));return;
+      }
+      const evidenceRoute = /^\/api\/v1\/projects\/([0-9a-f-]+)\/evidence(?:\/([0-9a-f-]+)\/(content|attachment))?$/.exec(req.url);
+      if(evidenceRoute){
+        const [,projectId,fileId,stage]=evidenceRoute;let body,answer,key;const readyAt='2027-01-15T06:01:00.000Z';
+        if(!stage){
+          assert.equal(req.method,'POST');body=JSON.parse(raw);key=body.requestId;
+          if(evidenceReceipts.has(key)){assert.deepEqual(evidenceReceipts.get(key).body,body);answer=structuredClone(evidenceReceipts.get(key).answer);}
+          else {
+            assert.equal(evidenceFiles.has(body.fileId),false,'new reserve cannot overwrite file');
+            answer={id:body.fileId,projectId,employeeId:body.employeeId,filename:body.filename,contentType:body.contentType,sizeBytes:body.sizeBytes,sha256:body.sha256,state:'pending',reservedBy:actorUserId,reservedAt:'2027-01-15T06:00:00.000Z',readyBy:null,readyAt:null,onBehalfReason:body.onBehalfReason??null,attachment:null};
+            evidenceFiles.set(body.fileId,{metadata:structuredClone(answer),bytes:null});evidenceReceipts.set(key,{body,answer:structuredClone(answer)});
+          }
+        }else{
+          const file=evidenceFiles.get(fileId);assert.ok(file);assert.equal(file.metadata.projectId,projectId);
+          if(stage==='content'){
+            assert.equal(req.method,'PUT');assert.equal(req.headers['content-type'],'application/octet-stream');key=fileId;
+            assert.equal(bytes.length,file.metadata.sizeBytes);assert.equal(createHash('sha256').update(bytes).digest('hex'),file.metadata.sha256);
+            if(file.bytes)assert.deepEqual(bytes,file.bytes);file.bytes=bytes;Object.assign(file.metadata,{state:'ready',readyBy:actorUserId,readyAt});answer=structuredClone(file.metadata);
+          }else{
+            assert.equal(req.method,'POST');body=JSON.parse(raw);key=body.requestId;assert.ok(file.bytes);
+            if(evidenceReceipts.has(key)){assert.deepEqual(evidenceReceipts.get(key).body,body);answer=structuredClone(evidenceReceipts.get(key).answer);}
+            else{
+              const dependency=body.target.kind==='execution_event'?receipts.get(body.target.requestId):[...receipts.values()].find(c=>c.reportId===body.target.reportId);
+              assert.ok(dependency,'attachment requires a committed event/report');assert.equal(dependency.projectId,projectId);assert.equal(dependency.employeeId,file.metadata.employeeId);assert.equal(file.metadata.attachment,null,'one attachment per file');
+              file.metadata.attachment={target:body.target,attachedBy:actorUserId,attachedAt:readyAt,onBehalfReason:body.onBehalfReason??null};answer=structuredClone(file.metadata);evidenceReceipts.set(key,{body,answer:structuredClone(answer)});
+            }
+          }
+        }
+        const action=actions.get(key);if(action?.gate)await action.gate.wait();
+        if(action?.drop){res.writeHead(stage==='content'?200:201,{'Content-Type':'application/json','Content-Length':'10000'});res.write('{',()=>req.socket.destroy());return;}
+        if(action?.status){res.statusCode=action.status;if(action.retryAfter)res.setHeader('Retry-After',action.retryAfter);res.end(action.raw??'');return;}
+        res.statusCode=stage==='content'?200:201;res.setHeader('Content-Type','application/json');res.end(JSON.stringify(action?.body?action.body(answer):answer));return;
       }
       assert.equal(req.url,'/api/v1/execution/events');assert.equal(req.method,'POST');
       const body = JSON.parse(raw);assert.equal(body.events.length,1);
@@ -272,13 +306,13 @@ if(suite==='mechanics') tests.push(
     await page.close();await flushing;actions.delete(command.requestId);gate.release();
     await second.evaluate(async()=>{const scope=JSON.stringify([`${location.origin}/api/v1`,session.tenantId,session.actorUserId]);await navigator.locks.request(`helios-offline:${scope}`,()=>{});});
     await second.evaluate(()=>queue.flush());assert.equal(await second.evaluate(id=>queue.get(id).then(r=>r.state),command.requestId),'synced');
-    const copies=journal.filter(x=>x.method==='POST'&&JSON.parse(x.raw).events[0].requestId===command.requestId);assert.equal(copies.length,2);assert.equal(copies[0].raw,copies[1].raw);
+    const copies=journal.filter(x=>x.path==='/api/v1/execution/events'&&x.method==='POST'&&JSON.parse(x.raw).events[0].requestId===command.requestId);assert.equal(copies.length,2);assert.equal(copies[0].raw,copies[1].raw);
   }],
   ['lost committed HTTP response reopens with exact command and duplicate acknowledgement',async(engine,profile,origin,n)=>{
     let {page,context}=await openPage(engine,profile,origin);const command=event(n);await page.evaluate(c=>queue.enqueueEvent(c),command);actions.set(command.requestId,{drop:true});await page.evaluate(()=>queue.flush());
     assert.notEqual(await page.evaluate(id=>queue.get(id).then(r=>r.state),command.requestId),'synced');await closeContext(context);actions.delete(command.requestId);
     ({page,context}=await openPage(engine,profile,origin));await page.evaluate(id=>queue.retry(id),command.requestId);await page.evaluate(()=>queue.flush());
-    assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),command.requestId),'synced');const copies=journal.filter(x=>x.method==='POST'&&JSON.parse(x.raw).events[0].requestId===command.requestId);assert.equal(copies.length,2);assert.equal(copies[0].raw,copies[1].raw);
+    assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),command.requestId),'synced');const copies=journal.filter(x=>x.path==='/api/v1/execution/events'&&x.method==='POST'&&JSON.parse(x.raw).events[0].requestId===command.requestId);assert.equal(copies.length,2);assert.equal(copies[0].raw,copies[1].raw);
   }],
   ['persisted authEpoch fences another tab without BroadcastChannel delivery',async(engine,profile,origin,n)=>{
     const {page,context}=await openPage(engine,profile,origin);const second=await context.newPage();await second.goto(origin);
@@ -381,6 +415,13 @@ if(suite==='mechanics') tests.push(
     });assert.equal(result.code,'storage_upgrade_blocked');assert.equal(result.info.persistenceSupported,false);assert.equal(result.info.persisted,null);assert.equal(result.info.estimate,null);assert.equal(result.info.persistenceGranted,null);assert.equal(result.info.error,null);
   }],
 );
+async function savePhoto(page,command,options={}){
+  return page.evaluate(async({command,options})=>{
+    if(!await queue.get(command.requestId))await queue.enqueueEvent(command);
+    const input={projectId:command.projectId,employeeId:command.employeeId,filename:'photo.png',contentType:'image/png',blob:new Blob([new Uint8Array([137,80,78,71,13,10,26,10,42])],{type:'image/png'}),dependencyRequestId:command.requestId,target:{kind:'execution_event',actorUserId:session.actorUserId,requestId:command.requestId},...options};
+    return queue.enqueueEvidence(input);
+  },{command,options});
+}
 const evidenceTests = [
   ['atomic event and actual PNG Blob survive persistent reopen with frozen stage identities',async(engine,profile,origin,n)=>{
     let {page,context}=await openPage(engine,profile,origin);const command=event(n);
@@ -404,6 +445,107 @@ const evidenceTests = [
       return {succeeded,rejected,rows:await queue.list(),resaved:await queue.enqueueEvent(c).then(()=>true,()=>false)};
     },command);assert.equal(result.succeeded,true,'must reach real evidence request success');assert.equal(result.rejected,true);assert.deepEqual(result.rows,[]);assert.equal(result.resaved,true);
   }],
+  ['fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin),command=event(n);const start=journal.length;const photo=await savePhoto(page,command);
+    assert.equal(await page.evaluate(id=>queue.cleanupAcknowledged([id]).then(()=>null,e=>e.code),photo.id),'cleanup_requires_acknowledgement');
+    // Event acknowledgement is separate from its blocked/pending photo.
+    actions.set(photo.reserve.requestId,{status:503});await page.evaluate(()=>queue.flush());assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),command.requestId),'synced');
+    assert.equal(await page.evaluate(id=>queue.cleanupAcknowledged([id]).then(()=>null,e=>e.code),command.requestId),'pending_dependency');
+    actions.delete(photo.reserve.requestId);await page.evaluate(id=>queue.retry(id),photo.id);await page.evaluate(()=>queue.flush());
+    const file=await page.evaluate(async id=>{const r=await queue.get(id);return {stage:r.stage,state:r.state,bytes:[...new Uint8Array(await r.blob.arrayBuffer())]};},photo.id);
+    assert.deepEqual(file,{stage:'synced',state:'synced',bytes:[137,80,78,71,13,10,26,10,42]});
+    const calls=journal.slice(start).filter(x=>x.path.includes('/evidence'));assert.deepEqual(calls.map(x=>x.method),['POST','POST','PUT','POST']);assert.equal(calls[1].raw,calls[0].raw);
+    assert.deepEqual(evidenceFiles.get(photo.id).bytes,Buffer.from(file.bytes));assert.equal(evidenceReceipts.get(photo.attach.requestId).body.target.requestId,command.requestId);
+    await page.evaluate(ids=>queue.cleanupAcknowledged(ids),[command.requestId,photo.id]);assert.equal((await page.evaluate(()=>queue.list())).length,0);
+    const tombstone=await page.evaluate(async({command,photo})=>{
+      const row=await queue.enqueueEvidence({projectId:command.projectId,employeeId:command.employeeId,filename:'photo.png',contentType:'image/png',blob:new Blob([new Uint8Array([137,80,78,71,13,10,26,10,42])],{type:'image/png'}),dependencyRequestId:command.requestId,target:photo.target,fileId:photo.id,reserveRequestId:photo.reserve.requestId,attachRequestId:photo.attach.requestId});return {state:row.state,count:(await queue.list()).length};
+    },{command,photo});assert.deepEqual(tombstone,{state:'synced',count:0});
+    // Tombstoned event remains a known supported dependency for new evidence.
+    const another=await savePhoto(page,command);await page.evaluate(()=>queue.flush());assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),another.id),'synced');
+    const report={...event(n+100000),requestId:crypto.randomUUID(),kind:'submit_volume',taskId:crypto.randomUUID(),reportId:crypto.randomUUID(),submittedQuantity:'1.25'};
+    const reportPhoto=await savePhoto(page,report,{target:{kind:'final_report',reportId:report.reportId}});await page.evaluate(()=>queue.flush());
+    assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.stage),reportPhoto.id),'synced');assert.deepEqual(evidenceFiles.get(reportPhoto.id).metadata.attachment.target,{kind:'final_report',reportId:report.reportId});
+  }],
+  ['lost replies and failed native local stage commits replay identical identities bytes and snapshots',async(engine,profile,origin,n)=>{
+    let {page,context}=await openPage(engine,profile,origin);
+    for(const failure of ['response','local_commit'])for(const stage of ['queued','reserved','uploaded']){
+      console.log(`replay boundary ${failure}/${stage}`);
+      const command={...event(n),requestId:crypto.randomUUID(),employeeId:crypto.randomUUID()},photo=await savePhoto(page,command);
+      const key=stage==='queued'?photo.reserve.requestId:stage==='reserved'?photo.id:photo.attach.requestId,start=journal.length;
+      if(failure==='response')actions.set(key,{drop:true});else await page.evaluate(({id,stage})=>{
+        const original=IDBObjectStore.prototype.put;globalThis.restoreStage=()=>{IDBObjectStore.prototype.put=original;};
+        IDBObjectStore.prototype.put=function(...args){const r=original.apply(this,args);if(this.name==='evidence'&&args[0].id===id&&args[0].stage===({queued:'reserved',reserved:'uploaded',uploaded:'synced'})[stage])r.addEventListener('success',()=>this.transaction.abort(),{once:true});return r;};
+      },{id:photo.id,stage});
+      const result=await page.evaluate(()=>queue.flush().then(()=>null,e=>e.code??e.name));if(failure==='local_commit')assert.ok(result,'local native abort must reject flush');
+      assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.stage),photo.id),stage);
+      assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.blob.size),photo.id),9);
+      await closeContext(context);actions.delete(key);({page,context}=await openPage(engine,profile,origin));
+      await page.evaluate(id=>queue.retry(id),photo.id);await page.evaluate(()=>queue.flush());assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),photo.id),'synced',`${failure}/${stage}: ${JSON.stringify(await page.evaluate(id=>queue.get(id).then(({blob,...r})=>r),photo.id))}`);
+      const route=`/api/v1/projects/${command.projectId}/evidence${stage==='queued'?'':`/${photo.id}/${stage==='reserved'?'content':'attachment'}`}`;
+      const copies=journal.slice(start).filter(x=>x.path===route);assert.equal(copies.length,2,`${failure}/${stage} must replay exactly the interrupted stage`);assert.equal(copies[0].raw,copies[1].raw);
+      assert.equal(evidenceFiles.get(photo.id).metadata.attachment.attachedBy,actorUserId);
+    }
+  }],
+  ['evidence responses require exact declaration actor timestamps state target and status at every stage',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin);
+    for(const stage of ['queued','reserved','uploaded']){
+      const command={...event(n),requestId:crypto.randomUUID(),employeeId:crypto.randomUUID()},photo=await savePhoto(page,command),key=stage==='queued'?photo.reserve.requestId:stage==='reserved'?photo.id:photo.attach.requestId;
+      const wrong=[['id',crypto.randomUUID()],['projectId',crypto.randomUUID()],['employeeId',crypto.randomUUID()],['filename','other.png'],['contentType','application/pdf'],['sizeBytes',10],['sha256','f'.repeat(64)],['reservedBy',crypto.randomUUID()],['reservedAt','bad'],['state','unknown'],['onBehalfReason','invented']];
+      if(stage!=='queued')wrong.push(['state','pending'],['readyAt','bad'],['readyBy',null]);
+      if(stage==='uploaded')wrong.push(['attachment',null],['attachment',{target:{kind:'final_report',reportId:crypto.randomUUID()},attachedBy:actorUserId,attachedAt:'2027-01-15T00:00:00Z',onBehalfReason:null}],['attachment',{target:photo.target,attachedBy:crypto.randomUUID(),attachedAt:'2027-01-15T00:00:00Z',onBehalfReason:null}],['attachment',{target:photo.target,attachedBy:actorUserId,attachedAt:'bad',onBehalfReason:null}]);
+      for(const [field,value]of wrong){actions.set(key,{body:body=>({...body,[field]:value})});await page.evaluate(id=>queue.retry(id),photo.id);await page.evaluate(()=>queue.flush());const row=await page.evaluate(id=>queue.get(id),photo.id);assert.equal(row.stage,stage,field);assert.equal(row.state,'retry_wait',field);assert.equal(row.lastError,'ambiguous_response',field);assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.blob.size),photo.id),9);}
+      actions.set(key,{status:202});await page.evaluate(id=>queue.retry(id),photo.id);await page.evaluate(()=>queue.flush());assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),photo.id),'retry_wait');
+      actions.delete(key);await page.evaluate(id=>queue.retry(id),photo.id);await page.evaluate(()=>queue.flush());assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),photo.id),'synced');
+    }
+  }],
+  ['session changes after reservation stop upload and stale stage commit; auth failures retain Blob',async(engine,profile,origin,n)=>{
+    let {page,context}=await openPage(engine,profile,origin);const command=event(n),photo=await savePhoto(page,command),gate=barrier();actions.set(photo.reserve.requestId,{gate});
+    const flushing=page.evaluate(()=>queue.flush().then(()=>null,e=>e.code));await gate.entered;await page.evaluate(()=>{session={...session,token:'changed',generation:session.generation+1};});gate.release();assert.equal(await flushing,'session_changed');actions.delete(photo.reserve.requestId);
+    assert.equal(journal.filter(x=>x.path.includes(photo.id+'/content')).length,0);await closeContext(context);({page,context}=await openPage(engine,profile,origin));assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.stage),photo.id),'queued');
+    for(const [status,state]of [[401,'auth-required'],[403,'blocked'],[404,'blocked'],[429,'retry_wait'],[500,'retry_wait']]){
+      actions.set(photo.reserve.requestId,{status});await page.evaluate(id=>queue.retry(id),photo.id);await page.evaluate(()=>queue.flush());assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.state),photo.id),state);assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.blob.size),photo.id),9);
+    }
+    actions.delete(photo.reserve.requestId);await page.evaluate(id=>queue.retry(id),photo.id);await page.evaluate(()=>queue.flush());assert.equal(await page.evaluate(id=>queue.get(id).then(r=>r.stage),photo.id),'synced');
+  }],
+  ['known-local dependencies frozen IDs idempotence collisions and scope guards',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin);const command=event(n),photo=await savePhoto(page,command);
+    const results=await page.evaluate(async({command,photo})=>{
+      const blob=new Blob([new Uint8Array([137,80,78,71,13,10,26,10,42])],{type:'image/png'}),base={projectId:command.projectId,employeeId:command.employeeId,filename:'photo.png',contentType:'image/png',blob,dependencyRequestId:command.requestId,target:photo.target,fileId:photo.id,reserveRequestId:photo.reserve.requestId,attachRequestId:photo.attach.requestId};
+      const same=await queue.enqueueEvidence(base),bad=[];
+      for(const patch of [{filename:'changed.png'},{reserveRequestId:command.requestId},{attachRequestId:photo.reserve.requestId},{fileId:photo.attach.requestId},{projectId:crypto.randomUUID()},{employeeId:crypto.randomUUID()},{target:{kind:'execution_event',actorUserId:crypto.randomUUID(),requestId:command.requestId}},{target:{kind:'final_report',reportId:crypto.randomUUID()}},{dependencyRequestId:crypto.randomUUID()}])bad.push(await queue.enqueueEvidence({...base,...patch}).then(()=>null,e=>e.code));
+      const eventCollision=await queue.enqueueEvent({...command,requestId:photo.reserve.requestId,employeeId:crypto.randomUUID()}).then(()=>null,e=>e.code);
+      const {openOfflineQueue}=await import('/index.js'),original={...session},scopes=[];
+      for(const change of [{actorUserId:crypto.randomUUID()},{tenantId:crypto.randomUUID()},{audience:`${location.origin}/other/api/v1`}]){
+        session={...original,...change,generation:session.generation+1};const other=await openOfflineQueue({audience:change.audience??`${location.origin}/api/v1`,tenantId:session.tenantId,actorUserId:session.actorUserId,getSession:()=>session});
+        scopes.push({count:(await other.list()).length,file:await other.get(photo.id)});other.close();
+      }session=original;
+      const db=await new Promise((resolve,reject)=>{const r=indexedDB.open('helios-managed-offline');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);});
+      const stored=await new Promise((resolve,reject)=>{const tx=db.transaction(['meta','events','evidence']),rows=[];for(const name of ['meta','events','evidence']){const r=tx.objectStore(name).getAll();r.onsuccess=()=>rows.push(...r.result);}tx.oncomplete=()=>resolve(JSON.stringify(rows));tx.onabort=()=>reject(tx.error);});db.close();
+      if(stored.includes(session.token))throw new Error('bearer persisted');
+
+      session={...session,tenantId:crypto.randomUUID(),generation:session.generation+1};const auth=await queue.enqueueEvidence(base).then(()=>null,e=>e.code);return {same:same.id,bad,eventCollision,auth,scopes};
+    },{command,photo});assert.equal(results.same,photo.id);assert.ok(results.bad.every(Boolean));assert.equal(results.eventCollision,'local_identity_conflict');assert.equal(results.auth,'auth_required');assert.deepEqual(results.scopes,[{count:0,file:null},{count:0,file:null},{count:0,file:null}]);
+  }],
+  ['strict file declarations hash failures and atomic whole database 32-file count cap',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin),command=event(n);await page.evaluate(c=>queue.enqueueEvent(c),command);
+    const result=await page.evaluate(async c=>{
+      const base={projectId:c.projectId,employeeId:c.employeeId,filename:'photo.png',contentType:'image/png',blob:new Blob(['x'],{type:'image/png'}),dependencyRequestId:c.requestId,target:{kind:'execution_event',actorUserId:session.actorUserId,requestId:c.requestId}},bad=[];
+      for(const patch of [{blob:new Blob([],{type:'image/png'})},{blob:new Blob([new Uint8Array(8*1024*1024+1)],{type:'image/png'})},{contentType:'text/plain'},{blob:new Blob(['x'],{type:'image/jpeg'})},{filename:''},{filename:'bad\u0000.png'},{extra:undefined}])bad.push(await queue.enqueueEvidence({...base,...patch}).then(()=>null,e=>e.code));
+      const digest=crypto.subtle.digest;crypto.subtle.digest=async()=>{throw new Error('injected hash failure');};let hashFailed;try{hashFailed=await queue.enqueueEvidence(base).then(()=>false,()=>true);}finally{crypto.subtle.digest=digest;}
+      const initial=(await queue.list()).length;for(let i=0;i<32;i++)await queue.enqueueEvidence(base);
+      const overflow=await queue.enqueueEvidence(base).then(()=>null,e=>e.code);return {bad,hashFailed,initial,overflow,count:(await queue.list()).filter(r=>r.stage!=='event').length};
+    },command);assert.ok(result.bad.every(Boolean));assert.equal(result.hashFailed,true);assert.equal(result.initial,1);assert.equal(result.overflow,'capacity_exceeded');assert.equal(result.count,32);
+    const other=await page.evaluate(async ({command})=>{const {openOfflineQueue}=await import('/index.js');const original=queue;const actor=crypto.randomUUID();session={...session,actorUserId:actor};queue=await openOfflineQueue({audience:`${location.origin}/api/v1`,tenantId:session.tenantId,actorUserId:actor,getSession:()=>session});await queue.enqueueEvent(command);try{return await queue.enqueueEvidence({projectId:command.projectId,employeeId:command.employeeId,filename:'x.png',contentType:'image/png',blob:new Blob(['x'],{type:'image/png'}),dependencyRequestId:command.requestId,target:{kind:'execution_event',actorUserId:actor,requestId:command.requestId}}).then(()=>null,e=>e.code);}finally{queue.close();}},{command});assert.equal(other,'capacity_exceeded');
+  }],
+  ['maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin),command=event(n);await page.evaluate(c=>queue.enqueueEvent(c),command);
+    const result=await page.evaluate(async c=>{
+      const base={projectId:c.projectId,employeeId:c.employeeId,filename:'large.png',contentType:'image/png',blob:new Blob([new Uint8Array(8*1024*1024)],{type:'image/png'}),dependencyRequestId:c.requestId,target:{kind:'execution_event',actorUserId:session.actorUserId,requestId:c.requestId}};
+      for(let i=0;i<8;i++)await queue.enqueueEvidence(base);
+      const next={...c,requestId:crypto.randomUUID(),expectedVersion:1,previousEventId:c.requestId};const overflow=await queue.enqueueEvent(next,{evidence:[{...base,blob:new Blob(['x'],{type:'image/png'}),dependencyRequestId:next.requestId,target:{...base.target,requestId:next.requestId}}]}).then(()=>null,e=>e.code);
+      const absent=await queue.get(next.requestId),saved=await queue.enqueueEvent(next).then(()=>true,()=>false);return {overflow,absent,saved,count:(await queue.list()).filter(r=>r.stage!=='event').length};
+    },command);assert.deepEqual(result,{overflow:'capacity_exceeded',absent:null,saved:true,count:8});
+  }],
 ];
 if(suite==='evidence') tests.splice(0,tests.length,...evidenceTests);else if(suite==='mechanics')tests.push(...evidenceTests);
 let failed=0;
@@ -426,7 +568,7 @@ try {
     }
     console.log(`${engineName} ${suite}: ${passed}/${tests.length} passed`);
   }
-  assert.equal(fixtureErrors.length,0,'owned fixture must not hide protocol assertion failures');
+  assert.equal(fixtureErrors.length,0,`owned fixture must not hide protocol assertion failures: ${fixtureErrors.map(error=>error.message).join('; ')}`);
 } finally {
   for(const context of [...contexts]) await closeContext(context);
   server.closeAllConnections();await new Promise(resolve=>server.close(resolve));

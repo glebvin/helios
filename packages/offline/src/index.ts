@@ -1,22 +1,17 @@
+import {canonicalJSON, digest, prepareEvidence, saveEvidence, listEvidence, evidenceDependency, updateEvidence, validateEvidenceReply, cleanup, type EvidenceInput, type QueueEvidence, type StoredEvidence} from './evidence.js';
 import {uuid, object, instant, quantity, validateReply, createTransport, httpOutcome, retryDelay, type DeliveryOutcome, type Session} from './transport.js';
 import {NativeStore, OfflineQueueError, fail, type EventPayload, type StoredEvent, type QueueState} from './store.js';
 export {OfflineQueueError} from './store.js';
 export type {EventPayload, QueueState} from './store.js';
+export type {EvidenceInput, EvidenceTarget, QueueEvidence} from './evidence.js';
 export type {Session} from './transport.js';
 export type QueueOptions = {audience: string; tenantId: string; actorUserId: string; getSession: () => Session | null};
 export type QueueEvent = {id: string; requestId: string; employeeId: string; projectId: string; dependency: string | null;
   stage: 'event'; event: EventPayload; state: QueueState; attemptCount: number; nextAttemptAt: number | null; lastError: string | null};
-function stable(input: unknown): string {
-  if (input === null || typeof input === 'boolean' || typeof input === 'string') return JSON.stringify(input);
-  if (typeof input === 'number' && Number.isFinite(input)) return JSON.stringify(input);
-  if (Array.isArray(input)) return `[${Array.from(input, value => stable(value)).join(',')}]`;
-  const value = object(input);
-  return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stable(value[key])}`).join(',')}}`;
-}
 function text(value: unknown): void {if (typeof value !== 'string' || !value.trim() || value.length > 500) fail('invalid_text');}
 function validateEvent(input: unknown): {event: EventPayload; canonical: string} {
   // Stable JSON validation runs before cloning, so undefined/non-JSON cannot disappear silently.
-  const canonical = stable(input); const value = object(input);
+  const canonical = canonicalJSON(input); const value = object(input);
   const common = ['kind', 'requestId', 'employeeId', 'projectId', 'shiftId', 'expectedVersion', 'occurredAt', 'previousEventId', 'onBehalfReason'];
   for (const key of ['requestId', 'employeeId', 'projectId', 'shiftId']) uuid(value[key]);
   if (!Number.isSafeInteger(value.expectedVersion) || (value.expectedVersion as number) < 0) fail('invalid_version');
@@ -53,7 +48,7 @@ function audience(value: string): string {
   const path = url.pathname.replace(/\/$/, '');if (!path.endsWith('/api/v1')) fail('invalid_audience');
   return `${url.origin}${path}`;
 }
-/** Scope-bound immutable event facade. Evidence authoring/delivery is added by the separate Task3. */
+/** Scope-bound immutable execution and evidence facade. */
 export async function openOfflineQueue(options: QueueOptions) {
   const base = audience(options.audience), tenantId = uuid(options.tenantId), actorUserId = uuid(options.actorUserId);
   const scope = JSON.stringify([base, tenantId, actorUserId]);
@@ -77,8 +72,18 @@ export async function openOfflineQueue(options: QueueOptions) {
   const view = (row: StoredEvent): QueueEvent => ({id: row.id, requestId: row.event.requestId, employeeId: row.employeeId, projectId: row.projectId,
     dependency: row.event.previousEventId ?? null, stage: 'event', event: structuredClone(row.event), state: sending.has(row.id) ? 'sending' : row.state,
     attemptCount: row.attemptCount, nextAttemptAt: row.nextAttemptAt, lastError: row.lastError});
-  async function list(): Promise<QueueEvent[]> {return (await store.list(scope, epoch, capture())).map(view);}
-  async function get(id: string): Promise<QueueEvent | null> {const row = await store.get(scope, epoch, uuid(id), capture());return row ? view(row) : null;}
+  const fileView = (row: StoredEvidence): QueueEvidence => {
+    const {key,scope: storedScope,canonical,commandHash,...publicRow} = structuredClone(row);
+    return {...publicRow,requestId:row.reserve.requestId,dependency:row.dependencyRequestId,state:sending.has(row.id)?'sending':row.state};
+  };
+  async function list(): Promise<(QueueEvent | QueueEvidence)[]> {
+    const check=capture();const events=await store.list(scope,epoch,check),files=await listEvidence(store,scope,epoch,check);check();
+    return [...events.map(view),...files.map(fileView)];
+  }
+  async function get(id: string): Promise<QueueEvent | QueueEvidence | null> {
+    const check=capture(),key=uuid(id),row=await store.get(scope,epoch,key,check);if(row)return view(row);
+    const files=await listEvidence(store,scope,epoch,check);const file=files.find(row=>row.id===key);return file?fileView(file):null;
+  }
   const request = createTransport(base, tenantId, session, check => store.list(scope, epoch, check), aborters);
   async function record(row: StoredEvent, outcome: DeliveryOutcome, check: () => void, retryAfter: number | null = null) {
     const attempts = outcome.state === 'synced' ? 0 : row.attemptCount + 1;
@@ -87,13 +92,21 @@ export async function openOfflineQueue(options: QueueOptions) {
       nextAttemptAt: outcome.state === 'retry_wait' ? Date.now() + retryDelay(attempts, retryAfter) : null, lastError: outcome.code}, check);
     return outcome;
   }
+  async function recordFile(row:StoredEvidence,outcome:DeliveryOutcome,check:()=>void,retryAfter:number|null=null):Promise<StoredEvidence>{
+    const attempts=outcome.state==='synced'?0:row.attemptCount+1;
+    if(outcome.state==='retry_wait'&&attempts>=5)outcome={state:'blocked',code:'blocked_retry_exhausted'};
+    const stage=outcome.state==='synced'?(row.stage==='queued'?'reserved':row.stage==='reserved'?'uploaded':'synced'):row.stage;
+    const patch={stage,state:outcome.state==='synced'&&stage!=='synced'?'pending' as const:outcome.state,attemptCount:attempts,
+      nextAttemptAt:outcome.state==='retry_wait'?Date.now()+retryDelay(attempts,retryAfter):null,lastError:outcome.code};
+    await updateEvidence(store,scope,epoch,row,patch,check);return {...row,...patch};
+  }
   async function flush() {
     const check = capture();
     if (!navigator.locks) return {state: 'unsupported_lock' as const};
     return navigator.locks.request(`helios-offline:${scope}`, {mode: 'exclusive', ifAvailable: true}, async lock => {
       if (!lock) return {state: 'busy' as const};
-      check();const rows = await store.list(scope, epoch, check);
-      if (!rows.some(row => row.state === 'pending' || row.state === 'retry_wait')) return {state: 'idle' as const};
+      check();const rows = await store.list(scope, epoch, check), files = await listEvidence(store, scope, epoch, check);
+      if (![...rows,...files].some(row => row.state === 'pending' || row.state === 'retry_wait')) return {state: 'idle' as const};
       let identityFailure: DeliveryOutcome | null = null, identityDelay: number | null = null;
       try {
         const identity = await request('/me', check);identityDelay = identity.retryAfterMs;
@@ -113,6 +126,7 @@ export async function openOfflineQueue(options: QueueOptions) {
           seen.add(row.employeeId);
           if (['pending', 'retry_wait'].includes(row.state) && (row.nextAttemptAt === null || row.nextAttemptAt <= Date.now())) await record(row, identityFailure, check, identityDelay);
         }
+        for(const row of files)if(['pending','retry_wait'].includes(row.state)&&(row.nextAttemptAt===null||row.nextAttemptAt<=Date.now()))await recordFile(row,identityFailure,check,identityDelay);
         return {state: 'finished' as const, attempted: 0};
       }
       const heldEmployees = new Set<string>();let attempted = 0;
@@ -134,25 +148,51 @@ export async function openOfflineQueue(options: QueueOptions) {
         check();
         outcome = await record(row, outcome, check, retryAfter);
         if (outcome.state !== 'synced') heldEmployees.add(row.employeeId);
-        if (outcome.state === 'auth-required') break;
+        if (outcome.state === 'auth-required') return {state:'finished' as const,attempted};
+      }
+      for (let row of files) {
+        check();if(!['pending','retry_wait'].includes(row.state)||(row.nextAttemptAt!==null&&row.nextAttemptAt>Date.now()))continue;
+        if(!await evidenceDependency(store,scope,epoch,row,check))continue;
+        // Each durable stage is attempted at most once in this flush. A completed stage resets its retry counter.
+        while(row.stage!=='synced'){
+          sending.add(row.id);attempted++;let outcome:DeliveryOutcome,retryAfter:number|null=null;
+          try{
+            const kind=row.stage==='queued'?'reserve':row.stage==='reserved'?'upload':'attach';
+            const response=await request({kind,projectId:row.projectId,fileId:row.id},check,kind==='upload'?row.blob:JSON.stringify(kind==='reserve'?row.reserve:row.attach));
+            retryAfter=response.retryAfterMs;
+            if(response.status===(kind==='upload'?200:201)){validateEvidenceReply(response.body,row,actorUserId);outcome={state:'synced',code:null};}
+            else outcome=httpOutcome(response.status);
+          }catch(error){check();outcome={state:'retry_wait',code:error instanceof OfflineQueueError?'ambiguous_response':'network_error'};}
+          finally{sending.delete(row.id);}
+          check();row=await recordFile(row,outcome,check,retryAfter);
+          if(row.state==='auth-required')return {state:'finished' as const,attempted};
+          if(row.state!=='pending')break;
+        }
       }
       return {state: 'finished' as const, attempted};
     });
   }
   return {
-    async enqueueEvent(input: EventPayload): Promise<QueueEvent> {
-      const check = capture();const {event, canonical} = validateEvent(input);
-      const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));check();
-      const hash = Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2, '0')).join('');
-      return view(await store.enqueue(scope, epoch, event, canonical, hash, check));
+    async enqueueEvent(input: EventPayload, options: {evidence?: EvidenceInput[]} = {}): Promise<QueueEvent> {
+      const check = capture();const {event, canonical} = validateEvent(input);object(options,['evidence']);
+      if(options.evidence!==undefined&&(!Array.isArray(options.evidence)||options.evidence.length>32))fail('invalid_evidence');
+      const hash=await digest(new TextEncoder().encode(canonical));check();
+      const evidence:StoredEvidence[]=[];for(const input of options.evidence??[])evidence.push(await prepareEvidence(input,scope,actorUserId,check));
+      if(!evidence.length)return view(await store.enqueue(scope,epoch,event,canonical,hash,check));
+      const saved=await saveEvidence(store,scope,epoch,evidence,check,{event,canonical,commandHash:hash});return view(saved.event!);
+    },
+    async enqueueEvidence(input: EvidenceInput): Promise<QueueEvidence>{
+      const check=capture(),row=await prepareEvidence(input,scope,actorUserId,check);
+      return fileView((await saveEvidence(store,scope,epoch,[row],check)).evidence[0]);
     },
     list, get, status: list, flush,
     async retry(id: string): Promise<void> {
-      const check = capture(), row = await store.get(scope, epoch, uuid(id), check);
-      if (!row) fail('not_found');if (row.state === 'synced') fail('already_synced');
-      await store.update(scope, epoch, row.id, row.commandHash, {state: 'pending', attemptCount: 0, nextAttemptAt: null, lastError: null}, check);
+      const check = capture(),key=uuid(id),row = await store.get(scope, epoch, key, check);
+      if(row){if(row.state==='synced')fail('already_synced');await store.update(scope,epoch,row.id,row.commandHash,{state:'pending',attemptCount:0,nextAttemptAt:null,lastError:null},check);return;}
+      const files=await listEvidence(store,scope,epoch,check),file=files.find(row=>row.id===key);if(!file)fail('not_found');if(file.state==='synced')fail('already_synced');
+      await updateEvidence(store,scope,epoch,file,{stage:file.stage,state:'pending',attemptCount:0,nextAttemptAt:null,lastError:null},check);
     },
-    async cleanupAcknowledged(ids: string[]): Promise<void> {return store.cleanup(scope, epoch, ids.map(uuid), capture());},
+    async cleanupAcknowledged(ids: string[]): Promise<void> {return cleanup(store,scope,epoch,ids.map(uuid),capture());},
     async storageInfo({requestPersistence = false} = {}) {
       const check = capture();await store.list(scope, epoch, check);
       const manager = navigator.storage;
