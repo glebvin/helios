@@ -9,7 +9,9 @@
     header Permissions-Policy "camera=(self), geolocation=(self), microphone=()"
     header X-Robots-Tag "noindex, nofollow, noarchive"
     @hidden path_regexp hidden (^|/)\.
-    respond @hidden 404
+    handle @hidden {
+        respond 404
+    }
     handle /api/* {
         reverse_proxy api:4327
     }
