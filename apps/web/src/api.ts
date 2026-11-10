@@ -14,7 +14,7 @@ export type Desk = {
   organizations: { id: string; name: string; kind: string }[];
   projects: { id: string; name: string; address: string; latitude: number | null; longitude: number | null }[];
   files: { id: string; filename: string }[];
-  employees: { id: string; full_name: string; phone: string; user_id: string | null; document_number?: string | null }[];
+  employees: { id: string; full_name: string; phone: string; user_id: string | null; document_number?: string | null; role?: string | null }[];
   tasks: {
     id: string;
     title: string;
@@ -38,7 +38,10 @@ const sessionKey = "helios.session";
 
 export function loadSession(): Session | null {
   const raw = localStorage.getItem(sessionKey);
-  return raw ? (JSON.parse(raw) as Session) : null;
+  try {
+    const value = raw ? JSON.parse(raw) : null;
+    return value && typeof value.token === 'string' && typeof value.tenantId === 'string' && typeof value.role === 'string' ? value as Session : null;
+  } catch { localStorage.removeItem(sessionKey); return null; }
 }
 
 export function saveSession(session: Session | null) {

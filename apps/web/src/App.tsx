@@ -1,3 +1,4 @@
+import {JoinPage} from "./invitations";
 import { useEffect, useState } from "react";
 import { acceptReport, createTask, desk, loadSession, login, savePlace, saveSession, syncEvents, type Desk, type NewTask, type Session } from "./api";
 import { DirectorDesk, type Section } from "./director";
@@ -15,6 +16,7 @@ const entries = [
 
 function explain(code: string) {
   const text: Record<string, string> = {
+    auth_rate_limited: "Слишком много попыток входа. Подождите минуту и повторите.",
     unauthorized: "Неверная почта или пароль.",
     tenant_denied: "Сессия закончилась. Войдите снова.",
     role_denied: "Этой роли действие недоступно.",
@@ -31,9 +33,11 @@ function loadTheme(): "light" | "dark" {
 }
 
 export function App() {
+  const [joinCode,setJoinCode] = useState(() => /^\/join\/([^/]+)\/?$/.exec(location.pathname)?.[1] ?? null);
   const [session, setSession] = useState<Session | null>(() => loadSession());
   const [data, setData] = useState<Desk | null>(null);
   const [error, setError] = useState("");
+  const [entering, setEntering] = useState(false);
   const [pending, setPending] = useState(0);
   const [section, setSection] = useState<Section>("overview");
   const [view, setView] = useState<View>(() => homeView(loadSession()?.role ?? "director"));
@@ -52,7 +56,7 @@ export function App() {
   }
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || joinCode) return;
     void refresh(session).catch((reason: Error) => {
       if (reason.message === "unauthorized" || reason.message === "tenant_denied") {
         saveSession(null);
@@ -61,7 +65,15 @@ export function App() {
       }
       setError(explain(reason.message));
     });
-  }, [session]);
+  }, [session, joinCode]);
+
+  useEffect(() => {
+    if (!session || joinCode) return;
+    const update = () => { if (document.visibilityState === 'visible') void refresh(session).catch(() => {}); };
+    window.addEventListener('focus', update);
+    const timer = setInterval(update, 15000);
+    return () => { window.removeEventListener('focus', update); clearInterval(timer); };
+  }, [session, joinCode]);
 
   async function flush(current: Session) {
     const events = pendingFor(current.tenantId, current.userId);
@@ -93,6 +105,8 @@ export function App() {
   }
 
   async function enter(email: string, password: string) {
+    if (entering) return;
+    setEntering(true);
     try {
       const next = await login(email, password);
       const chosen = homeView(next.role);
@@ -102,7 +116,7 @@ export function App() {
       setError("");
     } catch (reason) {
       setError(explain(reason instanceof Error ? reason.message : "Не удалось войти"));
-    }
+    } finally { setEntering(false); }
   }
 
   function switchView(next: View) {
@@ -119,7 +133,7 @@ export function App() {
         method: "POST",
         headers: { authorization: `Bearer ${session.token}`, "x-tenant-id": session.tenantId },
       }).then(async (response) => {
-        if (!response.ok) throw new Error((await response.json()).error ?? "logout_failed");
+        if (!response.ok && response.status !== 401 && response.status !== 403) throw new Error((await response.json()).error ?? "logout_failed");
       });
     } catch (reason) {
       setError(explain(reason instanceof Error ? reason.message : "Сервер не подтвердил выход"));
@@ -130,6 +144,10 @@ export function App() {
     setData(null);
   }
 
+  if (joinCode) {
+    if (session) return <main className="login"><div><Mark/><h1>Вы уже вошли</h1><p>Сейчас открыт аккаунт {session.email}. Выйдите, чтобы зарегистрировать другого человека по приглашению.</p><button className="fill" onClick={() => void logout()}>Выйти из аккаунта</button><a href="/">Вернуться в кабинет</a>{error ? <p role="alert">{error}</p> : null}</div></main>;
+    return <JoinPage code={joinCode} onEntered={next => { setJoinCode(null); setSession(next); setView(homeView(next.role)); setSection(accessOf(homeView(next.role)).sections[0]?.id ?? 'overview'); setError(''); }}/>;
+  }
   if (!session) {
     return (
       <main className="login">
@@ -149,10 +167,10 @@ export function App() {
               <small>{item.hint}</small>
             </button>
           )) : null}
-          <label className="field"><span>Почта</span><input name="email" defaultValue={demoCabinets ? "director@pilot.helios" : ""} autoComplete="username" /></label>
-          <label className="field"><span>Пароль</span><input name="password" type="password" defaultValue={demoCabinets ? "pilot-director" : ""} autoComplete="current-password" /></label>
-          {error ? <div className="alert">{error}</div> : null}
-          <button className="fill" type="submit">Войти</button>
+          <label className="field"><span>Почта</span><input name="email" required maxLength={320} defaultValue={demoCabinets ? "director@pilot.helios" : ""} autoComplete="username" /></label>
+          <label className="field"><span>Пароль</span><input name="password" required maxLength={1024} type="password" defaultValue={demoCabinets ? "pilot-director" : ""} autoComplete="current-password" /></label>
+          {error ? <div className="alert" role="alert">{error}</div> : null}
+          <button className="fill" type="submit" disabled={entering}>{entering ? "Входим…" : "Войти"}</button>
           <button className="ghost" type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? "Светлая тема" : "Тёмная тема"}</button>
         </form>
       </main>

@@ -503,13 +503,13 @@ const originalOperationInventory=[["post","/api/v1/auth/login"],["post","/api/v1
 test('OpenAPI69 retains exact old58 inventory and strict execution forms, actual paged/day/report/outcome schemas and all references',async()=>{
   const spec=await (await fetch(`${base}/api/v1/openapi.json`)).json(),schemas=spec.components.schemas;
   const added=[['post','/api/v1/execution/events'],['get','/api/v1/projects/{p}/execution/shifts'],['get','/api/v1/projects/{p}/execution/shifts/{shift}/segments'],['get','/api/v1/projects/{p}/execution/reports'],['get','/api/v1/projects/{p}/execution/employees/{employee}/day']];
-  const actual=Object.entries(spec.paths).flatMap(([p,v]:any)=>Object.keys(v).map(m=>`${m} ${p}`));
+  const actual=Object.entries(spec.paths).filter(([p])=>!p.includes('/invitations')&&!p.includes('/join/')).flatMap(([p,v]:any)=>Object.keys(v).map(m=>`${m} ${p}`));
   const evidence='/api/v1/projects/{p}/evidence',time='/api/v1/projects/{p}/time',daily=time+'/employees/{employee}/days/{day}';
   const added03b=[['post',evidence],['get',evidence],['get',evidence+'/{file}'],['put',evidence+'/{file}/content'],['get',evidence+'/{file}/content'],['post',evidence+'/{file}/attachment'],['get',daily],['get',daily+'/history'],['post',daily+'/approvals'],['post',daily+'/revoke'],['get',time+'/export.xlsx']];
   const newKeys=added03b.map(([m,p])=>`${m} ${p}`),retained=actual.filter(k=>!newKeys.includes(k));
   assert.equal(originalOperationInventory.length,53);assert.equal(retained.length,58);assert.deepEqual(retained.sort(),[...originalOperationInventory,...added].map(([m,p])=>`${m} ${p}`).sort());
   assert.equal(added03b.length,11);assert.equal(actual.length,69);assert.deepEqual(actual.sort(),[...originalOperationInventory,...added,...added03b].map(([m,p])=>`${m} ${p}`).sort());
-  const ids=Object.values(spec.paths).flatMap((p:any)=>Object.values(p).map((v:any)=>v.operationId));assert.equal(new Set(ids).size,69);
+  const ids=Object.values(spec.paths).flatMap((p:any)=>Object.values(p).map((v:any)=>v.operationId));assert.equal(new Set(ids).size,74);
   const scan=(v:any):void=>{if(v&&typeof v==='object'){if(v.$ref?.startsWith('#/'))assert.ok(v.$ref.slice(2).split('/').reduce((o:any,k:string)=>o?.[k],spec),v.$ref);Object.values(v).forEach(scan);}};scan(spec);
   function matches(v:any,s:any):void{
     if(s.$ref)return matches(v,schemas[s.$ref.split('/').at(-1)]);

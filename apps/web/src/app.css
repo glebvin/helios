@@ -994,3 +994,13 @@ h1, h2, h3, p { margin: 0; }
   .dialog { animation: none; }
   .fill:active, .ghost:active, .roles button:active, .tabs button:active { transform: none; }
 }
+
+/* Invitations use the existing form and panel system. */
+.invite-list { margin-top: 24px; padding: 20px; }
+.invite-list h2 { margin: 0; font-size: 18px; }
+.invite-row { padding: 16px 0; border-bottom: 1px solid var(--line, #dde2e8); }
+.invite-row input { width: 100%; min-width: 0; }
+.invite-code { letter-spacing: .12em; overflow-wrap: anywhere; }
+.invite-list .panel-tools { flex-wrap: wrap; }
+.login form a, .login > div a { display: block; margin-top: 20px; }
+.login > div { width: min(100%, 440px); padding: 24px; }

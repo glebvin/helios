@@ -35,6 +35,9 @@ import {EvidenceController} from './evidence.controller.js';
 import {EvidenceService} from './evidence.service.js';
 import {EvidenceStorage} from './evidence-storage.js';
 
+import {InvitationsService} from "./invitations.service.js";
+import {InvitationsController} from "./invitations.controller.js";
+
 export const APP_POOL = "APP_POOL";
 export const BOSS = "BOSS";
 
@@ -120,7 +123,7 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [AuthController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [InvitationsController, AuthController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
   providers: [
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
@@ -138,6 +141,7 @@ class WorkforceController {
     {provide:TimeService,useFactory:(pool:Pool)=>new TimeService(pool),inject:[APP_POOL]},
     EvidenceStorage,
     {provide:EvidenceService,useFactory:(pool:Pool,storage:EvidenceStorage)=>new EvidenceService(pool,storage),inject:[APP_POOL,EvidenceStorage]},
+    {provide:InvitationsService,useFactory:(pool:Pool)=>new InvitationsService(pool),inject:[APP_POOL]},
     TenantGuard,
   ],
 })

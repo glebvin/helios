@@ -1,14 +1,13 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useRef, useState } from "react";
-import type { Desk } from "./api";
+import {InvitationDialog,InvitationList} from "./invitations";
+import type { Desk, Session } from "./api";
 import { Dialog } from "./dialog";
 import { minutesLabel, useBook, type Book } from "./book";
 import { DeskBadge, DeskCrumbs, DeskEmpty, DeskSelect, DeskTimeline, FluidTabs, SmoothButton, StatGrid } from "./kit";
 import { amount, clock, laneOf, laneTone, permitState, personName, statusLabel, todayKey, type Admission } from "./model";
 import type { PeopleTab } from "./roles";
 
-export type WorkerInvite = { id: string; name: string; phone: string; document: string };
-export type ForemanInvite = { id: string; name: string; phone: string };
 export type PersonFile = { id: string; name: string; size: number; url: string };
 export type PersonCard = { employeeId: string; photoUrl?: string; born: string; trade: string; note: string; files: PersonFile[] };
 
@@ -28,8 +27,9 @@ const peopleTabLabels: { id: Tab; label: string }[] = [
 ];
 
 export function People({
-  data, onOpenTask, inviteWorker = false, inviteForeman = false, peopleTabs = ["people"], admitStep = "none", dayStep = "none", canExport = false, invites = [], onInvite, foremen = [], onInviteForeman, admissions = [], onAdmit, cards = [], onCard,
+  session, data, onOpenTask, inviteWorker = false, inviteForeman = false, peopleTabs = ["people"], admitStep = "none", dayStep = "none", canExport = false, admissions = [], onAdmit, cards = [], onCard,
 }: {
+  session: Session;
   data: Desk;
   onOpenTask: (taskId: string) => void;
   inviteWorker?: boolean;
@@ -38,10 +38,6 @@ export function People({
   admitStep?: "prepare" | "none";
   dayStep?: "prepare" | "close" | "none";
   canExport?: boolean;
-  invites?: WorkerInvite[];
-  onInvite?: (invite: WorkerInvite) => void;
-  foremen?: ForemanInvite[];
-  onInviteForeman?: (invite: ForemanInvite) => void;
   admissions?: Admission[];
   onAdmit?: (employeeId: string, until: string) => void;
   cards?: PersonCard[];
@@ -74,9 +70,7 @@ export function People({
   }
 
   const needle = query.trim().toLowerCase();
-  const people = data.employees.filter((item) => `${item.full_name} ${item.phone}`.toLowerCase().includes(needle));
-  const pending = invites.filter((item) => `${item.name} ${item.phone}`.toLowerCase().includes(needle));
-  const pendingForemen = foremen.filter((item) => `${item.name} ${item.phone}`.toLowerCase().includes(needle));
+  const people = data.employees.filter(item => item.role !== "master").filter((item) => `${item.full_name} ${item.phone}`.toLowerCase().includes(needle));
   const onShift = new Set(data.shifts.filter((shift) => shift.status === "open" && shift.employee_id).map((shift) => shift.employee_id));
   const review = new Set(data.shifts.filter((shift) => shift.clock_requires_review && shift.employee_id).map((shift) => shift.employee_id));
   const contractors = data.organizations.filter((item) => item.kind !== "own");
@@ -98,26 +92,18 @@ export function People({
       {tab === "people" ? (
         <>
           <StatGrid items={[
-            { value: String(data.employees.length + invites.length), label: "работников" },
+            { value: String(data.employees.filter(item => item.role !== "master").length), label: "работников" },
             { value: String(onShift.size), label: "на смене" },
             { value: String(review.size), label: "отметки на проверке" },
           ]} />
           <input className="object-search" type="search" value={query} placeholder="Найти работника" aria-label="Найти работника" onChange={(event) => setQuery(event.target.value)} />
-          {people.length === 0 && pending.length === 0 ? <DeskEmpty title={needle ? "Такого работника нет" : "Работников пока нет"} description={needle ? "Проверьте имя или телефон." : "Пригласите работника. Он отмечает смену и сдаёт объём."} /> : (
+          {people.length === 0 ? <DeskEmpty title={needle ? "Такого работника нет" : "Работников пока нет"} description={needle ? "Проверьте имя или телефон." : "Пригласите работника. Он отмечает смену и сдаёт объём."} /> : (
             <div className="sheet-wrap">
               <table className="sheet">
                 <thead>
                   <tr><th>Сотрудник</th><th>Телефон</th><th>Документ</th><th>Смена</th></tr>
                 </thead>
                 <tbody>
-                  {pending.map((item) => (
-                    <tr key={item.id}>
-                      <td><span className="who"><i>{initials(item.name)}</i><b>{item.name}</b></span></td>
-                      <td>{item.phone}</td>
-                      <td>{item.document || "—"}</td>
-                      <td><DeskBadge tone="warn">Приглашён</DeskBadge></td>
-                    </tr>
-                  ))}
                   {people.map((item) => (
                     <tr className="is-link" key={item.id} tabIndex={0} onClick={() => setPersonId(item.id)} onKeyDown={(event) => { if (event.key === "Enter") setPersonId(item.id); }}>
                       <td><span className="who"><i>{initials(item.full_name)}</i><b>{item.full_name}</b></span></td>
@@ -130,34 +116,11 @@ export function People({
               </table>
             </div>
           )}
-          <p className="quiet">Приглашение работника остаётся на этой странице, пока сервер его не принимает.</p>
+          <p className="quiet">После регистрации человек появится в списке. Допуск к работе и назначение оформляются отдельно.</p>
         </>
       ) : null}
-      {tab === "foremen" ? (
-        <>
-          {pendingForemen.length === 0 ? <DeskEmpty title="Приглашений нет" description="Пригласите прораба. Он ведёт задания и приёмку, исполнителем задания не становится." /> : (
-            <div className="sheet-wrap">
-              <table className="sheet">
-                <thead>
-                  <tr><th>Имя</th><th>Телефон</th><th>Состояние</th></tr>
-                </thead>
-                <tbody>
-                  {pendingForemen.map((item) => (
-                    <tr key={item.id}>
-                      <td><span className="who"><i>{initials(item.name)}</i><b>{item.name}</b></span></td>
-                      <td>{item.phone}</td>
-                      <td><DeskBadge tone="warn">Приглашён</DeskBadge></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          <p className="quiet">Прораб, который уже входит в кабинет, здесь не появится, пока сервер не отдаёт список входов. Приглашение остаётся в браузере. Исполнителем задания прораб не становится.</p>
-        </>
-      ) : null}
-      {inviting ? <InviteDialog title="Пригласить работника" note="Заявка видна на этой странице. Вход человек получит, когда сервер начнёт отправлять приглашения." onClose={() => setInviting(false)} onInvite={(item) => { onInvite?.(item); setInviting(false); }} /> : null}
-      {invitingForeman ? <InviteDialog title="Пригласить прораба" note="Прораб появится на вкладке «Прорабы». Вход он получит, когда сервер начнёт отправлять приглашения. Исполнителем задания он не становится." onClose={() => setInvitingForeman(false)} onInvite={(item) => { onInviteForeman?.({ id: item.id, name: item.name, phone: item.phone }); setInvitingForeman(false); }} /> : null}
+      {(tab === 'people' && inviteWorker || tab === 'foremen' && inviteForeman) ? <InvitationList key={`${tab}-${inviting}-${invitingForeman}`} session={session} projectId={data.projectId} role={tab==='foremen'?'master':'worker'}/> : null}
+      {inviting || invitingForeman ? <InvitationDialog session={session} projectId={data.projectId} organizationId={data.organizations.find(o=>o.kind==='own')?.id ?? ''} role={invitingForeman?'master':'worker'} onClose={()=>{setInviting(false);setInvitingForeman(false);}}/> : null}
       {tab === "crews" ? <DeskEmpty title="Бригад ещё нет" description="Состав и загрузка появятся, когда бригаду заведут. Сейчас люди числятся без бригады." /> : null}
       {tab === "contractors" ? (
         contractors.length === 0 ? <DeskEmpty title="Подрядчиков нет" description="В кабинете одна своя организация. Чужие компании сюда не попадают." /> : (
@@ -171,30 +134,6 @@ export function People({
   );
 }
 
-function InviteDialog({ title, note, onClose, onInvite }: { title: string; note: string; onClose: () => void; onInvite: (invite: WorkerInvite) => void }) {
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [documentNumber, setDocumentNumber] = useState("");
-  const [error, setError] = useState("");
-  return (
-    <Dialog title={title} onClose={onClose}>
-      <form onSubmit={(event) => {
-        event.preventDefault();
-        if (!name.trim()) { setError("Напишите имя."); return; }
-        if (!phone.trim()) { setError("Укажите телефон."); return; }
-        onInvite({ id: crypto.randomUUID(), name: name.trim(), phone: phone.trim(), document: documentNumber.trim() });
-      }}>
-        <label className="field"><span>Имя</span><input value={name} onChange={(event) => { setName(event.target.value); setError(""); }} /></label>
-        <label className="field"><span>Телефон</span><input value={phone} inputMode="tel" onChange={(event) => { setPhone(event.target.value); setError(""); }} /></label>
-        <label className="field"><span>Документ</span><input value={documentNumber} onChange={(event) => setDocumentNumber(event.target.value)} /></label>
-        <p className="quiet form-note">{note}</p>
-        {error ? <p role="alert">{error}</p> : null}
-        <button className="fill" type="submit">Пригласить</button>
-        <button className="ghost" type="button" onClick={onClose}>Закрыть</button>
-      </form>
-    </Dialog>
-  );
-}
 
 function Timesheet({ data, dayStep, onOpen }: { data: Desk; dayStep: "prepare" | "close" | "none"; onOpen: (id: string) => void }) {
   const { book, update } = useBook();

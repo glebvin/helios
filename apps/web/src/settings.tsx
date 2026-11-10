@@ -1,21 +1,11 @@
 import type { Desk, Session } from "./api";
 import { DeskBadge, DeskEmpty, SmoothButton } from "./kit";
-import type { ForemanInvite, WorkerInvite } from "./people";
-
-const seats = [
-  { role: "РП", name: "Анна Соколова", email: "director@pilot.helios" },
-  { role: "Прораб", name: "Павел Орлов", email: "master@pilot.helios" },
-  { role: "Рабочий", name: "Иван Петров", email: "worker@pilot.helios" },
-];
-
 export function Settings({
   session,
   data,
   theme,
   onTheme,
   onLogout,
-  invites = [],
-  foremen = [],
   viewLabel,
   viewHint,
   showAccess,
@@ -26,8 +16,6 @@ export function Settings({
   theme: string;
   onTheme: () => void;
   onLogout: () => void;
-  invites?: WorkerInvite[];
-  foremen?: ForemanInvite[];
   viewLabel: string;
   viewHint: string;
   showAccess: boolean;
@@ -67,23 +55,7 @@ export function Settings({
         </div>
         {showAccess ? <section className="panel">
           <h2>Кто входит</h2>
-          <p className="quiet person-note">Три живых входа. Остальные роли в шапке смотрят кабинет Анны и видят только свои разделы. Сервер при этом видит её вход.</p>
-          <div className="sheet-wrap">
-            <table className="sheet">
-              <thead>
-                <tr><th>Кто</th><th>Роль</th><th>Почта</th></tr>
-              </thead>
-              <tbody>
-                {seats.map((seat) => (
-                  <tr key={seat.email}>
-                    <td><b>{seat.name}</b>{session.email === seat.email ? " · сейчас" : ""}</td>
-                    <td>{seat.role}</td>
-                    <td>{seat.email}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <p className="quiet person-note">Каждый человек входит со своей почтой и паролем. Роль и доступ к объекту проверяются сервером. Одноразовые приглашения создаются в разделе «Люди».</p>
           <h2 className="person-note">Карточки сотрудников</h2>
           {data.employees.length === 0 ? <DeskEmpty title="Карточек нет" description="Работник появится здесь, когда его заведут в кабинет." /> : (
             <ul className="permit">
@@ -95,12 +67,7 @@ export function Settings({
               ))}
             </ul>
           )}
-          {invites.length + foremen.length === 0 ? <p className="quiet person-note">Новых приглашений нет. Работника зовут на вкладке «Работники», прораба — на вкладке «Прорабы».</p> : (
-            <ul className="permit">
-              {foremen.map((item) => <li key={item.id}><span>{item.name}</span><DeskBadge tone="warn">прораб, ждёт вход</DeskBadge></li>)}
-              {invites.map((item) => <li key={item.id}><span>{item.name}</span><DeskBadge tone="warn">работник, ждёт вход</DeskBadge></li>)}
-            </ul>
-          )}
+          <p className="quiet person-note">Действующие ссылки и принятые приглашения — на вкладках «Работники» и «Прорабы» в разделе «Люди».</p>
           <dl className="kv person-note">
             <div><dt>Вид</dt><dd>{viewLabel}</dd></div>
             <div><dt>Объект</dt><dd>{data.projects[0]?.name ?? "—"}</dd></div>

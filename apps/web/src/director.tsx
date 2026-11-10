@@ -10,7 +10,7 @@ import { Objects } from "./objects";
 import { Quality } from "./quality";
 import { Settings } from "./settings";
 import { Mark } from "./mark";
-import { People, type ForemanInvite, type PersonCard, type WorkerInvite } from "./people";
+import { People, type PersonCard } from "./people";
 import { DayFlow } from "./dayflow";
 import { RoleSwitch, accessOf, roleTitle, serverRights, type Section, type View } from "./roles";
 import { minutesLabel, useBook } from "./book";
@@ -85,8 +85,6 @@ export function DirectorDesk({
     return [];
   });
 
-  const [invites, setInvites] = useState<WorkerInvite[]>([]);
-  const [foremen, setForemen] = useState<ForemanInvite[]>([]);
   const [admissions, setAdmissions] = useState<Admission[]>([]);
   const [cards, setCards] = useState<PersonCard[]>([]);
   const [remarks, setRemarks] = useState<Remark[]>([]);
@@ -96,8 +94,8 @@ export function DirectorDesk({
   const canCreate = !preview && rights.createTask && access.createTask;
   const canAccept = !preview && rights.acceptReport && access.acceptVolume;
   const canPlace = !preview && rights.savePlace && access.editPlace;
-  const canInviteWorker = !preview && access.inviteWorker;
-  const canInviteForeman = !preview && access.inviteForeman;
+  const canInviteWorker = !preview && ["director","master"].includes(session.role) && access.inviteWorker;
+  const canInviteForeman = !preview && session.role === "director" && access.inviteForeman;
   const canRecordSupply = !preview && access.recordSupply;
   const canDraftAct = !preview && access.draftAct;
   const canPrepareAdmit = !preview && access.prepareAdmit;
@@ -182,6 +180,7 @@ export function DirectorDesk({
           {page === "people" ? (
             <People
               key={view}
+              session={session}
               data={data}
               onOpenTask={(id) => { setOpenTask({ id, token: Date.now() }); onSection("tasks"); }}
               inviteWorker={canInviteWorker}
@@ -190,10 +189,6 @@ export function DirectorDesk({
               admitStep={canPrepareAdmit ? "prepare" : "none"}
               dayStep={canPrepareDay ? "prepare" : canCloseDay ? "close" : "none"}
               canExport={access.exportPeople}
-              invites={invites}
-              onInvite={(item) => setInvites((list) => [...list, item])}
-              foremen={foremen}
-              onInviteForeman={(item) => setForemen((list) => [...list, item])}
               admissions={admissions}
               onAdmit={(employeeId, until) => setAdmissions((list) => [...list.filter((item) => item.employeeId !== employeeId), { employeeId, until }])}
               cards={cards}
@@ -237,7 +232,7 @@ export function DirectorDesk({
             />
           ) : null}
           {page === "documents" ? <Documents data={data} canConfirm={false} canDraft={canDraftAct} checklistNote={access.checklistNote} /> : null}
-          {page === "settings" ? <Settings session={session} data={data} theme={theme} onTheme={onTheme} onLogout={onLogout} invites={invites} foremen={foremen} viewLabel={roleTitle(session.role)} viewHint={preview ? access.hint : "Этот вход видит только свои серверные действия."} showAccess={!preview && access.showAccess} slim={access.settingsSlim || preview} /> : null}
+          {page === "settings" ? <Settings session={session} data={data} theme={theme} onTheme={onTheme} onLogout={onLogout} viewLabel={roleTitle(session.role)} viewHint={preview ? access.hint : "Этот вход видит только свои серверные действия."} showAccess={!preview && access.showAccess} slim={access.settingsSlim || preview} /> : null}
         </PageShift>
       </div>
     </div>

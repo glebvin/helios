@@ -34,6 +34,15 @@ type ClientEvent = {
   payload: { taskId?: string; employeeId?: string; quantity?: string };
 };
 
+const deskEmployeeVisible = `($1 = 'director' OR e.user_id=$2 OR ($1 IN ('master','pto') AND EXISTS (
+  SELECT 1 FROM project_memberships own_pm JOIN project_memberships person_pm
+    ON person_pm.tenant_id=own_pm.tenant_id AND person_pm.project_id=own_pm.project_id
+  WHERE own_pm.user_id=$2 AND own_pm.status='active' AND person_pm.user_id=e.user_id AND person_pm.status='active'
+)) OR ($1 IN ('master','pto') AND EXISTS (
+  SELECT 1 FROM employee_project_assignments a JOIN project_memberships pm ON pm.tenant_id=a.tenant_id AND pm.project_id=a.project_id
+  WHERE a.employee_id=e.id AND a.status='active' AND pm.user_id=$2 AND pm.status='active'
+)))`;
+
 const sampleRings = [
   { label: "План", current: 72, target: 90, unit: "%" },
   { label: "Простои", current: 6, target: 20, unit: "ч" },
@@ -63,8 +72,9 @@ export class WorkforceService {
   desk(actor: Actor) {
     return this.with(actor, async (client) => {
       const employees = await client.query(
-        `SELECT id, full_name, phone, document_number, user_id FROM employees
-         WHERE ($1 <> 'worker' OR user_id = $2) ORDER BY full_name`,
+        `SELECT e.id, e.full_name, e.phone, e.document_number, e.user_id,
+           (SELECT role FROM memberships WHERE user_id=e.user_id) AS role FROM employees e
+         WHERE ${deskEmployeeVisible} ORDER BY e.full_name`,
         [actor.role, actor.userId],
       );
       const tasks = await client.query(
@@ -96,7 +106,7 @@ export class WorkforceService {
       const cabinet = await client.query(`SELECT name FROM tenants WHERE id = $1`, [actor.tenantId]);
       const organizations = await client.query(`SELECT id, name, kind FROM organizations ORDER BY name`);
       const projects = await client.query(
-        `SELECT id, name, address, latitude, longitude FROM projects ORDER BY name`,
+        `SELECT id, name, address, latitude, longitude FROM projects p WHERE $1='director' OR EXISTS (SELECT 1 FROM project_memberships pm WHERE pm.project_id=p.id AND pm.user_id=$2 AND pm.status='active') ORDER BY name`, [actor.role,actor.userId],
       );
       const files =
         actor.role === "worker"
@@ -127,9 +137,9 @@ export class WorkforceService {
       const updated = await client.query(
         `UPDATE projects
          SET address = $2, latitude = $3, longitude = $4
-         WHERE id = $1
+         WHERE id = $1 AND ($5='director' OR EXISTS (SELECT 1 FROM project_memberships pm WHERE pm.project_id=projects.id AND pm.user_id=$6 AND pm.status='active'))
          RETURNING id, name, address, latitude, longitude`,
-        [projectId, place.address, place.latitude, place.longitude],
+        [projectId, place.address, place.latitude, place.longitude,actor.role,actor.userId],
       );
       if (!updated.rows[0]) throw httpError(404, "not_found");
       await this.audit(client, actor, "project_place_saved", "project", projectId, "ok");
@@ -140,8 +150,8 @@ export class WorkforceService {
   async employee(actor: Actor, id: string) {
     uuid(id);
     const row = await this.with(actor, async (client) => {
-      const result = await client.query(`SELECT id, full_name, phone FROM employees
-        WHERE id = $1 AND ($2 <> 'worker' OR user_id = $3)`, [id, actor.role, actor.userId]);
+      const result = await client.query(`SELECT e.id, e.full_name, e.phone FROM employees e
+        WHERE ${deskEmployeeVisible} AND e.id = $3`, [actor.role, actor.userId, id]);
       return result.rows[0] ?? null;
     });
     if (!row) throw httpError(404, "not_found");

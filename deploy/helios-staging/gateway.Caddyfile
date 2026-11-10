@@ -5,7 +5,7 @@
 :8080 {
     encode gzip
     header X-Content-Type-Options nosniff
-    header Referrer-Policy same-origin
+    header Referrer-Policy no-referrer
     header Permissions-Policy "camera=(self), geolocation=(self), microphone=()"
     header X-Robots-Tag "noindex, nofollow, noarchive"
     @hidden path_regexp hidden (^|/)\.
