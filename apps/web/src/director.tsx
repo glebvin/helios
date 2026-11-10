@@ -11,6 +11,7 @@ import { Quality } from "./quality";
 import { Settings } from "./settings";
 import { Mark } from "./mark";
 import { People, type ForemanInvite, type PersonCard, type WorkerInvite } from "./people";
+import { DayFlow } from "./dayflow";
 import { RoleSwitch, accessOf, roleTitle, serverRights, type Section, type View } from "./roles";
 import { minutesLabel, useBook } from "./book";
 import { amount, dayTasks, laneOf, laneTone, personName, progress, statusLabel, todayKey, type Admission, type Lane, type Remark } from "./model";
@@ -142,6 +143,8 @@ export function DirectorDesk({
         {preview ? <p className="quiet preview-note">Просмотр кабинета: {access.hint} Вход не меняется: {session.name}, {roleTitle(session.role)}. Запись от выбранного вида не выполняется.</p> : null}
         <PageShift pageKey={page}>
           {page === "overview" ? (
+            <>
+            {preview ? null : <DayFlow session={session} />}
             <Overview
               title={access.overviewTitle}
               project={project}
@@ -158,6 +161,7 @@ export function DirectorDesk({
               openLabel={access.sections.some((item) => item.id === "mine") ? "Открыть дела" : "К приёмке"}
               onOpen={() => onSection(access.sections.some((item) => item.id === "mine") ? "mine" : "quality")}
             />
+            </>
           ) : null}
           {page === "mine" ? (
             <Inbox

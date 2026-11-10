@@ -5,7 +5,7 @@ import { AllExceptionsFilter } from "./http.js";
 
 const app = await NestFactory.create(AppModule);
 app.enableCors({
-  origin: ["http://127.0.0.1:5173", "http://localhost:5173"],
+  origin: ["http://127.0.0.1:5173", "http://localhost:5173", "http://127.0.0.1:5184", "http://localhost:5184"],
   allowedHeaders: ["content-type", "authorization", "x-tenant-id"],
 });
 app.useGlobalFilters(new AllExceptionsFilter());

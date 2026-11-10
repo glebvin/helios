@@ -112,7 +112,19 @@ export function App() {
     setSection((current) => (access.sections.some((item) => item.id === current) ? current : access.sections[0]?.id ?? "overview"));
   }
 
-  function logout() {
+  async function logout() {
+    if (!session) return;
+    try {
+      await fetch("/api/v1/auth/logout", {
+        method: "POST",
+        headers: { authorization: `Bearer ${session.token}`, "x-tenant-id": session.tenantId },
+      }).then(async (response) => {
+        if (!response.ok) throw new Error((await response.json()).error ?? "logout_failed");
+      });
+    } catch (reason) {
+      setError(explain(reason instanceof Error ? reason.message : "Сервер не подтвердил выход"));
+      return;
+    }
     saveSession(null);
     setSession(null);
     setData(null);

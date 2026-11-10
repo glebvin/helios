@@ -1,0 +1,39 @@
+{
+  "baseCommit": "4b37481",
+  "sourceBranch": "codex/helios-integration-20261110",
+  "capturedAt": "2026-11-10",
+  "files": [
+    {
+      "path": "apps/api/src/main.ts",
+      "sha256": "16be6553d0ac18e1ddba44177f5e9c7eef014126be196771170f2818f105e924"
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "sha256": "4d56d976231b98823642226364f838419b756b73b1c8ce2b4325bc3110f2ca3e"
+    },
+    {
+      "path": "apps/web/src/api.ts",
+      "sha256": "b1f529308bdc0abf5f9d5106eee5b9e42ef0928dec5f721bd55bcd4f96110203"
+    },
+    {
+      "path": "apps/web/src/director.tsx",
+      "sha256": "8d5bdacce4bd4a0c26a775b5ade2d8db94036a569f56c6c0fd567988a5544e9f"
+    },
+    {
+      "path": "apps/web/src/field.tsx",
+      "sha256": "9386afda5b9cb1ed8686547127e2031e00213ffab650b9edadb46b31e850c41a"
+    },
+    {
+      "path": "apps/web/vite.config.ts",
+      "sha256": "478558db2200d79edcabf91d7b359bde628d2b16d6913cf8db0838ec16d3b17d"
+    },
+    {
+      "path": "apps/web/src/dayflow.tsx",
+      "sha256": "eaa1eb135f4f1d7743ee4e1ebfa122f5292176eaca319f31a2285615dbee5473"
+    },
+    {
+      "path": "apps/web/src/v1.ts",
+      "sha256": "5ebc7bdbf3646147d3e17a54fe6878f096e26fc43ed7e4b0ea9f709f170f52d5"
+    }
+  ]
+}

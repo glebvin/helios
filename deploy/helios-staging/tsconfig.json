@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "../..",
+    "outDir": "../../.data/staging-build",
+    "sourceMap": false,
+    "baseUrl": "../..",
+    "typeRoots": ["../../apps/api/node_modules/@types"],
+    "paths": {
+      "@helios/domain": ["packages/domain/src/index.ts"],
+      "@helios/api/db": ["apps/api/src/db.ts"],
+      "@helios/api/jobs": ["apps/api/src/jobs.ts"]
+    }
+  },
+  "include": ["../../apps/api/src", "../../apps/worker/src", "../../packages/domain/src"],
+  "exclude": ["../../**/*.test.ts"]
+}

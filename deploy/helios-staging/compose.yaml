@@ -1,0 +1,88 @@
+name: helios-staging
+x-log: &log
+  driver: json-file
+  options: {max-size: "5m", max-file: "2"}
+x-app: &app
+  image: helios-staging:${RELEASE_ID:?}
+  restart: unless-stopped
+  init: true
+  read_only: true
+  tmpfs: ["/tmp:size=32m"]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  networks: [backend]
+  logging: *log
+  environment:
+    NODE_ENV: production
+    NODE_OPTIONS: --max-old-space-size=256
+    DATABASE_URL: postgres://helios_app:${APP_DB_PASSWORD:?}@db:5432/helios
+    HELIOS_EVIDENCE_ROOT: /var/lib/helios/evidence
+  depends_on:
+    db: {condition: service_healthy}
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: helios
+      POSTGRES_USER: helios_owner
+      POSTGRES_PASSWORD: ${OWNER_DB_PASSWORD:?}
+    command: [postgres, -c, shared_buffers=64MB, -c, max_connections=50, -c, work_mem=2MB]
+    volumes: ["pg:/var/lib/postgresql/data"]
+    mem_limit: 384m
+    networks: [backend]
+    logging: *log
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U helios_owner -d helios"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  api:
+    <<: *app
+    mem_limit: 384m
+    volumes: ["evidence:/var/lib/helios/evidence"]
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:4327/api/health',{signal:AbortSignal.timeout(3000)}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  worker:
+    <<: *app
+    command: [node, apps/worker/src/main.js]
+    mem_limit: 160m
+  migrate:
+    <<: *app
+    restart: "no"
+    profiles: [tools]
+    command: [node, apps/api/src/migrate.js]
+    mem_limit: 192m
+    environment:
+      NODE_ENV: production
+      ADMIN_DATABASE_URL: postgres://helios_owner:${OWNER_DB_PASSWORD:?}@db:5432/helios
+      DATABASE_URL: postgres://helios_app:${APP_DB_PASSWORD:?}@db:5432/helios
+  gateway:
+    image: caddy:2
+    restart: unless-stopped
+    command: [caddy, run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
+    read_only: true
+    tmpfs: ["/tmp:size=8m", "/config:size=8m", "/data:size=8m"]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    volumes:
+      - ./gateway.Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./web:/srv/helios:ro
+    networks:
+      backend: {}
+      edge: {aliases: [helios-staging-gateway]}
+    logging: *log
+    depends_on:
+      api: {condition: service_healthy}
+networks:
+  backend: {}
+  edge:
+    external: true
+    name: helios-staging-edge
+volumes:
+  pg: {}
+  evidence: {}

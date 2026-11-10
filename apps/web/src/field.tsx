@@ -3,6 +3,7 @@ import type { Desk, Session } from "./api";
 import { Icon, paths } from "./icons";
 import { Mark } from "./mark";
 import { minutesLabel, readCheck, useBook, writeCheck, type Check } from "./book";
+import { DayFlow } from "./dayflow";
 import { RoleSwitch, type View } from "./roles";
 import { amount, clock, dayTasks, elapsed, laneOf, personName, progress, statusLabel, todayKey } from "./model";
 
@@ -61,6 +62,7 @@ export function WorkerPhone({
         ) : null}
         {preview ? <p className="quiet">Просмотр кабинета. Смена и объём от этого вида не записываются: вход остаётся {session.name}.</p> : null}
         <Mark compact />
+        {tab === "shift" && !preview ? <DayFlow session={session} /> : null}
         {tab === "shift" && current ? (
           <>
             <h1>Моя смена</h1>
@@ -78,22 +80,16 @@ export function WorkerPhone({
               <div className="quiet">{personName(data, current.assignee_employee_id)}</div>
               <div className="track"><span style={{ width: `${progress(current, report)}%` }} /></div>
               <div className="rowline quiet"><span /><span>{report ? amount(report.submitted_quantity) : "0"} из {amount(current.planned_quantity)} {current.unit}</span></div>
-              {preview ? null : shift ? (
-                <button className="fill wide" type="button" onClick={() => setVolumeOpen(true)}>Сдать работу</button>
-              ) : (
-                <button className="fill wide" type="button" onClick={() => onStart(current.id, current.assignee_employee_id)}>Начать смену</button>
-              )}
             </article>
             <div className="pair">
               <button className="ghost" type="button" onClick={() => setBreakOn((value) => !value)}>{breakOn ? "Перерыв идёт" : "Перерыв"}</button>
               <button className="ghost" type="button" onClick={() => setProblemOpen(true)}>Сообщить о проблеме</button>
             </div>
-            {preview ? null : <button className="ghost wide" type="button" onClick={() => setStopOpen(true)}>Записать простой</button>}
+            {preview ? null : <button className="ghost wide" type="button" onClick={() => setStopOpen(true)}>Записать простой на телефоне</button>}
             {current ? book.downtime.filter((item) => item.taskId === current.id).map((item) => (
               <p className="quiet" key={item.id}>Простой {minutesLabel(item.minutes)} · {item.cause}</p>
             )) : null}
-            {shift ? <button className="ghost wide" type="button" onClick={() => onEnd(current.id)}>Завершить смену</button> : null}
-            {pending ? <div className="alert-note"><Icon d={paths.alert} /><div><b>Нет сети</b><div>Отметка сохранится на телефоне и уйдёт в этот кабинет.</div></div></div> : null}
+            {pending ? <div className="alert-note"><Icon d={paths.alert} /><div><b>Старая очередь</b><div>Эти отметки не относятся к рабочему дню на сервере.</div></div></div> : null}
             {problem ? <p className="quiet">Проблема на телефоне: {problem}</p> : null}
           </>
         ) : null}

@@ -63,9 +63,9 @@ export async function login(email: string, password: string): Promise<Session> {
   const body = await request<{
     token: string;
     user: { id: string; name: string; email: string };
-    memberships: { tenant_id: string; role: string }[];
-  }>("/api/auth/login", null, { method: "POST", body: JSON.stringify({ email, password }) });
-  const membership = body.memberships[0];
+    memberships: { tenant_id: string; role: string; status?: string }[];
+  }>("/api/v1/auth/login", null, { method: "POST", body: JSON.stringify({ email, password }) });
+  const membership = body.memberships.find((item) => !("status" in item) || item.status === "active") ?? body.memberships[0];
   if (!membership) throw new Error("tenant_denied");
   const session = {
     token: body.token,
