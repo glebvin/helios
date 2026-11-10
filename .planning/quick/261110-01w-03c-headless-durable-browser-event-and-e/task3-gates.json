@@ -1,0 +1,61 @@
+{
+  "sourceHead": "126451d68e03935dabf40e1152d92df7f50cd1c2",
+  "sourceBase": "9aba85c3a68d3ece366758805bfc599d0d648b4f",
+  "redHead": "54769c8",
+  "realRed": "task3-real-red.json",
+  "realRedGate": "task3-real-red-gate.json",
+  "status": "all three implementation tasks complete; independent verification and parent canonical closure pending",
+  "gates": {
+    "fullSequential": {
+      "command": "corepack pnpm --config.verifyDepsBeforeRun=false -r --workspace-concurrency=1 --if-present test",
+      "exitCode": 0,
+      "domain": 10,
+      "api": 120,
+      "offline": 64,
+      "total": 194,
+      "report": "task3-full-final.tap"
+    },
+    "browserAll": {
+      "chromium": 32,
+      "webkit": 32,
+      "total": 64,
+      "retainedMechanics": 56,
+      "newReal": 8,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0
+    },
+    "focusedReal": {
+      "exitCode": 0,
+      "chromium": 4,
+      "webkit": 4,
+      "total": 8,
+      "report": "task3-real-final.tap"
+    },
+    "offlineTsc": 0,
+    "apiTsc": 0,
+    "realFixtureTsc": 0,
+    "typedAdapterTsc": 0,
+    "domainPlainTsc": {
+      "exitCode": 1,
+      "baseline": "TS2688"
+    },
+    "domainExistingTypeRootsTsc": 0,
+    "unchangedOpenApiOperations": 69,
+    "diffCheck": 0
+  },
+  "pnpmFlag": "--config.verifyDepsBeforeRun=false",
+  "realPgExecuted": true,
+  "serverRegressionExecuted": true,
+  "runtime": {
+    "retainedPgPid": 65500,
+    "retainedPgPort": 54339,
+    "parentApi4327Restarted": false,
+    "ownedFinalNestPidsClosed": [
+      70218,
+      70940
+    ],
+    "fixtureCleanupAcknowledged": true
+  },
+  "requirementsCompleted": []
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@helios/offline",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "scripts": {
+    "test": "node test/browser.test.mjs all",
+    "test:browser": "node test/browser.test.mjs mechanics",
+    "test:real": "node test/browser.test.mjs real",
+    "typecheck": "node ../../apps/api/node_modules/typescript/bin/tsc --project tsconfig.json --noEmit"
+  }
+}

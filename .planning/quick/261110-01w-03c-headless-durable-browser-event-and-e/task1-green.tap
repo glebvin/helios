@@ -1,0 +1,49 @@
+TAP version 13
+# Subtest: chromium tracer: native save survives persistent reopen and validated HTTP acknowledgement
+ok 1 - chromium tracer: native save survives persistent reopen and validated HTTP acknowledgement
+  ---
+  duration_ms: 654.593167
+  type: 'test'
+  ...
+# Subtest: chromium tracer: request success followed by native transaction abort rejects and stores no event
+ok 2 - chromium tracer: request success followed by native transaction abort rejects and stores no event
+  ---
+  duration_ms: 172.117667
+  type: 'test'
+  ...
+# chromium tracer: 3/3 passed
+# Subtest: chromium tracer: wrong requestId HTTP200 retains exact unacknowledged event
+ok 3 - chromium tracer: wrong requestId HTTP200 retains exact unacknowledged event
+  ---
+  duration_ms: 286.155
+  type: 'test'
+  ...
+# Subtest: webkit tracer: native save survives persistent reopen and validated HTTP acknowledgement
+ok 4 - webkit tracer: native save survives persistent reopen and validated HTTP acknowledgement
+  ---
+  duration_ms: 1751.436625
+  type: 'test'
+  ...
+# Subtest: webkit tracer: request success followed by native transaction abort rejects and stores no event
+ok 5 - webkit tracer: request success followed by native transaction abort rejects and stores no event
+  ---
+  duration_ms: 453.053
+  type: 'test'
+  ...
+# webkit tracer: 3/3 passed
+# Subtest: webkit tracer: wrong requestId HTTP200 retains exact unacknowledged event
+ok 6 - webkit tracer: wrong requestId HTTP200 retains exact unacknowledged event
+  ---
+  duration_ms: 921.800542
+  type: 'test'
+  ...
+# tracer: 6/6 required real-browser scenarios passed
+1..6
+# tests 6
+# suites 0
+# pass 6
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4699.382667

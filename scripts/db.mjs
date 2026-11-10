@@ -1,27 +1,38 @@
 import { mkdir } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import EmbeddedPostgres from "embedded-postgres";
 import pg from "pg";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const directory = path.join(root, ".data/pg");
-const port = 54329;
-const adminUrl = "postgres://helios:helios@127.0.0.1:54329/postgres";
+const portValue = process.env.HELIOS_DB_PORT ?? "54329";
+if (!/^\d+$/.test(portValue) || Number(portValue) < 1024 || Number(portValue) > 65535) {
+  throw new Error("HELIOS_DB_PORT must be an integer from 1024 to 65535");
+}
+const port = Number(portValue);
+const directory = path.join(root, port === 54329 ? ".data/pg" : `.data/pg-${port}`);
+const adminUrl = `postgres://helios:helios@127.0.0.1:${port}/postgres`;
 
 async function reachable() {
   const client = new pg.Client({ connectionString: adminUrl });
   try {
     await client.connect();
+    const result = await client.query("SHOW data_directory");
+    if (path.resolve(result.rows[0].data_directory) !== directory) {
+      throw new Error(`Port ${port} belongs to another PostgreSQL directory`);
+    }
     await client.end();
     return true;
-  } catch {
+  } catch (error) {
+    await client.end().catch(() => {});
+    if (error instanceof Error && error.message.includes("belongs to another")) throw error;
     return false;
   }
 }
 
 if (await reachable()) {
-  console.log("postgres already listening on 54329");
+  console.log(`postgres already listening on ${port} (${directory})`);
   process.exit(0);
 }
 
@@ -34,12 +45,7 @@ const postgres = new EmbeddedPostgres({
   persistent: true,
 });
 
-try {
-  await postgres.initialise();
-} catch (error) {
-  const message = error instanceof Error ? error.message : String(error);
-  if (!/exists|initdb/i.test(message)) throw error;
-}
+if (!existsSync(path.join(directory, "PG_VERSION"))) await postgres.initialise();
 await postgres.start();
 
 const admin = new pg.Client({ connectionString: adminUrl });
@@ -52,9 +58,9 @@ const database = await admin.query("SELECT 1 FROM pg_database WHERE datname = 'h
 if (database.rowCount === 0) await admin.query("CREATE DATABASE helios OWNER helios");
 await admin.end();
 
-const helios = new pg.Client({ connectionString: "postgres://helios:helios@127.0.0.1:54329/helios" });
+const helios = new pg.Client({ connectionString: `postgres://helios:helios@127.0.0.1:${port}/helios` });
 await helios.connect();
 await helios.query("GRANT CREATE ON DATABASE helios TO helios_app");
 await helios.end();
-console.log("postgres ready on 54329");
+console.log(`postgres ready on ${port} (${directory})`);
 await new Promise(() => {});

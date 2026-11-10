@@ -11,8 +11,10 @@ import { Injectable } from "@nestjs/common";
 import type { Pool, PoolClient } from "pg";
 import type { PgBoss } from "pg-boss";
 import { queryClient, withTenant } from "./db.js";
-import { httpError, mapPgError } from "./errors.js";
+import { httpError } from "./errors.js";
 import { reportJob } from "./jobs.js";
+import { uuid } from "./api-input.js";
+import { taskJoin, taskVisible } from "./director-api.service.js";
 import { parsePlace } from "./place.js";
 
 export type Actor = {
@@ -47,8 +49,8 @@ export class WorkforceService {
 
   summary(actor: Actor) {
     return this.with(actor, async (client) => {
-      const tasks = await client.query(`SELECT count(*)::int AS n FROM daily_tasks WHERE work_date = CURRENT_DATE`);
-      const shifts = await client.query(`SELECT count(*)::int AS n FROM shifts WHERE status = 'open'`);
+      const tasks = await client.query(`SELECT count(*)::int AS n ${taskJoin} WHERE ${taskVisible} AND t.work_date = CURRENT_DATE`,[actor.role,actor.userId]);
+      const shifts = await client.query(`SELECT count(*)::int AS n FROM shifts s JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.id=s.task_id JOIN projects p ON p.tenant_id=t.tenant_id AND p.id=t.project_id JOIN employees e ON e.tenant_id=t.tenant_id AND e.id=t.assignee_employee_id WHERE s.status='open' AND ${taskVisible} AND ($1<>'worker' OR s.employee_id IN (SELECT id FROM employees WHERE user_id=$2))`,[actor.role,actor.userId]);
       return {
         sample: true,
         label: "Учебные цифры, не расчёт по объекту",
@@ -61,29 +63,33 @@ export class WorkforceService {
   desk(actor: Actor) {
     return this.with(actor, async (client) => {
       const employees = await client.query(
-        `SELECT id, full_name, phone, document_number, user_id FROM employees ORDER BY full_name`,
+        `SELECT id, full_name, phone, document_number, user_id FROM employees
+         WHERE ($1 <> 'worker' OR user_id = $2) ORDER BY full_name`,
+        [actor.role, actor.userId],
       );
       const tasks = await client.query(
         `SELECT t.id, t.title, t.work_date::text AS work_date, t.planned_quantity::text, t.unit, t.assignee_employee_id, t.status, t.version, t.project_id
-         FROM daily_tasks t
-         JOIN employees e ON e.tenant_id = t.tenant_id AND e.id = t.assignee_employee_id
-         WHERE ($1 <> 'worker' OR e.user_id = $2)
+         ${taskJoin}
+         WHERE ${taskVisible}
          ORDER BY t.work_date DESC, t.title`,
         [actor.role, actor.userId],
       );
       const shifts = await client.query(
-        `SELECT id, task_id, employee_id, status, version, started_at, finished_at, occurred_started_at, occurred_finished_at, clock_requires_review
-         FROM shifts
-         WHERE ($1 <> 'worker' OR employee_id IN (SELECT id FROM employees WHERE user_id = $2))
-         ORDER BY started_at DESC NULLS LAST`,
+        `SELECT s.id,s.task_id,s.employee_id,s.status,s.version,s.started_at,s.finished_at,s.occurred_started_at,s.occurred_finished_at,s.clock_requires_review
+         FROM shifts s JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.id=s.task_id
+         JOIN projects p ON p.tenant_id=t.tenant_id AND p.id=t.project_id
+         JOIN employees e ON e.tenant_id=t.tenant_id AND e.id=t.assignee_employee_id
+         WHERE ${taskVisible} AND ($1 <> 'worker' OR s.employee_id IN (SELECT id FROM employees WHERE user_id = $2))
+         ORDER BY s.started_at DESC NULLS LAST`,
         [actor.role, actor.userId],
       );
       const reports = await client.query(
         `SELECT r.id, r.task_id, r.submitted_quantity::text, r.accepted_quantity::text, r.version
          FROM work_reports r
          JOIN daily_tasks t ON t.tenant_id = r.tenant_id AND t.id = r.task_id
+         JOIN projects p ON p.tenant_id=t.tenant_id AND p.id=t.project_id
          JOIN employees e ON e.tenant_id = t.tenant_id AND e.id = t.assignee_employee_id
-         WHERE ($1 <> 'worker' OR e.user_id = $2)
+         WHERE ${taskVisible}
          ORDER BY r.created_at DESC`,
         [actor.role, actor.userId],
       );
@@ -96,7 +102,7 @@ export class WorkforceService {
         actor.role === "worker"
           ? { rows: [] }
           : await client.query(`SELECT id, filename FROM stored_files ORDER BY filename`);
-      const summary = await this.summaryCounts(client);
+      const summary = await this.summaryCounts(client,actor);
       return {
         actor,
         projectId: projects.rows[0]?.id ?? PROJECT_A,
@@ -132,8 +138,10 @@ export class WorkforceService {
   }
 
   async employee(actor: Actor, id: string) {
+    uuid(id);
     const row = await this.with(actor, async (client) => {
-      const result = await client.query(`SELECT id, full_name, phone FROM employees WHERE id = $1`, [id]);
+      const result = await client.query(`SELECT id, full_name, phone FROM employees
+        WHERE id = $1 AND ($2 <> 'worker' OR user_id = $3)`, [id, actor.role, actor.userId]);
       return result.rows[0] ?? null;
     });
     if (!row) throw httpError(404, "not_found");
@@ -142,23 +150,9 @@ export class WorkforceService {
 
   createTask(
     actor: Actor,
-    input: { title: string; employeeId: string; plannedQuantity: string; unit: string; workDate: string },
+    input: unknown,
   ) {
-    if (actor.role === "worker") throw httpError(403, "role_denied");
-    return this.with(actor, async (client) => {
-      try {
-        const result = await client.query(
-          `INSERT INTO daily_tasks (tenant_id, project_id, title, work_date, planned_quantity, unit, assignee_employee_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           RETURNING id, title, work_date, planned_quantity::text, unit, assignee_employee_id, status, version`,
-          [actor.tenantId, PROJECT_A, input.title, input.workDate, input.plannedQuantity, input.unit, input.employeeId],
-        );
-        await this.audit(client, actor, "task_created", "daily_task", result.rows[0].id, "ok");
-        return result.rows[0];
-      } catch (error) {
-        mapPgError(error);
-      }
-    });
+    throw httpError(410, "task_creation_retired");
   }
 
   async sync(actor: Actor, events: ClientEvent[]) {
@@ -173,10 +167,11 @@ export class WorkforceService {
     if (actor.role === "worker") throw httpError(403, "role_denied");
     return this.with(actor, async (client) => {
       const current = await client.query(
-        `SELECT submitted_quantity::text AS submitted FROM work_reports WHERE id = $1`,
-        [reportId],
+        `SELECT submitted_quantity::text AS submitted,task_id FROM work_reports WHERE tenant_id=$2 AND id = $1`,
+        [reportId,actor.tenantId],
       );
       if (!current.rows[0]) throw httpError(404, "not_found");
+      await this.legacyTask(client,actor,current.rows[0].task_id);
       const partial = partialAcceptance(current.rows[0].submitted, acceptedQuantity);
       const updated = await client.query(
         `UPDATE work_reports
@@ -200,15 +195,13 @@ export class WorkforceService {
     return row;
   }
 
-  async recordAndMaybeRollback(actor: Actor, quantity: string, rollback: boolean) {
+  async recordAndMaybeRollback(actor: Actor, quantity: string, rollback: boolean, taskId: string) {
     const client = await this.pool.connect();
     let reportId = "";
     try {
       await client.query("BEGIN");
       await client.query("SELECT set_config('app.tenant_id', $1, true)", [actor.tenantId]);
-      const task = await client.query(`SELECT id FROM daily_tasks LIMIT 1`);
-      const taskId = task.rows[0]?.id as string | undefined;
-      if (!taskId) throw httpError(422, "task_required");
+      await this.legacyTask(client,actor,taskId);
       const inserted = await client.query(
         `INSERT INTO work_reports (tenant_id, task_id, submitted_quantity)
          VALUES ($1, $2, $3) RETURNING id, version`,
@@ -237,15 +230,22 @@ export class WorkforceService {
     return withTenant(this.pool, actor.tenantId, actor.userId, fn);
   }
 
-  private async summaryCounts(client: PoolClient) {
-    const tasks = await client.query(`SELECT count(*)::int AS n FROM daily_tasks WHERE work_date = CURRENT_DATE`);
-    const shifts = await client.query(`SELECT count(*)::int AS n FROM shifts WHERE status = 'open'`);
+  private async summaryCounts(client: PoolClient,actor:Actor) {
+    const tasks = await client.query(`SELECT count(*)::int AS n ${taskJoin} WHERE ${taskVisible} AND t.work_date = CURRENT_DATE`,[actor.role,actor.userId]);
+    const shifts = await client.query(`SELECT count(*)::int AS n FROM shifts s JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.id=s.task_id JOIN projects p ON p.tenant_id=t.tenant_id AND p.id=t.project_id JOIN employees e ON e.tenant_id=t.tenant_id AND e.id=t.assignee_employee_id WHERE s.status='open' AND ${taskVisible} AND ($1<>'worker' OR s.employee_id IN (SELECT id FROM employees WHERE user_id=$2))`,[actor.role,actor.userId]);
     return {
       sample: true,
       label: "Учебные цифры, не расчёт по объекту",
       rings: sampleRings,
       live: { tasksToday: tasks.rows[0].n as number, openShifts: shifts.rows[0].n as number },
     };
+  }
+
+  private async legacyTask(client:PoolClient,actor:Actor,taskId:string) {
+    uuid(taskId);
+    const task=(await client.query(`SELECT workflow_kind FROM daily_tasks WHERE tenant_id=$1 AND id=$2`,[actor.tenantId,taskId])).rows[0];
+    if(!task)throw httpError(404,'not_found');
+    if(task.workflow_kind!=='legacy')throw httpError(409,'workflow_not_supported');
   }
 
   private async applyEvent(client: PoolClient, actor: Actor, event: ClientEvent) {
@@ -255,6 +255,7 @@ export class WorkforceService {
       throw httpError(403, "scope_mismatch");
     }
     if (!event.eventId || !event.kind || !event.occurredAt) throw httpError(422, "bad_event");
+    await this.legacyTask(client,actor,required(event.payload?.taskId,"task_required"));
     const hash = createHash("sha256")
       .update(stableEventBody({ kind: event.kind, occurredAt: event.occurredAt, payload: event.payload ?? {} }))
       .digest("hex");
@@ -283,6 +284,7 @@ export class WorkforceService {
 
   private async startShift(client: PoolClient, actor: Actor, event: ClientEvent) {
     const taskId = required(event.payload?.taskId, "task_required");
+    await this.legacyTask(client,actor,taskId);
     const employeeId = required(event.payload?.employeeId, "employee_required");
     const open = await client.query(
       `SELECT id FROM shifts WHERE task_id = $1 AND employee_id = $2 AND status = 'open'`,
@@ -301,6 +303,7 @@ export class WorkforceService {
 
   private async finishShift(client: PoolClient, actor: Actor, event: ClientEvent) {
     const taskId = required(event.payload?.taskId, "task_required");
+    await this.legacyTask(client,actor,taskId);
     const open = await client.query(
       `SELECT id, occurred_started_at FROM shifts WHERE task_id = $1 AND status = 'open' ORDER BY started_at DESC LIMIT 1`,
       [taskId],
@@ -322,6 +325,7 @@ export class WorkforceService {
 
   private async submitVolume(client: PoolClient, actor: Actor, event: ClientEvent) {
     const taskId = required(event.payload?.taskId, "task_required");
+    await this.legacyTask(client,actor,taskId);
     const quantity = required(event.payload?.quantity, "quantity_required");
     if (Number(quantity) <= 0) throw httpError(422, "invalid_quantity");
     const inserted = await client.query(

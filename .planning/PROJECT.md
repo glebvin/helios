@@ -105,3 +105,7 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 *Last updated: 2026-11-09 after initialization*
+
+## Server checkpoint
+
+Интеграционная ветка включает проверенный сервер `4e57938`. Права кабинета и проекта проверяет сервер. Адрес и координаты объекта живут в `010_project_place.sql` и не заменяют `002_project_access.sql`.

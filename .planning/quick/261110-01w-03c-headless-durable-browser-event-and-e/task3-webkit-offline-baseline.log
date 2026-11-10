@@ -1,0 +1,3 @@
+{"offline":false,"result":{"online":true,"arrayBuffer":[137,80,78,71],"fileReader":[137,80,78,71]}}
+{"offline":true,"result":{"online":false,"arrayBuffer":"NotReadableError: The I/O read operation failed.","fileReader":"NotReadableError: The I/O read operation failed."}}
+{"offline":false,"result":{"online":true,"arrayBuffer":[137,80,78,71],"fileReader":[137,80,78,71]}}

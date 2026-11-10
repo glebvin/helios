@@ -1,0 +1,157 @@
+TAP version 13
+# Subtest: chromium tracer: native save survives persistent reopen and validated HTTP acknowledgement
+not ok 1 - chromium tracer: native save survives persistent reopen and validated HTTP acknowledgement
+  ---
+  duration_ms: 333.281125
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:148:13'
+  failureType: 'testCodeFailure'
+  error: |-
+    valid event must save
+
+    false !== true
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    tests.page.page (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:88:12)
+    async TestContext.<anonymous> (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:149:14)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:148:7
+  ...
+# Subtest: chromium tracer: request success followed by native transaction abort rejects and stores no event
+not ok 2 - chromium tracer: request success followed by native transaction abort rejects and stores no event
+  ---
+  duration_ms: 115.888084
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:148:13'
+  failureType: 'testCodeFailure'
+  error: |-
+    injection must reach an actual IDB request success
+
+    false !== true
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:117:12
+    async TestContext.<anonymous> (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:149:14)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:148:7
+  ...
+# chromium tracer: 0/3 passed
+# Subtest: chromium tracer: wrong requestId HTTP200 retains exact unacknowledged event
+not ok 3 - chromium tracer: wrong requestId HTTP200 retains exact unacknowledged event
+  ---
+  duration_ms: 113.437917
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:148:13'
+  failureType: 'testCodeFailure'
+  error: |-
+    valid event must save
+
+    false !== true
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    tests (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:124:12)
+    async TestContext.<anonymous> (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:149:14)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:148:7
+  ...
+# Subtest: webkit tracer: native save survives persistent reopen and validated HTTP acknowledgement
+not ok 4 - webkit tracer: native save survives persistent reopen and validated HTTP acknowledgement
+  ---
+  duration_ms: 842.094125
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:148:13'
+  failureType: 'testCodeFailure'
+  error: |-
+    valid event must save
+
+    false !== true
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    tests.page.page (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:88:12)
+    async TestContext.<anonymous> (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:149:14)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:148:7
+  ...
+# Subtest: webkit tracer: request success followed by native transaction abort rejects and stores no event
+not ok 5 - webkit tracer: request success followed by native transaction abort rejects and stores no event
+  ---
+  duration_ms: 448.35675
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:148:13'
+  failureType: 'testCodeFailure'
+  error: |-
+    injection must reach an actual IDB request success
+
+    false !== true
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:117:12
+    async TestContext.<anonymous> (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:149:14)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:148:7
+  ...
+# webkit tracer: 0/3 passed
+# Subtest: webkit tracer: wrong requestId HTTP200 retains exact unacknowledged event
+not ok 6 - webkit tracer: wrong requestId HTTP200 retains exact unacknowledged event
+  ---
+  duration_ms: 440.916291
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:148:13'
+  failureType: 'testCodeFailure'
+  error: |-
+    valid event must save
+
+    false !== true
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: 'strictEqual'
+  stack: |-
+    tests (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:124:12)
+    async TestContext.<anonymous> (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:149:14)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:148:7
+  ...
+# tracer: 0/6 required real-browser scenarios passed
+1..6
+# tests 6
+# suites 0
+# pass 0
+# fail 6
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 2653.488166

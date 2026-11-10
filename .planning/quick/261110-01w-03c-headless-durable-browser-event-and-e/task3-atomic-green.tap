@@ -1,0 +1,37 @@
+TAP version 13
+# Subtest: chromium evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+ok 1 - chromium evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+  ---
+  duration_ms: 618.996625
+  type: 'test'
+  ...
+# chromium evidence: 2/2 passed
+# Subtest: chromium evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+ok 2 - chromium evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+  ---
+  duration_ms: 193.866583
+  type: 'test'
+  ...
+# Subtest: webkit evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+ok 3 - webkit evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+  ---
+  duration_ms: 1652.871459
+  type: 'test'
+  ...
+# webkit evidence: 2/2 passed
+# Subtest: webkit evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+ok 4 - webkit evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+  ---
+  duration_ms: 445.84175
+  type: 'test'
+  ...
+# evidence: 4/4 required real-browser scenarios passed
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3408.041083

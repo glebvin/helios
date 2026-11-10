@@ -1,0 +1,31 @@
+{
+  "passed": true,
+  "block": false,
+  "verdict": "RED_EVIDENCE_OK",
+  "reason": "target_test_failed",
+  "evidence": {
+    "command": "DATABASE_URL=postgres://helios_app:helios_app@127.0.0.1:54339/helios ADMIN_DATABASE_URL=postgres://helios:helios@127.0.0.1:54339/helios HELIOS_DB_PORT=54339 API_PORT=4327 SEQUENTIAL=true HELIOS_PLAYWRIGHT_MODULE=/Users/Gleb/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs PLAYWRIGHT_BROWSERS_PATH=/Users/Gleb/Library/Caches/ms-playwright node packages/offline/test/browser.test.mjs real",
+    "exit_code": 1,
+    "target_test": "webkit real: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once",
+    "tests": 8,
+    "pass": 7,
+    "fail": 1,
+    "failing_tests": [
+      "webkit real: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once"
+    ],
+    "matched_test": "webkit real: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once",
+    "format": "tap",
+    "report_errors": []
+  },
+  "record": {
+    "command": "DATABASE_URL=postgres://helios_app:helios_app@127.0.0.1:54339/helios ADMIN_DATABASE_URL=postgres://helios:helios@127.0.0.1:54339/helios HELIOS_DB_PORT=54339 API_PORT=4327 SEQUENTIAL=true HELIOS_PLAYWRIGHT_MODULE=/Users/Gleb/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs PLAYWRIGHT_BROWSERS_PATH=/Users/Gleb/Library/Caches/ms-playwright node packages/offline/test/browser.test.mjs real",
+    "exit_code": 1,
+    "failing_test": "webkit real: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once",
+    "target_test": "webkit real: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once",
+    "expected": "Real browser flush advances both retained Blobs through reserve/upload/attach without stale native Blob access after a committed status update",
+    "actual": "NotFoundError from updateEvidence following report photo reservation; real7/8, no skipped tests",
+    "verdict": "RED_EVIDENCE_OK",
+    "reason": "target_test_failed"
+  },
+  "message": "RED evidence verified: target test \"webkit real: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once\" failed as expected (exit 1). GREEN authorized."
+}

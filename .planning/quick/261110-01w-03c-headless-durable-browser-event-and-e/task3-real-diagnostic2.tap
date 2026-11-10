@@ -1,0 +1,97 @@
+TAP version 13
+# Owned real Nest PID 67490, random listener; locked PG54339 identity passed
+# real committed-reply replay boundary event
+# real committed-reply replay boundary queued
+# real committed-reply replay boundary reserved
+# real committed-reply replay boundary uploaded
+# Subtest: chromium real: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once
+ok 1 - chromium real: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once
+  ---
+  duration_ms: 1850.816625
+  type: 'test'
+  ...
+# Subtest: chromium real: real Nest/PG: stale authority/conflict retains original events and Blobs and fences successors
+ok 2 - chromium real: real Nest/PG: stale authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 663.136625
+  type: 'test'
+  ...
+# Subtest: chromium real: real Nest/PG: revoked authority/conflict retains original events and Blobs and fences successors
+ok 3 - chromium real: real Nest/PG: revoked authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 653.933375
+  type: 'test'
+  ...
+# chromium real: 4/4 passed
+# Subtest: chromium real: real Nest/PG: expired authority/conflict retains original events and Blobs and fences successors
+ok 4 - chromium real: real Nest/PG: expired authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 797.013542
+  type: 'test'
+  ...
+# real committed-reply replay boundary event
+# real committed-reply replay boundary queued
+# Subtest: webkit real: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once
+not ok 5 - webkit real: real Nest/PG: offline lifecycle and event/report Blobs survive reopen and committed lost replies replay exactly once
+  ---
+  duration_ms: 2078.473833
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:695:13'
+  failureType: 'testCodeFailure'
+  error: |-
+    {"error":{"name":"NotFoundError","code":8,"message":"The object can not be found here.","stack":""},"rows":[{"id":"d52a1603-fe00-435e-b4ab-5b86fa23ee89","stage":"event","state":"synced","lastError":null},{"id":"6bbbb2ff-caf1-4509-a07b-41b916acb4b9","stage":"event","state":"synced","lastError":null},{"id":"fe680e88-8ede-4367-a26b-9e83e76cd830","stage":"event","state":"synced","lastError":null},{"id":"4d6ec256-04ad-44de-8b3c-a4864375bfe5","stage":"event","state":"synced","lastError":null},{"id":"38a36315-e297-4488-9fe9-d7ff2fe321d3","stage":"queued","state":"retry_wait","lastError":"ambiguous_response"},{"id":"4822c2bb-04f2-4c5b-ae0d-38b0d804b9e5","stage":"reserved","state":"pending","lastError":null}],"blobFailure":{"stack":"@\nupdateEvidence@http://127.0.0.1:51194/evidence.js:152:45\nrecordFile@http://127.0.0.1:51194/index.js:147:29\n@http://127.0.0.1:51194/index.js:259:43","name":"NotFoundError","size":16},"journal":[{"path":"/api/v1/me","status":200},{"path":"/api/v1/execution/events","status":200,"requestId":"d52a1603-fe00-435e-b4ab-5b86fa23ee89"},{"path":"/api/v1/me","status":200},{"path":"/api/v1/execution/events","status":200,"requestId":"d52a1603-fe00-435e-b4ab-5b86fa23ee89"},{"path":"/api/v1/execution/events","status":200,"requestId":"6bbbb2ff-caf1-4509-a07b-41b916acb4b9"},{"path":"/api/v1/execution/events","status":200,"requestId":"fe680e88-8ede-4367-a26b-9e83e76cd830"},{"path":"/api/v1/execution/events","status":200,"requestId":"4d6ec256-04ad-44de-8b3c-a4864375bfe5"},{"path":"/api/v1/projects/9f1edc80-b8b4-4ee8-abd8-43d8b9fcea6c/evidence","status":201,"requestId":"38a36315-e297-4488-9fe9-d7ff2fe321d3"},{"path":"/api/v1/projects/9f1edc80-b8b4-4ee8-abd8-43d8b9fcea6c/evidence","status":201,"requestId":"4822c2bb-04f2-4c5b-ae0d-38b0d804b9e5"}]}
+    + actual - expected
+
+    + {
+    +   code: 8,
+    +   message: 'The object can not be found here.',
+    +   name: 'NotFoundError',
+    +   stack: ''
+    + }
+    - undefined
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  actual:
+    name: 'NotFoundError'
+    code: 8
+    message: 'The object can not be found here.'
+    stack: ''
+  operator: 'strictEqual'
+  stack: |-
+    file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:638:14
+    async TestContext.<anonymous> (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:696:14)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:695:7
+  ...
+# Subtest: webkit real: real Nest/PG: stale authority/conflict retains original events and Blobs and fences successors
+ok 6 - webkit real: real Nest/PG: stale authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 1658.891708
+  type: 'test'
+  ...
+# Subtest: webkit real: real Nest/PG: revoked authority/conflict retains original events and Blobs and fences successors
+ok 7 - webkit real: real Nest/PG: revoked authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 1696.236958
+  type: 'test'
+  ...
+# webkit real: 3/4 passed
+# Subtest: webkit real: real Nest/PG: expired authority/conflict retains original events and Blobs and fences successors
+ok 8 - webkit real: real Nest/PG: expired authority/conflict retains original events and Blobs and fences successors
+  ---
+  duration_ms: 1946.552292
+  type: 'test'
+  ...
+# Owned real Nest/IPC/pools/private storage closed; fixture rows removed
+# real: 7/8 required real-browser scenarios passed
+1..8
+# tests 8
+# suites 0
+# pass 7
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 12409.406375

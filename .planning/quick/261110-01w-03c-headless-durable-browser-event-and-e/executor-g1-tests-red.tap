@@ -1,0 +1,381 @@
+TAP version 13
+# Subtest: chromium evidence: standalone authoring retains validated metadata when caller edits it before save resolves
+not ok 1 - chromium evidence: standalone authoring retains validated metadata when caller edits it before save resolves
+  ---
+  duration_ms: 590.807583
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:755:13'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+
+      {
+        actual: 'image/png',
+    +   attachReason: 'Changed reason',
+    -   attachReason: 'Original reason',
+        bytes: [
+          137,
+          80,
+          78,
+          71
+        ],
+    +   contentType: 'text/plain',
+    +   filename: 'changed.pdf',
+    +   reason: 'Changed reason',
+    -   contentType: 'image/png',
+    -   filename: 'original.png',
+    -   reason: 'Original reason',
+        state: 'pending'
+      }
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    filename: 'original.png'
+    contentType: 'image/png'
+    reason: 'Original reason'
+    attachReason: 'Original reason'
+    actual: 'image/png'
+    bytes:
+      0: 137
+      1: 80
+      2: 78
+      3: 71
+    state: 'pending'
+  actual:
+    filename: 'changed.pdf'
+    contentType: 'text/plain'
+    reason: 'Changed reason'
+    attachReason: 'Changed reason'
+    actual: 'image/png'
+    bytes:
+      0: 137
+      1: 80
+      2: 78
+      3: 71
+    state: 'pending'
+  operator: 'deepStrictEqual'
+  stack: |-
+    evidenceTests.page.page (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:452:12)
+    async TestContext.<anonymous> (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:756:14)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:755:7
+  ...
+# Subtest: chromium evidence: event authoring snapshots requested photos before caller clears or replaces the array
+not ok 2 - chromium evidence: event authoring snapshots requested photos before caller clears or replaces the array
+  ---
+  duration_ms: 272.020167
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:755:13'
+  failureType: 'testCodeFailure'
+  error: |-
+    requested photo must survive caller array mutation
+    + actual - expected
+
+    + []
+    - [
+    -   {
+    -     filename: 'clear.png',
+    -     id: '8e6885ac-ec5c-4a6d-afcd-7ad13a3210c2'
+    -   }
+    - ]
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0:
+      id: '8e6885ac-ec5c-4a6d-afcd-7ad13a3210c2'
+      filename: 'clear.png'
+  actual:
+  operator: 'deepStrictEqual'
+  stack: |-
+    evidenceTests.page.page (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:473:14)
+    async TestContext.<anonymous> (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:756:14)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:755:7
+  ...
+# Subtest: chromium evidence: bundled authoring owns every photo target and identity before asynchronous hashing
+not ok 3 - chromium evidence: bundled authoring owns every photo target and identity before asynchronous hashing
+  ---
+  duration_ms: 316.038042
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:755:13'
+  failureType: 'testCodeFailure'
+  error: |-
+    valid original targets and identities must save despite later edits
+    + actual - expected
+
+    + 'local_dependency_conflict'
+    - null
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: ~
+  actual: 'local_dependency_conflict'
+  operator: 'strictEqual'
+  stack: |-
+    evidenceTests.page.page (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:491:12)
+    async TestContext.<anonymous> (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:756:14)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:755:7
+  ...
+# Subtest: chromium evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+ok 4 - chromium evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+  ---
+  duration_ms: 372.005917
+  type: 'test'
+  ...
+# Subtest: chromium evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+ok 5 - chromium evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+  ---
+  duration_ms: 189.929167
+  type: 'test'
+  ...
+# Subtest: chromium evidence: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+ok 6 - chromium evidence: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+  ---
+  duration_ms: 414.520416
+  type: 'test'
+  ...
+# replay boundary response/queued
+# replay boundary response/reserved
+# replay boundary response/uploaded
+# replay boundary local_commit/queued
+# replay boundary local_commit/reserved
+# replay boundary local_commit/uploaded
+# Subtest: chromium evidence: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+ok 7 - chromium evidence: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+  ---
+  duration_ms: 1392.162875
+  type: 'test'
+  ...
+# Subtest: chromium evidence: evidence responses require exact declaration actor timestamps state target and status at every stage
+ok 8 - chromium evidence: evidence responses require exact declaration actor timestamps state target and status at every stage
+  ---
+  duration_ms: 795.196834
+  type: 'test'
+  ...
+# Subtest: chromium evidence: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+ok 9 - chromium evidence: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+  ---
+  duration_ms: 435.444625
+  type: 'test'
+  ...
+# Subtest: chromium evidence: known-local dependencies frozen IDs idempotence collisions and scope guards
+ok 10 - chromium evidence: known-local dependencies frozen IDs idempotence collisions and scope guards
+  ---
+  duration_ms: 180.0125
+  type: 'test'
+  ...
+# Subtest: chromium evidence: strict file declarations hash failures and atomic whole database 32-file count cap
+ok 11 - chromium evidence: strict file declarations hash failures and atomic whole database 32-file count cap
+  ---
+  duration_ms: 367.1195
+  type: 'test'
+  ...
+# chromium evidence: 9/12 passed
+# Subtest: chromium evidence: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+ok 12 - chromium evidence: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+  ---
+  duration_ms: 401.757291
+  type: 'test'
+  ...
+# Subtest: webkit evidence: standalone authoring retains validated metadata when caller edits it before save resolves
+not ok 13 - webkit evidence: standalone authoring retains validated metadata when caller edits it before save resolves
+  ---
+  duration_ms: 2515.062875
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:755:13'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+
+      {
+        actual: 'image/png',
+    +   attachReason: 'Changed reason',
+    -   attachReason: 'Original reason',
+        bytes: [
+          137,
+          80,
+          78,
+          71
+        ],
+    +   contentType: 'text/plain',
+    +   filename: 'changed.pdf',
+    +   reason: 'Changed reason',
+    -   contentType: 'image/png',
+    -   filename: 'original.png',
+    -   reason: 'Original reason',
+        state: 'pending'
+      }
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    filename: 'original.png'
+    contentType: 'image/png'
+    reason: 'Original reason'
+    attachReason: 'Original reason'
+    actual: 'image/png'
+    bytes:
+      0: 137
+      1: 80
+      2: 78
+      3: 71
+    state: 'pending'
+  actual:
+    filename: 'changed.pdf'
+    contentType: 'text/plain'
+    reason: 'Changed reason'
+    attachReason: 'Changed reason'
+    actual: 'image/png'
+    bytes:
+      0: 137
+      1: 80
+      2: 78
+      3: 71
+    state: 'pending'
+  operator: 'deepStrictEqual'
+  stack: |-
+    evidenceTests.page.page (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:452:12)
+    async TestContext.<anonymous> (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:756:14)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:755:7
+  ...
+# Subtest: webkit evidence: event authoring snapshots requested photos before caller clears or replaces the array
+not ok 14 - webkit evidence: event authoring snapshots requested photos before caller clears or replaces the array
+  ---
+  duration_ms: 1479.081208
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:755:13'
+  failureType: 'testCodeFailure'
+  error: |-
+    requested photo must survive caller array mutation
+    + actual - expected
+
+    + []
+    - [
+    -   {
+    -     filename: 'clear.png',
+    -     id: '37f71ee4-bb81-497e-9b6d-197f0a8257f3'
+    -   }
+    - ]
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    0:
+      id: '37f71ee4-bb81-497e-9b6d-197f0a8257f3'
+      filename: 'clear.png'
+  actual:
+  operator: 'deepStrictEqual'
+  stack: |-
+    evidenceTests.page.page (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:473:14)
+    async TestContext.<anonymous> (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:756:14)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:755:7
+  ...
+# Subtest: webkit evidence: bundled authoring owns every photo target and identity before asynchronous hashing
+not ok 15 - webkit evidence: bundled authoring owns every photo target and identity before asynchronous hashing
+  ---
+  duration_ms: 1199.022875
+  type: 'test'
+  location: '/Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:755:13'
+  failureType: 'testCodeFailure'
+  error: |-
+    valid original targets and identities must save despite later edits
+    + actual - expected
+
+    + 'local_dependency_conflict'
+    - null
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: ~
+  actual: 'local_dependency_conflict'
+  operator: 'strictEqual'
+  stack: |-
+    evidenceTests.page.page (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:491:12)
+    async TestContext.<anonymous> (file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:756:14)
+    async Test.run (node:internal/test_runner/test:1389:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3)
+    async file:///Users/Gleb/Documents/ChatGPT/sites/helios-worktrees/codex-api/packages/offline/test/browser.test.mjs:755:7
+  ...
+# Subtest: webkit evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+ok 16 - webkit evidence: atomic event and actual PNG Blob survive persistent reopen with frozen stage identities
+  ---
+  duration_ms: 1124.737
+  type: 'test'
+  ...
+# Subtest: webkit evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+ok 17 - webkit evidence: native evidence request success followed by abort leaves neither event nor Blob nor stream tail
+  ---
+  duration_ms: 598.878
+  type: 'test'
+  ...
+# Subtest: webkit evidence: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+ok 18 - webkit evidence: fixed private reserve PUT attachment pipeline, both known local targets and explicit cleanup
+  ---
+  duration_ms: 901.481583
+  type: 'test'
+  ...
+# replay boundary response/queued
+# replay boundary response/reserved
+# replay boundary response/uploaded
+# replay boundary local_commit/queued
+# replay boundary local_commit/reserved
+# replay boundary local_commit/uploaded
+# Subtest: webkit evidence: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+ok 19 - webkit evidence: lost replies and failed native local stage commits replay identical identities bytes and snapshots
+  ---
+  duration_ms: 5123.518041
+  type: 'test'
+  ...
+# Subtest: webkit evidence: evidence responses require exact declaration actor timestamps state target and status at every stage
+ok 20 - webkit evidence: evidence responses require exact declaration actor timestamps state target and status at every stage
+  ---
+  duration_ms: 1451.711958
+  type: 'test'
+  ...
+# Subtest: webkit evidence: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+ok 21 - webkit evidence: session changes after reservation stop upload and stale stage commit; auth failures retain Blob
+  ---
+  duration_ms: 1054.7145
+  type: 'test'
+  ...
+# Subtest: webkit evidence: known-local dependencies frozen IDs idempotence collisions and scope guards
+ok 22 - webkit evidence: known-local dependencies frozen IDs idempotence collisions and scope guards
+  ---
+  duration_ms: 500.858917
+  type: 'test'
+  ...
+# Subtest: webkit evidence: strict file declarations hash failures and atomic whole database 32-file count cap
+ok 23 - webkit evidence: strict file declarations hash failures and atomic whole database 32-file count cap
+  ---
+  duration_ms: 618.415125
+  type: 'test'
+  ...
+# webkit evidence: 9/12 passed
+# Subtest: webkit evidence: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+ok 24 - webkit evidence: maximum 8MiB Blob and aggregate 64MiB limit include retained records and atomically reject related event
+  ---
+  duration_ms: 609.050292
+  type: 'test'
+  ...
+# evidence: 18/24 required real-browser scenarios passed
+1..24
+# tests 24
+# suites 0
+# pass 18
+# fail 6
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 23530.451959
