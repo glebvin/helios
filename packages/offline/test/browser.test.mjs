@@ -437,6 +437,64 @@ async function savePhoto(page,command,options={}){
   },{command,options});
 }
 const evidenceTests = [
+  ['standalone authoring retains validated metadata when caller edits it before save resolves',async(engine,profile,origin,n)=>{
+    let {page,context}=await openPage(engine,profile,origin);const command=event(n);
+    const saved=await page.evaluate(async c=>{
+      await queue.enqueueEvent(c);
+      const input={projectId:c.projectId,employeeId:c.employeeId,filename:' original.png ',contentType:'image/png',onBehalfReason:' Original reason ',blob:new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}),dependencyRequestId:c.requestId,target:{kind:'execution_event',actorUserId:session.actorUserId,requestId:c.requestId},fileId:crypto.randomUUID(),reserveRequestId:crypto.randomUUID(),attachRequestId:crypto.randomUUID()};
+      const pending=queue.enqueueEvidence(input);
+      input.filename='changed.pdf';input.contentType='text/plain';input.onBehalfReason='Changed reason';
+      return pending.then(row=>({id:row.id,error:null}),error=>({id:input.fileId,error:error.code}));
+    },command);
+    await closeContext(context);({page,context}=await openPage(engine,profile,origin));
+    const retained=await page.evaluate(async id=>{const row=await queue.get(id);return row&&{filename:row.reserve.filename,contentType:row.reserve.contentType,reason:row.reserve.onBehalfReason,attachReason:row.attach.onBehalfReason,actual:row.blob.type,bytes:[...new Uint8Array(await row.blob.arrayBuffer())],state:row.state};},saved.id);
+    assert.equal(saved.error,null,'valid original metadata must save');
+    assert.deepEqual(retained,{filename:'original.png',contentType:'image/png',reason:'Original reason',attachReason:'Original reason',actual:'image/png',bytes:[137,80,78,71],state:'pending'});
+  }],
+  ['event authoring snapshots requested photos before caller clears or replaces the array',async(engine,profile,origin,n)=>{
+    let {page,context}=await openPage(engine,profile,origin);const command=event(n);
+    const saved=await page.evaluate(async c=>{
+      const outcomes=[];
+      for(const mode of ['clear','replace']){
+        const original={...c,requestId:crypto.randomUUID(),employeeId:crypto.randomUUID()},input={...original};
+        const photo={projectId:original.projectId,employeeId:original.employeeId,filename:`${mode}.png`,contentType:'image/png',blob:new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}),dependencyRequestId:original.requestId,target:{kind:'execution_event',actorUserId:session.actorUserId,requestId:original.requestId},fileId:crypto.randomUUID()};
+        const photos=[photo],options={evidence:photos},pending=queue.enqueueEvent(input,options);
+        input.occurredAt='2027-01-15T10:00:00+03:00';
+        if(mode==='clear')photos.length=0;
+        else {photos[0]={...photo,filename:'replacement.png',fileId:crypto.randomUUID()};options.evidence=[];}
+        outcomes.push({event:original,fileId:photo.fileId,filename:photo.filename,error:await pending.then(()=>null,error=>error.code)});
+      }
+      return outcomes;
+    },command);
+    await closeContext(context);({page,context}=await openPage(engine,profile,origin));
+    for(const original of saved){
+      const retained=await page.evaluate(async original=>{const rows=await queue.list();return {event:rows.find(row=>row.id===original.event.requestId)?.event,photos:rows.filter(row=>row.stage!=='event'&&row.dependencyRequestId===original.event.requestId).map(row=>({id:row.id,filename:row.reserve.filename}))};},original);
+      assert.equal(original.error,null,'valid event and original photo must save');assert.deepEqual(retained.event,original.event);
+      assert.deepEqual(retained.photos,[{id:original.fileId,filename:original.filename}],'requested photo must survive caller array mutation');
+      assert.deepEqual(await page.evaluate(async id=>[...new Uint8Array(await (await queue.get(id)).blob.arrayBuffer())],original.fileId),[137,80,78,71]);
+    }
+  }],
+  ['bundled authoring owns every photo target and identity before asynchronous hashing',async(engine,profile,origin,n)=>{
+    let {page,context}=await openPage(engine,profile,origin);const command={...event(n),kind:'submit_volume',taskId:'77777777-7777-4777-8777-777777777777',reportId:'88888888-8888-4888-8888-888888888888',submittedQuantity:'1.250'};
+    const saved=await page.evaluate(async c=>{
+      const photos=['execution_event','final_report'].map(kind=>({projectId:c.projectId,employeeId:c.employeeId,filename:`${kind}.png`,contentType:'image/png',onBehalfReason:'Original delegation',blob:new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}),dependencyRequestId:c.requestId,target:kind==='execution_event'?{kind,actorUserId:session.actorUserId,requestId:c.requestId}:{kind,reportId:c.reportId},fileId:crypto.randomUUID(),reserveRequestId:crypto.randomUUID(),attachRequestId:crypto.randomUUID()}));
+      const expected=structuredClone(photos.map(({blob,...input})=>input)),pending=queue.enqueueEvent(c,{evidence:photos});
+      c.occurredAt='2027-01-15T10:00:00+03:00';
+      for(const photo of photos){
+        for(const key of ['projectId','employeeId','dependencyRequestId','fileId','reserveRequestId','attachRequestId'])photo[key]=crypto.randomUUID();
+        if(photo.target.kind==='execution_event'){photo.target.actorUserId=crypto.randomUUID();photo.target.requestId=crypto.randomUUID();}else photo.target.reportId=crypto.randomUUID();
+        photo.filename='changed.pdf';photo.contentType='application/pdf';photo.onBehalfReason='Changed delegation';photo.blob=new Blob(['changed'],{type:'application/pdf'});
+      }
+      return {expected,error:await pending.then(()=>null,error=>error.code)};
+    },command);
+    await closeContext(context);({page,context}=await openPage(engine,profile,origin));
+    assert.equal(saved.error,null,'valid original targets and identities must save despite later edits');
+    assert.deepEqual(await page.evaluate(async id=>(await queue.get(id))?.event,command.requestId),command);
+    for(const expected of saved.expected){
+      const row=await page.evaluate(async id=>{const row=await queue.get(id);return row&&{id:row.id,projectId:row.projectId,employeeId:row.employeeId,dependencyRequestId:row.dependencyRequestId,target:row.target,reserve:row.reserve,attach:row.attach,bytes:[...new Uint8Array(await row.blob.arrayBuffer())],actual:row.blob.type};},expected.fileId);
+      assert.deepEqual(row,{id:expected.fileId,projectId:expected.projectId,employeeId:expected.employeeId,dependencyRequestId:expected.dependencyRequestId,target:expected.target,reserve:{requestId:expected.reserveRequestId,fileId:expected.fileId,employeeId:expected.employeeId,filename:expected.filename,contentType:'image/png',sizeBytes:4,sha256:createHash('sha256').update(Buffer.from([137,80,78,71])).digest('hex'),onBehalfReason:expected.onBehalfReason},attach:{requestId:expected.attachRequestId,target:expected.target,onBehalfReason:expected.onBehalfReason},bytes:[137,80,78,71],actual:'image/png'});
+    }
+  }],
   ['atomic event and actual PNG Blob survive persistent reopen with frozen stage identities',async(engine,profile,origin,n)=>{
     let {page,context}=await openPage(engine,profile,origin);const command=event(n);
     const saved=await page.evaluate(async c=>{
