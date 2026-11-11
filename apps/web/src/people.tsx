@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import {InvitationDialog,InvitationList} from "./invitations";
 import { searchStaff, staffNotice, type ServerEmployee } from "./staff-list";
 import { useStaffCard, useStaffList } from "./staff-read";
+import { hasV1ProjectScope } from "./scope";
 import type { Desk, Session } from "./api";
 import { Dialog } from "./dialog";
 import { minutesLabel, useBook, type Book } from "./book";
@@ -52,9 +53,18 @@ export function People({
   const [personId, setPersonId] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
   const [invitingForeman, setInvitingForeman] = useState(false);
-  const list = useStaffList(session);
-  const opened = useStaffCard(session, personId);
+  const serverList = hasV1ProjectScope(session.role);
+  const remote = useStaffList(session, serverList);
+  const list = serverList ? remote : { ...remote, loading: false, error: "", offset: 0, limit: data.employees.length,
+    total: data.employees.length, items: data.employees.map(item => ({ id: item.id, fullName: item.full_name,
+      phone: item.phone, userId: item.user_id, organizationId: "", version: 0, status: "active" as const })) };
+  const opened = useStaffCard(session, personId, serverList);
   const admission = admissions.find((item) => item.employeeId === personId);
+  const legacyPerson = !serverList ? data.employees.find(item => item.id === personId) : null;
+  if (legacyPerson) return <Profile person={legacyPerson} data={data} until={admission?.until}
+    card={cards.find(item => item.employeeId === personId) ?? emptyCard(legacyPerson.id)}
+    backLabel={workersOnly ? "Работники" : "Люди"} onBack={() => setPersonId(null)} onOpenTask={onOpenTask}
+    admitStep={admitStep} onAdmit={until => onAdmit?.(legacyPerson.id, until)} onCard={card => onCard?.(card)} />;
   if (personId) {
     return (
       <ServerProfile
@@ -99,13 +109,14 @@ export function People({
       {tab === "people" ? (
         <>
           <StatGrid items={[
-            { value: list.error ? "—" : String(list.total), label: "работников" },
-            { value: list.error ? "—" : String(onShift.size), label: "на смене" },
-            { value: list.error ? "—" : String(review.size), label: "отметки на проверке" },
+            { value: list.error ? "—" : String(list.total), label: "сотрудников" },
+            { value: list.error ? "—" : String(onShift.size), label: "на смене на этой странице" },
+            { value: list.error ? "—" : String(review.size), label: "проверка на этой странице" },
           ]} />
           <input className="object-search" type="search" value={query} placeholder="Найти работника" aria-label="Найти работника" onChange={(event) => setQuery(event.target.value)} />
           {list.loading && list.items.length === 0 ? <p className="quiet">Читаем список сотрудников на сервере.</p> : null}
           {list.error ? <DeskEmpty title="Список не прочитан" description={list.error} /> : null}
+          {list.error ? <button className="ghost" type="button" onClick={list.reload}>Повторить загрузку</button> : null}
           {!list.loading && !list.error && list.total === 0 ? <DeskEmpty title="Работников пока нет" description="Сервер вернул пустой список. Пригласите работника. Он отмечает смену и сдаёт объём." /> : null}
           {!list.error && needle && people.length === 0 && list.total > 0 ? <DeskEmpty title="Такого работника нет" description={notice || "Проверьте имя или телефон."} /> : null}
           {!list.error && people.length > 0 ? (
@@ -134,7 +145,7 @@ export function People({
             </div>
           ) : null}
           {notice && people.length > 0 ? <p className="quiet">{notice}</p> : null}
-          <p className="quiet">Состав, имя и телефон пришли со списком сервера. Номер документа в этом ответе не приходит. После обновления страницы видны уже записанные люди. Допуск и назначение оформляются отдельно.</p>
+          <p className="quiet">{session.role === "director" ? "Список сотрудников компании, включая ещё не назначенных на объект. " : "Показаны сотрудники, доступные этому входу. "}Имя и телефон получены с сервера. Допуск и назначение на объект оформляются отдельно.</p>
         </>
       ) : null}
       {(tab === 'people' && inviteWorker || tab === 'foremen' && inviteForeman) ? <InvitationList key={`${tab}-${inviting}-${invitingForeman}`} session={session} projectId={data.projectId} role={tab==='foremen'?'master':'worker'}/> : null}
