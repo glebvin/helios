@@ -1,5 +1,6 @@
 import {Body,Controller,Get,Post,Param,Query,Req,Res,Inject,UseGuards} from '@nestjs/common';
 import {TenantGuard,actorOf,type ActorRequest} from './auth.service.js';
+import {httpError} from './errors.js';
 import {uuid,day,queryInput,page} from './api-input.js';
 import {timeRange} from './time-input.js';
 import {TimeService} from './time.service.js';
@@ -9,6 +10,7 @@ const civilDay=(v:string)=>day(v)!;
 @UseGuards(TenantGuard)
 export class TimeController {
  constructor(@Inject(TimeService)private readonly time:TimeService){}
+ @Get('days') days(@Req()r:ActorRequest,@Param('p')p:string,@Query()q:Record<string,unknown>){queryInput(q,['from','to','limit','offset','status']);if(q.status!==undefined&&(typeof q.status!=='string'||!['unapproved','current','stale','revoked'].includes(q.status)))throw httpError(400,'invalid_status');return this.time.days(actorOf(r),normalized(p),timeRange({from:q.from,to:q.to}),page(q),q.status as string|undefined);}
  @Get('export.xlsx') async export(@Req()r:ActorRequest,@Param('p')p:string,@Query()q:Record<string,unknown>,@Res()res:any){
  const range=timeRange(q),bytes=await this.time.export(actorOf(r),normalized(p),range);
  res.set({'Content-Type':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','Content-Disposition':`attachment; filename="time-${range.from}-${range.to}.xlsx"`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}).send(bytes);

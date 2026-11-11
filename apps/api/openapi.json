@@ -6283,6 +6283,157 @@
         }
       }
     },
+    "/api/v1/projects/{p}/time/days": {
+      "get": {
+        "operationId": "listTimeDays",
+        "summary": "List recorded employee days for a civil period",
+        "description": "Same read scope as one day: director, granted master/PTO, or the worker's own active assignment. Returns only recorded employee/days. A missing row is not an approved absence. Status current/stale is computed from a fresh source hash. Without status, offset pages the recorded rows. With status, offset is the recorded-row cursor and one request hydrates at most 40 rows; truncated means more recorded rows remain. Period is under 31 days and at most 10000 recorded rows.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["unapproved", "current", "stale", "revoked"]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeDayList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed query, unknown or repeated keys, invalid day, pagination, or status.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Inactive tenant membership or role_denied.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Missing or hidden project, or worker without an active own assignment.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "time_source_inconsistent while reading a recorded day.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "invalid_tenant_timezone or time_list_row_limit above 10000 recorded rows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server/database failure; public body is {error:\"internal\"}.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{p}/time/employees/{employee}/days/{day}": {
       "get": {
         "operationId": "getTimeDay",
@@ -12833,6 +12984,133 @@
         ],
         "additionalProperties": false,
         "description": "Immutable revision. Revocation appends a new revision preserving prior source and totals. Manual aggregate override has null confirmedTaskAllocation, never invented task distribution. Version is scoped to project/employee/day, previousVersion null only on first approval."
+      },
+      "TimeDaySummary": {
+        "type": "object",
+        "properties": {
+          "employeeId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "employeeName": {
+            "type": "string",
+            "minLength": 1
+          },
+          "day": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["unapproved", "current", "stale", "revoked"]
+          },
+          "sourceHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "approvalVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "recorded": {
+            "type": "boolean"
+          },
+          "future": {
+            "type": "boolean"
+          },
+          "dayLengthMs": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "hasOpenIntervals": {
+            "type": "boolean"
+          },
+          "suspicious": {
+            "type": "boolean"
+          },
+          "sourceTotals": {
+            "$ref": "#/components/schemas/TimeTotals"
+          },
+          "confirmedTotals": {
+            "$ref": "#/components/schemas/TimeTotals",
+            "nullable": true
+          },
+          "overridden": {
+            "type": "boolean"
+          },
+          "latestReason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "employeeId",
+          "employeeName",
+          "day",
+          "status",
+          "sourceHash",
+          "approvalVersion",
+          "recorded",
+          "future",
+          "dayLengthMs",
+          "hasOpenIntervals",
+          "suspicious",
+          "sourceTotals",
+          "confirmedTotals",
+          "overridden",
+          "latestReason"
+        ],
+        "additionalProperties": false
+      },
+      "TimeDayList": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TimeDaySummary"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "nextOffset": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "scanned": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset",
+          "nextOffset",
+          "truncated",
+          "scanned"
+        ],
+        "additionalProperties": false,
+        "description": "Recorded employee/days only. nextOffset continues the recorded-row cursor. truncated is true when a status filter stops after 40 hydrated rows with more recorded rows left."
       },
       "TimeDay": {
         "type": "object",

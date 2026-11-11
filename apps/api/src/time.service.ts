@@ -22,6 +22,34 @@ export class TimeService {
  return {projectId:p,employeeId:e,day,...current,approvalVersion:latest?Number(latest.version):0,latest:latest?this.revision(latest):null,isCurrent,status:!latest?'unapproved':latest.state==='revoked'?'revoked':isCurrent?'current':'stale'};
  }
  day(a:Actor,p:string,e:string,day:string){return withTenant(this.pool,a.tenantId,a.userId,async c=>{await this.scope(c,a,p,e);return this.result(e,p,day,await timeSource(c,a,p,e,day),await this.latest(c,a,p,e,day));});}
+ // One page of recorded employee/days. A day without a recorded interval is absent from this list, not an approved absence.
+ async days(a:Actor,p:string,range:{from:string;to:string},page:Page,status?:string){
+  return withTenant(this.pool,a.tenantId,a.userId,async c=>{
+   const member=(await c.query(`SELECT role,status FROM memberships WHERE tenant_id=$1 AND user_id=$2`,[a.tenantId,a.userId])).rows[0];
+   if(!member||member.status!=='active'||!['director','master','pto','worker'].includes(member.role))throw httpError(403,'role_denied');
+   let only:string|null=null;
+   if(member.role==='worker'){
+    const own=(await c.query(`SELECT id FROM employees WHERE tenant_id=$1 AND user_id=$2 AND status='active'`,[a.tenantId,a.userId])).rows[0];
+    if(!own)throw httpError(404,'not_found');
+    only=own.id;
+    await evidenceTimeScope(c,a,p,[own.id]);
+   }else await evidenceTimeScope(c,a,p,[],false,undefined,['director','master','pto']);
+   const clock=await executionClock(c,a,range.from);
+   const recorded=(await c.query(`SELECT DISTINCT s.employee_id,to_char(d.civil_day,'YYYY-MM-DD') AS day FROM managed_segments s CROSS JOIN generate_series($3::date,$4::date,interval '1 day') d(civil_day) WHERE s.tenant_id=$1 AND s.project_id=$2 AND ($7::uuid IS NULL OR s.employee_id=$7) AND ${recordedTimePredicate('d.civil_day::date','$5','$6')} ORDER BY s.employee_id,day LIMIT 10001`,[a.tenantId,p,range.from,range.to,clock.timezone,clock.asOf,only])).rows as {employee_id:string;day:string}[];
+   if(recorded.length>10000)throw httpError(422,'time_list_row_limit');
+   const cap=status?40:page.limit,items:Row[]=[];
+   let index=Math.min(page.offset,recorded.length),scanned=0;
+   while(index<recorded.length&&items.length<page.limit&&scanned<cap){
+    const row=recorded[index++];scanned++;
+    const current=await timeSource(c,a,p,row.employee_id,row.day,clock),latest=await this.latest(c,a,p,row.employee_id,row.day);
+    const result=this.result(row.employee_id,p,row.day,current,latest);
+    if(status&&result.status!==status)continue;
+    items.push({employeeId:row.employee_id,day:row.day,status:result.status,sourceHash:result.sourceHash,approvalVersion:result.approvalVersion,recorded:result.recorded,future:result.future,dayLengthMs:result.dayLengthMs,hasOpenIntervals:current.source.hasOpenIntervals,suspicious:current.source.suspicious,sourceTotals:current.source.totals,confirmedTotals:latest?latest.confirmed_totals:null,overridden:Boolean(latest?.overridden),latestReason:latest?.reason??null});
+   }
+   const names=new Map((await c.query(`SELECT id,full_name FROM employees WHERE tenant_id=$1 AND id=ANY($2::uuid[])`,[a.tenantId,items.map(item=>item.employeeId)])).rows.map(row=>[row.id,row.full_name]));
+   return {items:items.map(item=>{const employeeName=names.get(item.employeeId);if(typeof employeeName!=='string'||!employeeName.trim())throw httpError(404,'not_found');return {...item,employeeName};}),total:recorded.length,...page,nextOffset:index<recorded.length?index:null,truncated:Boolean(status)&&index<recorded.length&&items.length<page.limit,scanned};
+  });
+ }
  history(a:Actor,p:string,e:string,day:string,page:Page){return withTenant(this.pool,a.tenantId,a.userId,async c=>{await this.scope(c,a,p,e);const v=this.values(a,p,e,day),where='tenant_id=$1 AND project_id=$2 AND employee_id=$3 AND day=$4';const total=(await c.query(`SELECT count(*)::int n FROM time_approval_revisions WHERE ${where}`,v)).rows[0].n;const rows=(await c.query(`SELECT * FROM time_approval_revisions WHERE ${where} ORDER BY version DESC LIMIT $5 OFFSET $6`,[...v,page.limit,page.offset])).rows;return {items:rows.map(r=>this.revision(r)),total,...page};});}
  async export(a:Actor,p:string,range:{from:string;to:string}){
   const snapshot=await withTenant(this.pool,a.tenantId,a.userId,async c=>{

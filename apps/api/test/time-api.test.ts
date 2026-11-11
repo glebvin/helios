@@ -59,6 +59,11 @@ test('approval tracer: exact recorded source -> immutable director approval -> h
  const b={requestId:id(),expectedApprovalVersion:0,sourceHash:source.body.sourceHash,reason:'Checked',acknowledgeSuspicious:true};const approved=await req(timePath()+'/approvals',b,director);assert.equal(approved.status,201,JSON.stringify(approved));assert.equal(approved.body.approvalVersion,1);assert.equal(approved.body.status,'current');
  assert.deepEqual(await req(timePath()+'/approvals',b,director),approved);
  const history=await req(timePath()+'/history',undefined,director);assert.equal(history.status,200);assert.equal(history.body.total,1);
+ const listed=await req(`/projects/${p}/time/days?from=2026-11-01&to=2026-11-01&limit=10`,undefined,director);assert.equal(listed.status,200,JSON.stringify(listed));assert.ok(listed.body.items.some((item:any)=>item.employeeId===employee&&item.day==='2026-11-01'&&item.status==='current'));
+ const filtered=await req(`/projects/${p}/time/days?from=2026-11-01&to=2026-11-01&status=current`,undefined,director);assert.equal(filtered.status,200);assert.ok(filtered.body.items.every((item:any)=>item.status==='current'));
+ const own=await req(`/projects/${p}/time/days?from=2026-11-01&to=2026-11-01`,undefined,worker);assert.equal(own.status,200);assert.ok(own.body.items.every((item:any)=>item.employeeId===employee));
+ assert.equal((await req(`/projects/${p}/time/days?from=2026-11-01&to=2026-11-01&status=nope`,undefined,director)).status,400);
+ assert.equal((await req(`/projects/${foreignProject}/time/days?from=2026-11-01&to=2026-11-01`,undefined,worker)).status,404);
 });
 
 async function source(day='2026-11-01',emp=employee,project=p,user=director){const r=await req(timePath(day,emp,project),undefined,user);assert.equal(r.status,200,JSON.stringify(r));return r.body;}
@@ -385,7 +390,7 @@ test('strict time contract covers exact snapshots, immutable revisions, inputs a
  for(const extra of [{tenantId:tenant},{expectedApprovalVersion:-1},{expectedApprovalVersion:Number.MAX_SAFE_INTEGER},{sourceHash:'A'.repeat(64)},{reason:' '},{reason:'a'.repeat(501)},{confirmedTotals:{...zeroTotals,workMs:'01'}},{confirmedTotals:{...zeroTotals,idleMs:'1.0'}},{confirmedTotals:{...zeroTotals,extra:'0'}},{confirmedTotals:{presenceMs:'0'}}])assert.throws(()=>matchesContract({...form,...extra},schemas.TimeApprovalInput));
  for(const key of ['requestId','expectedApprovalVersion','sourceHash','reason']){const missing:any={...form};delete missing[key];assert.throws(()=>matchesContract(missing,schemas.TimeApprovalInput));}
  const revoke={requestId:id(),expectedApprovalVersion:1,reason:'Withdraw'};matchesContract(revoke,schemas.TimeRevokeInput);assert.throws(()=>matchesContract({...revoke,sourceHash:form.sourceHash},schemas.TimeRevokeInput));
- for(const name of ['TimeTotals','TimeTaskAllocation','TimeSourceSegment','TimeZeroMarker','TimeIntervalFlags','TimeIntervalEvent','TimeSource','TimeApprovalRevision','TimeDay','TimeApprovalHistory','TimeApprovalInput','TimeRevokeInput'])assert.equal(schemas[name].additionalProperties,false,name);
+ for(const name of ['TimeTotals','TimeTaskAllocation','TimeSourceSegment','TimeZeroMarker','TimeIntervalFlags','TimeIntervalEvent','TimeSource','TimeApprovalRevision','TimeDay','TimeDaySummary','TimeDayList','TimeApprovalHistory','TimeApprovalInput','TimeRevokeInput'])assert.equal(schemas[name].additionalProperties,false,name);
  const current=await source();matchesContract(current,schemas.TimeDay);const history=await req(timePath()+'/history',undefined,director);matchesContract(history.body,schemas.TimeApprovalHistory);
  assert.throws(()=>matchesContract({...current,latest:{...current.latest,forged:true}},schemas.TimeDay));
  const exportOp=publicContract.paths[root+'/export.xlsx'].get,mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';assert.equal(exportOp.responses['200'].content[mime].schema.format,'binary');assert.deepEqual(exportOp.parameters.filter((p:any)=>p.in==='query').map((p:any)=>[p.name,p.required]),[['from',true],['to',true]]);
