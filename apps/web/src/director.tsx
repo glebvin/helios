@@ -3,7 +3,7 @@ import type { Desk, NewTask, Session } from "./api";
 import { WorkBoard } from "./board";
 import { Inbox } from "./inbox";
 import { Icon, paths } from "./icons";
-import { DeskBadge, DeskEmpty, DeskProgress, DeskSelect, PageShift, ProfileMenu, StatGrid, ThemeButton } from "./kit";
+import { DeskBadge, DeskEmpty, DeskProgress, PageShift, ProfileMenu, StatGrid, ThemeButton } from "./kit";
 import { Documents } from "./documents";
 import { Materials } from "./materials";
 import { Objects } from "./objects";
@@ -12,6 +12,8 @@ import { Settings } from "./settings";
 import { Mark } from "./mark";
 import { People, type PersonCard } from "./people";
 import { DayFlow } from "./dayflow";
+import { ScopeBar, useCabinetScope } from "./scope-read";
+import { projectDesk } from "./scope";
 import { RoleSwitch, accessOf, roleTitle, serverRights, type Section, type View } from "./roles";
 import { minutesLabel, useBook } from "./book";
 import { amount, dayTasks, laneOf, laneTone, personName, progress, statusLabel, todayKey, type Admission, type Lane, type Remark } from "./model";
@@ -30,7 +32,7 @@ const icons: Record<Section, string> = {
 
 export function DirectorDesk({
   session,
-  data,
+  data: sourceData,
   section,
   onSection,
   theme,
@@ -47,6 +49,7 @@ export function DirectorDesk({
   preview,
   demo,
   onDemoAccount,
+  onExpire,
 }: {
   session: Session;
   data: Desk;
@@ -66,14 +69,18 @@ export function DirectorDesk({
   preview: boolean;
   demo: boolean;
   onDemoAccount: (email: string, password: string) => void;
+  onExpire: () => void;
 }) {
+  const scope = useCabinetScope(session, onExpire, sourceData.projects);
+  const data = projectDesk(sourceData, scope.notice ? "" : scope.projectId);
   const tasks = dayTasks(data);
-  const project = data.projects[0]?.name ?? "Объект";
-  const date = new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
-  const waiting = data.reports.filter((report) => tasks.some((task) => task.id === report.task_id) && !report.accepted_quantity);
+  const dayTasksOnServer = scope.notice ? [] : data.tasks.filter((task) => String(task.work_date).slice(0, 10) === scope.day);
+  const project = scope.projectName;
+  const date = scope.dayLabel;
+  const waiting = data.reports.filter((report) => dayTasksOnServer.some((task) => task.id === report.task_id) && !report.accepted_quantity);
   const onShift = new Set(data.shifts.filter((shift) => shift.status === "open").map((shift) => shift.employee_id).filter(Boolean));
-  const accepted = tasks.filter((task) => laneOf(task.id, data) === "accepted").length;
-  const attention = tasks.flatMap((task) => {
+  const accepted = dayTasksOnServer.filter((task) => laneOf(task.id, data) === "accepted").length;
+  const attention = dayTasksOnServer.flatMap((task) => {
     const lane = laneOf(task.id, data);
     const report = data.reports.find((item) => item.task_id === task.id);
     if (lane === "submitted" && report) {
@@ -127,16 +134,16 @@ export function DirectorDesk({
             </button>
           ))}
         </nav>
-        <div className="side-foot">{session.name}</div>
+        <div className="side-foot">{scope.actor?.name ?? session.name}</div>
       </aside>
       <div className="workspace">
         <header className="topbar">
-          <DeskSelect label="Объект" value={project} options={[{ value: project, label: project }]} onChange={() => {}} />
+          <ScopeBar scope={scope} />
           <span className="grow" />
           {demo ? <RoleSwitch view={view} onView={onRole} /> : null}
           {demo ? <DemoAccounts email={session.email} onAccount={onDemoAccount} /> : null}
           <ThemeButton theme={theme} onTheme={onTheme} />
-          <ProfileMenu name={session.name} role={roleTitle(session.role)} onLogout={onLogout} />
+          <ProfileMenu name={scope.actor?.name ?? session.name} role={roleTitle(scope.actor?.role ?? session.role)} onLogout={onLogout} />
         </header>
         {preview ? <p className="quiet preview-note">Просмотр кабинета: {access.hint} Вход не меняется: {session.name}, {roleTitle(session.role)}. Запись от выбранного вида не выполняется.</p> : null}
         <PageShift pageKey={page}>
@@ -147,7 +154,9 @@ export function DirectorDesk({
               title={access.overviewTitle}
               project={project}
               date={date}
-              tasks={tasks}
+              tasks={dayTasksOnServer}
+              notice={scope.notice}
+              workDay={scope.day}
               data={data}
               waiting={waiting.length}
               onShift={onShift.size}
@@ -240,7 +249,7 @@ export function DirectorDesk({
 }
 
 function Overview({
-  title, project, date, tasks, data, waiting, onShift, files, accepted, attention, remarks, crew, openLabel, onOpen,
+  title, project, date, tasks, data, waiting, onShift, files, accepted, attention, remarks, crew, openLabel, onOpen, notice = "", workDay = "",
 }: {
   title: string;
   project: string;
@@ -256,17 +265,20 @@ function Overview({
   crew?: { id: string; name: string; phone: string; on: boolean }[];
   openLabel: string;
   onOpen: () => void;
+  notice?: string;
+  workDay?: string;
 }) {
   const { book } = useBook();
-  const late = remarks.filter((item) => !item.resubmitted && item.due < todayKey()).length;
-  const stop = book.downtime.filter((item) => item.day === todayKey());
+  const dayKey = workDay || todayKey();
+  const late = remarks.filter((item) => !item.resubmitted && item.due < dayKey).length;
+  const stop = book.downtime.filter((item) => item.day === dayKey);
   const stopLabel = stop.length === 0 ? "—" : minutesLabel(stop.reduce((sum, item) => sum + item.minutes, 0));
   const ratio = tasks.length ? Math.round((accepted / tasks.length) * 100) : 0;
   return (
     <section className="page">
       <div>
         <h1>{title}</h1>
-        <p className="sub">{project} · {date}</p>
+        <p className="sub">{notice || (project && date ? `${project} · ${date}` : "Объект и день появятся после ответа сервера")}</p>
       </div>
       <StatGrid
         items={[
@@ -280,7 +292,7 @@ function Overview({
         <h2>Сводка дня</h2>
         <div className="summary-facts">
           <div><b>{planFact(tasks, data)}</b><span>принято из плана</span></div>
-          <div><b>{closedHours(data)}</b><span>закрытые часы</span></div>
+          <div><b>{closedHours(data, dayKey)}</b><span>закрытые часы</span></div>
           <div><b>{stopLabel}</b><span>простой</span></div>
           <div><b>{String(late)}</b><span>просроченных замечаний</span></div>
         </div>
@@ -290,7 +302,7 @@ function Overview({
         <section className="panel">
           <h2>Ход работ</h2>
           <div className="work-head"><span>Работа</span><span>Объём</span><span>Статус</span><span>Ответственный</span></div>
-          {tasks.length === 0 ? <DeskEmpty title="На сегодня заданий нет" description="Поставленные на этот день появятся здесь." /> : null}
+          {tasks.length === 0 ? <DeskEmpty title={notice ? "День не подтверждён" : "На сегодня заданий нет"} description={notice || "Поставленные на этот день появятся здесь."} /> : null}
           {tasks.map((task) => {
             const lane = laneOf(task.id, data);
             const tone = laneTone(lane);
@@ -357,8 +369,7 @@ function planFact(tasks: Desk["tasks"], data: Desk) {
   return `${amount(String(fact))} из ${amount(String(plan))} ${unit}`;
 }
 
-function closedHours(data: Desk) {
-  const key = todayKey();
+function closedHours(data: Desk, key = todayKey()) {
   let ms = 0;
   for (const shift of data.shifts) {
     if (!shift.started_at || !shift.finished_at) continue;

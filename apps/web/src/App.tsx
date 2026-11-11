@@ -1,5 +1,5 @@
 import {JoinPage} from "./invitations";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { acceptReport, createTask, desk, loadSession, login, savePlace, saveSession, syncEvents, type Desk, type NewTask, type Session } from "./api";
 import { DirectorDesk, type Section } from "./director";
 import { BookProvider } from "./book";
@@ -35,6 +35,8 @@ function loadTheme(): "light" | "dark" {
 export function App() {
   const [joinCode,setJoinCode] = useState(() => /^\/join\/([^/]+)\/?$/.exec(location.pathname)?.[1] ?? null);
   const [session, setSession] = useState<Session | null>(() => loadSession());
+  const activeSession = useRef(session);
+  activeSession.current = session;
   const [data, setData] = useState<Desk | null>(null);
   const [error, setError] = useState("");
   const [entering, setEntering] = useState(false);
@@ -51,6 +53,7 @@ export function App() {
   async function refresh(next = session) {
     if (!next) return;
     const body = await desk(next);
+    if (activeSession.current?.token !== next.token || activeSession.current?.tenantId !== next.tenantId) return;
     setData(body);
     setPending(pendingFor(next.tenantId, next.userId).length);
   }
@@ -59,9 +62,8 @@ export function App() {
     if (!session || joinCode) return;
     void refresh(session).catch((reason: Error) => {
       if (reason.message === "unauthorized" || reason.message === "tenant_denied") {
-        saveSession(null);
-        setSession(null);
-        setData(null);
+        expire();
+        return;
       }
       setError(explain(reason.message));
     });
@@ -104,11 +106,22 @@ export function App() {
       .finally(() => void refresh(current));
   }
 
+  function expire() {
+    activeSession.current = null;
+    saveSession(null);
+    setSession(null);
+    setData(null);
+    setError("Сессия закончилась. Войдите снова.");
+  }
+
   async function enter(email: string, password: string) {
     if (entering) return;
     setEntering(true);
+    const previous = session;
+    setData(null);
     try {
       const next = await login(email, password);
+      activeSession.current = next;
       const chosen = homeView(next.role);
       setSession(next);
       setView(chosen);
@@ -116,6 +129,7 @@ export function App() {
       setError("");
     } catch (reason) {
       setError(explain(reason instanceof Error ? reason.message : "Не удалось войти"));
+      if (previous) void refresh(previous).catch(() => {});
     } finally { setEntering(false); }
   }
 
@@ -140,6 +154,7 @@ export function App() {
       return;
     }
     saveSession(null);
+    activeSession.current = null;
     setSession(null);
     setData(null);
   }
@@ -206,6 +221,7 @@ export function App() {
           onStart={(taskId, employeeId) => queue(session, { kind: "shift_start", payload: { taskId, employeeId } })}
           onEnd={(taskId) => queue(session, { kind: "shift_end", payload: { taskId } })}
           onSubmit={(taskId, quantity) => queue(session, { kind: "submit_volume", payload: { taskId, quantity } })}
+          onExpire={expire}
         />
       </BookProvider>
     );
@@ -247,6 +263,7 @@ export function App() {
         onTheme={toggleTheme}
         onLogout={logout}
         onRole={switchView}
+        onExpire={expire}
         {...deskActions}
       />
     </BookProvider>
