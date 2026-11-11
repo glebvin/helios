@@ -12,8 +12,8 @@ import { Settings } from "./settings";
 import { Mark } from "./mark";
 import { People, type PersonCard } from "./people";
 import { AccessDesk, CatalogDesk, StaffDesk, labelDay, useCabinetScope } from "./staff";
-import { DayFlow } from "./dayflow";
 import { ShiftWatch } from "./shift";
+import { ServerInbox, TimeDesk, TodaySummary } from "./timesheet";
 import { RoleSwitch, accessOf, roleTitle, serverRights, type Section, type View } from "./roles";
 import { minutesLabel, useBook } from "./book";
 import { amount, dayTasks, laneOf, laneTone, personName, progress, statusLabel, todayKey, type Admission, type Lane, type Remark } from "./model";
@@ -28,6 +28,7 @@ const icons: Record<Section, string> = {
   documents: paths.file,
   objects: paths.pin,
   settings: paths.gear,
+  time: paths.calendar,
 };
 
 export function DirectorDesk({
@@ -92,6 +93,7 @@ export function DirectorDesk({
   const [cards, setCards] = useState<PersonCard[]>([]);
   const [remarks, setRemarks] = useState<Remark[]>([]);
   const [openTask, setOpenTask] = useState<{ id: string; token: number } | null>(null);
+  const [timeFocus, setTimeFocus] = useState<{ employeeId: string; day: string } | null>(null);
   const access = accessOf(view);
   const rights = serverRights(session.role);
   const canCreate = !preview && rights.createTask && access.createTask;
@@ -155,8 +157,7 @@ export function DirectorDesk({
           {page === "overview" ? (
             <>
             {preview || !scope.projectId || !scope.day ? null : <ShiftWatch session={session} projectId={scope.projectId} day={scope.day} timeZone={scope.timezone || "Europe/Moscow"} />}
-            {preview ? null : <DayFlow session={session} />}
-            <Overview
+            {preview ? <Overview
               title={access.overviewTitle}
               project={project}
               date={date}
@@ -171,11 +172,11 @@ export function DirectorDesk({
               crew={crew}
               openLabel={access.sections.some((item) => item.id === "mine") ? "Открыть дела" : "К приёмке"}
               onOpen={() => onSection(access.sections.some((item) => item.id === "mine") ? "mine" : "quality")}
-            />
+            /> : scope.projectId && scope.day ? <TodaySummary session={session} projectId={scope.projectId} projectName={project} day={scope.day} /> : <DeskEmpty title={scope.loading ? "Загружаем объект" : "Объект не выбран"} description={scope.error || "Сводка появится, когда у входа будет доступ к объекту."} />}
             </>
           ) : null}
           {page === "mine" ? (
-            <Inbox
+            preview || !scope.projectId || !scope.day ? <Inbox
               data={data}
               remarks={remarks}
               canAccept={canAccept}
@@ -187,7 +188,10 @@ export function DirectorDesk({
               onOpenBoard={() => onSection("tasks")}
               onOpenQuality={() => onSection("quality")}
               onOpenDocuments={() => onSection("documents")}
-            />
+            /> : <ServerInbox session={session} projectId={scope.projectId} day={scope.day} onOpenTasks={() => onSection("tasks")} onOpenDay={(employeeId, day) => { setTimeFocus({ employeeId, day }); onSection("time"); }} />
+          ) : null}
+          {page === "time" ? (
+            scope.projectId && scope.day ? <TimeDesk session={session} projectId={scope.projectId} projectName={project} day={scope.day} canApprove={!preview && session.role === "director"} canExport={!preview && (session.role === "director" || session.role === "master" || session.role === "pto")} focus={timeFocus} /> : <DeskEmpty title={scope.loading ? "Загружаем объект" : "Объект не выбран"} description={scope.error || "Табель появится, когда у входа будет доступ к объекту."} />
           ) : null}
           {page === "objects" ? (
             <>
@@ -213,7 +217,7 @@ export function DirectorDesk({
                   inviteForeman={canInviteForeman}
                 />
               ) : null}
-              {access.peopleTabs.some((item) => item === "sheet" || item === "contractors") ? (
+              {access.peopleTabs.some((item) => item === "contractors" || (preview && item === "sheet")) ? (
                 <People
                   key={view}
                   session={session}
@@ -221,7 +225,7 @@ export function DirectorDesk({
                   onOpenTask={(id) => { setOpenTask({ id, token: Date.now() }); onSection("tasks"); }}
                   inviteWorker={false}
                   inviteForeman={false}
-                  peopleTabs={access.peopleTabs.filter((item) => item === "sheet" || item === "contractors")}
+                  peopleTabs={access.peopleTabs.filter((item) => item === "contractors" || (preview && item === "sheet"))}
                   admitStep="none"
                   dayStep={canPrepareDay ? "prepare" : canCloseDay ? "close" : "none"}
                   canExport={false}

@@ -3,7 +3,7 @@ export type View =
   | "master" | "pto" | "supply" | "safety" | "hr"
   | "customer" | "admin" | "worker";
 
-export type Section = "overview" | "mine" | "people" | "tasks" | "quality" | "materials" | "documents" | "objects" | "settings";
+export type Section = "overview" | "mine" | "people" | "tasks" | "quality" | "materials" | "documents" | "objects" | "settings" | "time";
 export type PeopleTab = "people" | "foremen" | "crews" | "sheet" | "contractors";
 export type QualityTab = "queue" | "check" | "remarks" | "history";
 
@@ -95,6 +95,7 @@ const desk: Access[] = [
     sections: [
       { id: "overview", label: "Сегодня" },
       { id: "mine", label: "Мои дела" },
+      { id: "time", label: "Табель" },
     ],
     shell: "desk",
     overviewTitle: "Сегодня",
@@ -108,6 +109,7 @@ const desk: Access[] = [
     sections: [
       { id: "overview", label: "Сегодня" },
       { id: "mine", label: "Мои дела" },
+      { id: "time", label: "Табель" },
       { id: "objects", label: "Объект" },
     ],
     shell: "desk",
@@ -123,6 +125,7 @@ const desk: Access[] = [
     sections: [
       { id: "overview", label: "Сегодня" },
       { id: "mine", label: "Мои дела" },
+      { id: "time", label: "Табель" },
       { id: "quality", label: "Приёмка" },
     ],
     qualityTabs: ["queue", "remarks", "history"],
@@ -149,6 +152,7 @@ const desk: Access[] = [
     sections: [
       { id: "overview", label: "Сегодня" },
       { id: "mine", label: "Мои дела" },
+      { id: "time", label: "Табель" },
       { id: "people", label: "Люди" },
       { id: "tasks", label: "Задания" },
       { id: "quality", label: "Приёмка" },
@@ -189,6 +193,8 @@ const desk: Access[] = [
     account: "master",
     sections: [
       { id: "overview", label: "Сегодня" },
+      { id: "mine", label: "Мои дела" },
+      { id: "time", label: "Табель" },
       { id: "people", label: "Работники" },
       { id: "tasks", label: "Задания" },
       { id: "quality", label: "Приёмка" },
@@ -223,6 +229,8 @@ const desk: Access[] = [
     hint: "Руководитель ПТО. Принимает работу по чек-листу. Сервер этого решения текущему входу не отдаёт.",
     account: "director",
     sections: [
+      { id: "time", label: "Табель" },
+      { id: "mine", label: "Мои дела" },
       { id: "quality", label: "Приёмка" },
       { id: "documents", label: "Акты" },
     ],
@@ -258,9 +266,12 @@ const desk: Access[] = [
     ...look,
     id: "hr",
     label: "Кадры",
-    hint: "Директор по персоналу, служба персонала. Утверждает табель. Этот шаг пока не реализован на сервере.",
+    hint: "Директор по персоналу. Утверждение часов на сервере делает руководитель, не этот вид.",
     account: "director",
-    sections: [{ id: "people", label: "Люди" }],
+    sections: [
+      { id: "time", label: "Табель" },
+      { id: "people", label: "Люди" },
+    ],
     exportPeople: true,
     peopleTabs: ["people", "sheet"],
     shell: "desk",

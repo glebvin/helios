@@ -13,6 +13,7 @@ import {
   type GeoAttempt, type GeoCapture, type ShiftDraft, type ShiftRow,
 } from "./shift-queue";
 import type { EventPayload, EvidenceInput } from "@helios/offline";
+import { OwnDayStatus } from "./timesheet";
 
 type ShiftRowServer = {
   id: string;
@@ -514,7 +515,15 @@ function DayScreen({
         {!blocked && open && mode === "work" ? <p className="day-copy"><b>{taskName(openSpan?.taskId ?? null)}</b><br />План: {planOf(data, openSpan?.taskId ?? null)} · Работа по заданию: {duration(workMs)}</p> : null}
         {!blocked && open && mode === "break" ? <p className="day-copy"><b>Перерыв</b><br />С {openSpan ? clock(openSpan.startedAt, data.timeZone) : ""}</p> : null}
         {!blocked && open && mode === "downtime" ? <p className="day-copy"><b>Простой</b><br />{openSpan?.reasonCode && openSpan.reasonCode in downtimeLabels ? downtimeLabels[openSpan.reasonCode as keyof typeof downtimeLabels] : "Причина записана"}{openSpan?.taskId ? ` · ${taskName(openSpan.taskId)}` : ""}</p> : null}
-        {!blocked && closed ? <p className="day-copy"><b>Смена закрыта</b><br />Смена — {duration(presenceMs)}. {missingReports.length ? "Есть работа без заявленного объёма." : data.reports.some((report) => report.shiftId === shiftId) ? "Сообщённый объём ждёт проверки." : "Объём не заявлен."}<br />Часы и объём ещё подлежат проверке.</p> : null}
+        {!blocked && closed ? <p className="day-copy"><b>Смена закрыта</b><br />Смена — {duration(presenceMs)}. {missingReports.length ? "Есть работа без заявленного объёма." : data.reports.some((report) => report.shiftId === shiftId) ? "Сообщённый объём ждёт проверки." : "Объём не заявлен."}</p> : null}
+        {!blocked && (open || missingReports.length > 0) ? (
+          <div>
+            <b>Незавершённое</b>
+            {open ? <p className="day-copy">Смена открыта. Завершение и отправка объёма — в этой карточке. Отдельного срока у действия нет.</p> : null}
+            {missingReports.map((item) => <p className="day-copy" key={item.taskId ?? item.startedAt}>По заданию {taskName(item.taskId ?? null)} нет заявленного объёма. Форма отправки ниже.</p>)}
+          </div>
+        ) : null}
+        {closed && employee && projectId && data.day ? <OwnDayStatus session={session} projectId={projectId} employeeId={employee.id} day={data.day} /> : null}
         {geoLine ? <p className="quiet">{geoLine}</p> : null}
         <button className="fill wide" type="button" disabled={busy || seeking} onClick={() => void primaryAction()}>{busy ? "Сохраняем…" : seeking ? "Ищем точку…" : primary}</button>
         {!blocked && !open && !closed ? (
@@ -543,7 +552,7 @@ function DayScreen({
         {(shiftId === latest?.id && latest?.endedAt) || endedLocal ? <li>{clock(latest?.endedAt ?? new Date(now).toISOString(), data.timeZone)} — Закончили смену{endedLocal && !latest?.endedAt ? " · на устройстве" : ""}</li> : null}
         {!startedAt ? <li>Отметок за эту смену ещё нет.</li> : null}
       </ul>
-      <p className="quiet">Смена — {duration(Math.max(0, presenceMs))}. Предварительно, до проверки часов.</p>
+      <p className="quiet">Смена — {duration(Math.max(0, presenceMs))}. Это предварительный итог смены.</p>
       {sheet === "tasks" ? <TaskPicker data={data} onClose={() => setSheet("")} onPick={(taskId) => void resume(taskId)} /> : null}
       {sheet === "downtime" ? (
         <form className="dialog-back is-sheet" onSubmit={(event) => {
