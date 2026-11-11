@@ -4,7 +4,7 @@ import json, re, sys, urllib.parse
 
 root = Path(__file__).resolve().parent.parent
 paths = [root / p for p in [
-    'README.md','AGENTS.md','CONTRIBUTING.md','SECURITY.md',
+    'README.md','NEXT.md','AGENTS.md','CONTRIBUTING.md','SECURITY.md',
     'docs/ROADMAP.md','docs/GITHUB-FOR-OWNER.md','docs/ROLE-FLOW-MAP.md',
     'docs/DEVELOPMENT.md','docs/DEFINITION-OF-DONE.md','docs/BRANCHES-AND-RELEASES.md',
     'docs/qa/repository-setup-2026-11-11.md']]

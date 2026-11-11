@@ -43,3 +43,5 @@ CI не покрывает внешний вид, весь сквозной UI, 
 
 
 В локальных копиях с уже установленными/связанными node_modules используйте --config.verifyDepsBeforeRun=false: иначе pnpm может попытаться автоматически переустановить зависимости до запуска команды. Это не замена install --frozen-lockfile в чистом CI.
+
+Для CI/Linux разрешён postinstall уже закреплённого @embedded-postgres/linux-x64, аналогично существующему darwin-arm64. Неизвестные build-скрипты по-прежнему запрещены; global ignore-scripts/dangerouslyAllowAllBuilds не включались.
