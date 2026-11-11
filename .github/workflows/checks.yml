@@ -1,0 +1,82 @@
+name: Проверки HELIOS
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: helios-checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  project-checks:
+    name: Документы, типы и сборка
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Corepack
+        run: npm install --global corepack@0.35.0
+      - name: Зависимости по lockfile
+        run: corepack pnpm install --frozen-lockfile
+      - name: Ссылки и карточки roadmap
+        run: python3 scripts/check-docs.py
+      - name: TypeScript
+        run: node scripts/check-types.mjs
+      - name: Production frontend
+        run: corepack pnpm --filter @helios/web build
+      - name: Domain
+        run: corepack pnpm --filter @helios/domain test
+
+  server-tests:
+    name: API и изоляция данных
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: helios
+          POSTGRES_PASSWORD: helios
+          POSTGRES_DB: helios
+        ports:
+          - 54339:5432
+        options: >-
+          --health-cmd "pg_isready -U helios -d helios"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      ADMIN_DATABASE_URL: postgres://helios:helios@127.0.0.1:54339/helios
+      DATABASE_URL: postgres://helios_app:helios_app@127.0.0.1:54339/helios
+      HELIOS_DB_PORT: '54339'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Corepack
+        run: npm install --global corepack@0.35.0
+      - name: Зависимости по lockfile
+        run: corepack pnpm install --frozen-lockfile
+      - name: Только новая одноразовая CI база
+        run: node .github/scripts/prepare-ci-db.mjs
+      - name: Миграции
+        run: corepack pnpm --filter @helios/api migrate
+      - name: Синтетическая тестовая фикстура
+        run: corepack pnpm --filter @helios/api seed
+      - name: API regression последовательно
+        run: corepack pnpm --filter @helios/api test

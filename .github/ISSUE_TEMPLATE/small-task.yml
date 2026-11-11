@@ -1,0 +1,24 @@
+name: Небольшая задача
+description: Один проверяемый пользовательский результат
+title: "Задача: "
+body:
+  - type: input
+    id: step
+    attributes:
+      label: Шаг roadmap и роль
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Что должно заработать
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Готово, когда
+    validations:
+      required: true
+  - type: textarea
+    id: limits
+    attributes:
+      label: Границы и зависимости
