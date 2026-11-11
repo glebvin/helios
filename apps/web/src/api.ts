@@ -17,6 +17,7 @@ export type Desk = {
   employees: { id: string; full_name: string; phone: string; user_id: string | null; document_number?: string | null; role?: string | null }[];
   tasks: {
     id: string;
+    project_id: string;
     title: string;
     work_date: string;
     planned_quantity: string;

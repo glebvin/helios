@@ -15,4 +15,8 @@ export default defineConfig({
     port: webPort,
     proxy: { "/api": apiOrigin },
   },
+  preview: {
+    port: webPort,
+    proxy: { "/api": apiOrigin },
+  },
 });
