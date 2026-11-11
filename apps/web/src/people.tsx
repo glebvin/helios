@@ -1,6 +1,8 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useRef, useState } from "react";
 import {InvitationDialog,InvitationList} from "./invitations";
+import { searchStaff, staffNotice, type ServerEmployee } from "./staff-list";
+import { useStaffCard, useStaffList } from "./staff-read";
 import type { Desk, Session } from "./api";
 import { Dialog } from "./dialog";
 import { minutesLabel, useBook, type Book } from "./book";
@@ -50,29 +52,34 @@ export function People({
   const [personId, setPersonId] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
   const [invitingForeman, setInvitingForeman] = useState(false);
-  const person = data.employees.find((item) => item.id === personId) ?? null;
+  const list = useStaffList(session);
+  const opened = useStaffCard(session, personId);
   const admission = admissions.find((item) => item.employeeId === personId);
-  if (person) {
+  if (personId) {
     return (
-      <Profile
-        person={person}
+      <ServerProfile
+        loading={opened.loading}
+        error={opened.error}
+        employee={opened.employee}
         data={data}
         until={admission?.until}
-        card={cards.find((item) => item.employeeId === person.id) ?? emptyCard(person.id)}
+        card={cards.find((item) => item.employeeId === personId) ?? emptyCard(personId)}
         backLabel={workersOnly ? "Работники" : "Люди"}
         onBack={() => setPersonId(null)}
         onOpenTask={onOpenTask}
         admitStep={admitStep}
-        onAdmit={(until) => onAdmit?.(person.id, until)}
+        onAdmit={(until) => onAdmit?.(personId, until)}
         onCard={(card) => onCard?.(card)}
       />
     );
   }
 
   const needle = query.trim().toLowerCase();
-  const people = data.employees.filter(item => item.role !== "master").filter((item) => `${item.full_name} ${item.phone}`.toLowerCase().includes(needle));
-  const onShift = new Set(data.shifts.filter((shift) => shift.status === "open" && shift.employee_id).map((shift) => shift.employee_id));
-  const review = new Set(data.shifts.filter((shift) => shift.clock_requires_review && shift.employee_id).map((shift) => shift.employee_id));
+  const people = searchStaff(list.items, query);
+  const loaded = new Set(list.items.map((item) => item.id));
+  const onShift = new Set(data.shifts.filter((shift) => shift.status === "open" && shift.employee_id && loaded.has(shift.employee_id)).map((shift) => shift.employee_id));
+  const review = new Set(data.shifts.filter((shift) => shift.clock_requires_review && shift.employee_id && loaded.has(shift.employee_id)).map((shift) => shift.employee_id));
+  const notice = staffNotice({ error: list.error, total: list.total, loaded: list.items.length, shown: people.length, needle: query });
   const contractors = data.organizations.filter((item) => item.kind !== "own");
 
   return (
@@ -85,19 +92,23 @@ export function People({
         <div className="panel-tools">
           {(tab === "people" && inviteWorker) ? <SmoothButton onClick={() => setInviting(true)}>Пригласить работника</SmoothButton> : null}
           {tab === "foremen" && inviteForeman ? <SmoothButton onClick={() => setInvitingForeman(true)}>Пригласить прораба</SmoothButton> : null}
-          {canExport && tab === "people" ? <SmoothButton tone="ghost" onClick={() => save("sotrudniki.txt", people.map((item) => `${item.full_name}\t${item.phone}\t${item.document_number ?? ""}`))}>Выгрузить список</SmoothButton> : null}
+          {canExport && tab === "people" ? <SmoothButton tone="ghost" onClick={() => save("sotrudniki.txt", ["Выгрузка этой страницы сервера. Документ в ответе списка не приходит.", ...people.map((item) => `${item.fullName}\t${item.phone ?? ""}`)])}>Выгрузить список</SmoothButton> : null}
         </div>
       </div>
       {peopleTabs.length > 1 ? <FluidTabs name="people-tabs" label="Разделы людей" value={tab} onChange={(id) => setTab(id as Tab)} tabs={peopleTabLabels.filter((item) => peopleTabs.includes(item.id))} /> : null}
       {tab === "people" ? (
         <>
           <StatGrid items={[
-            { value: String(data.employees.filter(item => item.role !== "master").length), label: "работников" },
-            { value: String(onShift.size), label: "на смене" },
-            { value: String(review.size), label: "отметки на проверке" },
+            { value: list.error ? "—" : String(list.total), label: "работников" },
+            { value: list.error ? "—" : String(onShift.size), label: "на смене" },
+            { value: list.error ? "—" : String(review.size), label: "отметки на проверке" },
           ]} />
           <input className="object-search" type="search" value={query} placeholder="Найти работника" aria-label="Найти работника" onChange={(event) => setQuery(event.target.value)} />
-          {people.length === 0 ? <DeskEmpty title={needle ? "Такого работника нет" : "Работников пока нет"} description={needle ? "Проверьте имя или телефон." : "Пригласите работника. Он отмечает смену и сдаёт объём."} /> : (
+          {list.loading && list.items.length === 0 ? <p className="quiet">Читаем список сотрудников на сервере.</p> : null}
+          {list.error ? <DeskEmpty title="Список не прочитан" description={list.error} /> : null}
+          {!list.loading && !list.error && list.total === 0 ? <DeskEmpty title="Работников пока нет" description="Сервер вернул пустой список. Пригласите работника. Он отмечает смену и сдаёт объём." /> : null}
+          {!list.error && needle && people.length === 0 && list.total > 0 ? <DeskEmpty title="Такого работника нет" description={notice || "Проверьте имя или телефон."} /> : null}
+          {!list.error && people.length > 0 ? (
             <div className="sheet-wrap">
               <table className="sheet">
                 <thead>
@@ -106,17 +117,24 @@ export function People({
                 <tbody>
                   {people.map((item) => (
                     <tr className="is-link" key={item.id} tabIndex={0} onClick={() => setPersonId(item.id)} onKeyDown={(event) => { if (event.key === "Enter") setPersonId(item.id); }}>
-                      <td><span className="who"><i>{initials(item.full_name)}</i><b>{item.full_name}</b></span></td>
-                      <td>{item.phone}</td>
-                      <td>{item.document_number || "—"}</td>
+                      <td><span className="who"><i>{initials(item.fullName)}</i><b>{item.fullName}</b>{item.status === "archived" ? <DeskBadge>В архиве</DeskBadge> : null}</span></td>
+                      <td>{item.phone || "—"}</td>
+                      <td>{data.employees.find((row) => row.id === item.id)?.document_number || "—"}</td>
                       <td><DeskBadge tone={onShift.has(item.id) ? "accent" : "neutral"}>{onShift.has(item.id) ? "На смене" : "Не на смене"}</DeskBadge></td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          )}
-          <p className="quiet">После регистрации человек появится в списке. Допуск к работе и назначение оформляются отдельно.</p>
+          ) : null}
+          {!list.error && list.total > list.limit ? (
+            <div className="panel-tools">
+              <button className="ghost" type="button" disabled={list.offset === 0} onClick={() => list.setOffset(Math.max(0, list.offset - list.limit))}>Назад</button>
+              <button className="ghost" type="button" disabled={list.offset + list.items.length >= list.total} onClick={() => list.setOffset(list.offset + list.limit)}>Дальше</button>
+            </div>
+          ) : null}
+          {notice && people.length > 0 ? <p className="quiet">{notice}</p> : null}
+          <p className="quiet">Состав, имя и телефон пришли со списком сервера. Номер документа в этом ответе не приходит. После обновления страницы видны уже записанные люди. Допуск и назначение оформляются отдельно.</p>
         </>
       ) : null}
       {(tab === 'people' && inviteWorker || tab === 'foremen' && inviteForeman) ? <InvitationList key={`${tab}-${inviting}-${invitingForeman}`} session={session} projectId={data.projectId} role={tab==='foremen'?'master':'worker'}/> : null}
@@ -199,6 +217,46 @@ function Timesheet({ data, dayStep, onOpen }: { data: Desk; dayStep: "prepare" |
   );
 }
 
+function ServerProfile({
+  loading, error, employee, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard,
+}: {
+  loading: boolean;
+  error: string;
+  employee: ServerEmployee | null;
+  data: Desk;
+  until?: string;
+  card: PersonCard;
+  backLabel: string;
+  onBack: () => void;
+  onOpenTask: (taskId: string) => void;
+  admitStep: "prepare" | "none";
+  onAdmit: (until: string) => void;
+  onCard: (card: PersonCard) => void;
+}) {
+  if (!employee) {
+    return (
+      <section className="page">
+        <DeskCrumbs items={[{ label: backLabel, onClick: onBack }, { label: "Карточка" }]} />
+        {error ? <DeskEmpty title="Карточка не прочитана" description={error} /> : <p className="quiet">{loading ? "Читаем карточку на сервере." : "Сервер не показал эту карточку."}</p>}
+      </section>
+    );
+  }
+  return (
+    <Profile
+      person={{ id: employee.id, full_name: employee.fullName, phone: employee.phone ?? "", user_id: employee.userId, document_number: data.employees.find((row) => row.id === employee.id)?.document_number ?? null, role: employee.status === "archived" ? "archived" : null }}
+      data={data}
+      until={until}
+      card={card}
+      backLabel={backLabel}
+      onBack={onBack}
+      onOpenTask={onOpenTask}
+      admitStep={admitStep}
+      onAdmit={onAdmit}
+      onCard={onCard}
+    />
+  );
+}
+
 function Profile({
   person, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard,
 }: {
@@ -252,7 +310,7 @@ function Profile({
           <div>
             <h1>{person.full_name}</h1>
             <p className="person-meta">
-              <span>{person.phone}</span>
+              <span>{person.phone || "—"}</span>
               <span>{person.document_number || "документ не указан"}</span>
               {card.trade.trim() ? <span>{card.trade.trim()}</span> : null}
             </p>
@@ -345,7 +403,7 @@ function Questionnaire({ person, card, onCard }: { person: Desk["employees"][num
         <label className="field"><span>Специальность</span><input value={card.trade} onChange={(event) => onCard({ ...card, trade: event.target.value })} /></label>
         <label className="field"><span>Заметка</span><input value={card.note} onChange={(event) => onCard({ ...card, note: event.target.value })} /></label>
       </div>
-      <p className="quiet person-note">Дата рождения, специальность и заметка остаются на странице. Сервер их пока не хранит.</p>
+      <p className="quiet person-note">Имя и телефон взяты из карточки на сервере. Дата рождения, специальность и заметка на сервере не хранятся.</p>
     </section>
   );
 }
