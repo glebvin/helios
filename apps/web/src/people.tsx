@@ -1,11 +1,13 @@
 import { AnimatePresence, motion } from "motion/react";
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import {InvitationDialog,InvitationList} from "./invitations";
 import { searchStaff, staffNotice, type ServerEmployee } from "./staff-list";
 import { useStaffCard, useStaffList } from "./staff-read";
 import { hasV1ProjectScope } from "./scope";
 import type { Desk, Session } from "./api";
 import { Dialog } from "./dialog";
+import { EmployeeForm } from "./employee-form";
+import { canWriteStaff } from "./staff-form";
 import { minutesLabel, useBook, type Book } from "./book";
 import { DeskBadge, DeskCrumbs, DeskEmpty, DeskSelect, DeskTimeline, FluidTabs, SmoothButton, StatGrid } from "./kit";
 import { amount, clock, laneOf, laneTone, permitState, personName, statusLabel, todayKey, type Admission } from "./model";
@@ -53,6 +55,7 @@ export function People({
   const [personId, setPersonId] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
   const [invitingForeman, setInvitingForeman] = useState(false);
+  const [creating, setCreating] = useState(false);
   const serverList = hasV1ProjectScope(session.role);
   const remote = useStaffList(session, serverList);
   const list = serverList ? remote : { ...remote, loading: false, error: "", offset: 0, limit: data.employees.length,
@@ -80,6 +83,8 @@ export function People({
         admitStep={admitStep}
         onAdmit={(until) => onAdmit?.(personId, until)}
         onCard={(card) => onCard?.(card)}
+        session={session}
+        onReload={() => { list.reload(); opened.reload(); }}
       />
     );
   }
@@ -100,6 +105,7 @@ export function People({
           <p className="sub">{workersOnly ? "Кого можно поставить на работу сегодня." : "Работник ставится в задание. Прораб задание ведёт."}</p>
         </div>
         <div className="panel-tools">
+          {(tab === "people" && canWriteStaff(session.role)) ? <SmoothButton onClick={() => setCreating(true)}>Добавить сотрудника</SmoothButton> : null}
           {(tab === "people" && inviteWorker) ? <SmoothButton onClick={() => setInviting(true)}>Пригласить работника</SmoothButton> : null}
           {tab === "foremen" && inviteForeman ? <SmoothButton onClick={() => setInvitingForeman(true)}>Пригласить прораба</SmoothButton> : null}
           {canExport && tab === "people" ? <SmoothButton tone="ghost" onClick={() => save("sotrudniki.txt", ["Выгрузка этой страницы сервера. Документ в ответе списка не приходит.", ...people.map((item) => `${item.fullName}\t${item.phone ?? ""}`)])}>Выгрузить список</SmoothButton> : null}
@@ -149,6 +155,7 @@ export function People({
         </>
       ) : null}
       {(tab === 'people' && inviteWorker || tab === 'foremen' && inviteForeman) ? <InvitationList key={`${tab}-${inviting}-${invitingForeman}`} session={session} projectId={data.projectId} role={tab==='foremen'?'master':'worker'}/> : null}
+      {creating ? <Dialog title="Сотрудник" onClose={() => setCreating(false)}><EmployeeForm session={session} organizations={data.organizations} employee={null} onSaved={() => list.reload()} /><button className="ghost" type="button" onClick={() => setCreating(false)}>Закрыть</button></Dialog> : null}
       {inviting || invitingForeman ? <InvitationDialog session={session} projectId={data.projectId} organizationId={data.organizations.find(o=>o.kind==='own')?.id ?? ''} role={invitingForeman?'master':'worker'} onClose={()=>{setInviting(false);setInvitingForeman(false);}}/> : null}
       {tab === "crews" ? <DeskEmpty title="Бригад ещё нет" description="Состав и загрузка появятся, когда бригаду заведут. Сейчас люди числятся без бригады." /> : null}
       {tab === "contractors" ? (
@@ -229,7 +236,7 @@ function Timesheet({ data, dayStep, onOpen }: { data: Desk; dayStep: "prepare" |
 }
 
 function ServerProfile({
-  loading, error, employee, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard,
+  loading, error, employee, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, session, onReload,
 }: {
   loading: boolean;
   error: string;
@@ -243,8 +250,12 @@ function ServerProfile({
   admitStep: "prepare" | "none";
   onAdmit: (until: string) => void;
   onCard: (card: PersonCard) => void;
+  session: Session;
+  onReload: () => void;
 }) {
-  if (!employee) {
+  const [written, setWritten] = useState<ServerEmployee | null>(null);
+  const shown = written && employee && written.id === employee.id && written.version >= employee.version ? written : employee;
+  if (!shown) {
     return (
       <section className="page">
         <DeskCrumbs items={[{ label: backLabel, onClick: onBack }, { label: "Карточка" }]} />
@@ -253,8 +264,11 @@ function ServerProfile({
     );
   }
   return (
+    <>
+    {error ? <p className="quiet" role="alert">{error} Показана последняя прочитанная версия.</p> : null}
     <Profile
-      person={{ id: employee.id, full_name: employee.fullName, phone: employee.phone ?? "", user_id: employee.userId, document_number: data.employees.find((row) => row.id === employee.id)?.document_number ?? null, role: employee.status === "archived" ? "archived" : null }}
+      person={{ id: shown.id, full_name: shown.fullName, phone: shown.phone ?? "", user_id: shown.userId, document_number: data.employees.find((row) => row.id === shown.id)?.document_number ?? null, role: shown.status === "archived" ? "archived" : null }}
+      editor={canWriteStaff(session.role) ? <EmployeeForm session={session} organizations={data.organizations} employee={shown} onSaved={(row) => { setWritten(row); onReload(); }} /> : null}
       data={data}
       until={until}
       card={card}
@@ -265,11 +279,12 @@ function ServerProfile({
       onAdmit={onAdmit}
       onCard={onCard}
     />
+    </>
   );
 }
 
 function Profile({
-  person, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard,
+  person, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, editor = null,
 }: {
   person: Desk["employees"][number];
   data: Desk;
@@ -281,6 +296,7 @@ function Profile({
   admitStep: "prepare" | "none";
   onAdmit: (until: string) => void;
   onCard: (card: PersonCard) => void;
+  editor?: ReactNode;
 }) {
   const [tab, setTab] = useState<ProfileTab>("overview");
   const [photoError, setPhotoError] = useState("");
@@ -356,7 +372,7 @@ function Profile({
                 </div>
               ) : <p className="quiet person-note">На сегодня задания нет.</p>}
             </section>
-            <Questionnaire person={person} card={card} onCard={onCard} />
+            <Questionnaire person={person} card={card} onCard={onCard} editor={editor} />
           </div>
           <History data={data} personId={person.id} />
         </>
@@ -400,10 +416,11 @@ function Profile({
   );
 }
 
-function Questionnaire({ person, card, onCard }: { person: Desk["employees"][number]; card: PersonCard; onCard: (card: PersonCard) => void }) {
+function Questionnaire({ person, card, onCard, editor = null }: { person: Desk["employees"][number]; card: PersonCard; onCard: (card: PersonCard) => void; editor?: ReactNode }) {
   return (
     <section className="panel">
       <h2>Анкета</h2>
+      {editor}
       <dl className="kv">
         <div><dt>Имя</dt><dd>{person.full_name}</dd></div>
         <div><dt>Телефон</dt><dd>{person.phone || "—"}</dd></div>

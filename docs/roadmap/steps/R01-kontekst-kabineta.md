@@ -2,7 +2,7 @@
 
 GitHub: [R01 · задача #1](https://github.com/glebvin/helios/issues/1).
 
-Статус: **ожидает проверки**. Реализация предложена в [PR #28](https://github.com/glebvin/helios/pull/28), ещё не принята и не объединена. Не создавать повторную реализацию.
+Статус: **технически проверено**. [Отчёт](../../qa/r01-review-2026-11-11.md). Актуальное объединение и выпуск — в [PR #28](https://github.com/glebvin/helios/pull/28) и [Releases](https://github.com/glebvin/helios/releases). Не создавать повторную реализацию.
 
 - Группа: Основа.
 - Роли: rp, master, worker, pto.

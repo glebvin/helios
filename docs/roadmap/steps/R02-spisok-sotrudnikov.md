@@ -2,7 +2,7 @@
 
 GitHub: [R02 · задача #2](https://github.com/glebvin/helios/issues/2).
 
-Статус: **ожидает проверки**. Реализация предложена в [PR #29](https://github.com/glebvin/helios/pull/29), ещё не принята и не объединена. Не создавать повторную реализацию.
+Статус: **технически проверено**. [Отчёт](../../qa/r02-review-2026-11-11.md). Актуальное объединение и выпуск — в [PR #29](https://github.com/glebvin/helios/pull/29) и [Releases](https://github.com/glebvin/helios/releases). Не создавать повторную реализацию.
 
 - Группа: Люди.
 - Роли: rp, master.

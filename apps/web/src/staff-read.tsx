@@ -88,7 +88,8 @@ export function useStaffCard(session: Session, id: string | null, enabled = true
         setError("");
       } catch (reason) {
         if (!live) return;
-        setEmployee(null);
+        const status = reason instanceof ApiError ? reason.status : null;
+        if (status === 401 || status === 403 || status === 404) setEmployee(null);
         setError(staffError(reason instanceof ApiError ? reason.status : null, true));
       } finally {
         if (live) setLoading(false);
