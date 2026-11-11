@@ -1,6 +1,6 @@
 # R04 — квалификации сотрудника
 
-Основа: main `21b4bde65988c0cc839dbda0d5d00dbb59da2a4b`, выпущенная с R01–R03. Ветка `codex/kvalifikatsii`; задача [#4](https://github.com/glebvin/helios/issues/4). Реализация подготовлена к ревью, merge и новая выкладка не выполнялись.
+Основа: main `21b4bde65988c0cc839dbda0d5d00dbb59da2a4b`, выпущенная с R01–R03. Ветка `codex/kvalifikatsii`; [PR #32](https://github.com/glebvin/helios/pull/32), задача [#4](https://github.com/glebvin/helios/issues/4). Реализация подготовлена к ревью, merge и новая выкладка не выполнялись.
 
 ## Поведение и контракт
 
