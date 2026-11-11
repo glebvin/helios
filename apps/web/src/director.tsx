@@ -102,12 +102,8 @@ export function DirectorDesk({
   const canInviteWorker = !preview && ["director","master"].includes(session.role) && access.inviteWorker;
   const canInviteForeman = !preview && session.role === "director" && access.inviteForeman;
   const canRecordSupply = !preview && access.recordSupply;
-  const canDraftAct = !preview && access.draftAct;
-  const canPrepareAdmit = !preview && access.prepareAdmit;
   const canPrepareDay = !preview && access.prepareDay;
   const canCloseDay = !preview && access.closeDay;
-  const canResubmit = !preview && access.resubmit;
-  const canEditCheck = !preview && access.editCheck;
   const menu = access.sections;
   const page = menu.some((item) => item.id === section) ? section : (menu[0]?.id ?? "overview");
   const foreman = access.shell === "foreman";
@@ -252,24 +248,32 @@ export function DirectorDesk({
           ) : null}
           {page === "materials" ? <Materials canEdit={canRecordSupply} /> : null}
           {page === "quality" ? (
-            <Quality
-              key={view}
-              data={data}
-              tabs={access.qualityTabs}
-              first={access.qualityFirst}
-              canAccept={canAccept}
-              writeCheck={false}
-              writeCustomer={false}
-              writeRemark={false}
-              canResubmit={canResubmit}
-              editCheck={canEditCheck}
-              onAccept={onAccept}
-              remarks={remarks}
-              onRemark={(item) => setRemarks((list) => [item, ...list])}
-              onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
-            />
+            preview ? (
+              <Quality
+                key={view}
+                data={data}
+                tabs={access.qualityTabs}
+                first={access.qualityFirst}
+                canAccept={false}
+                writeCheck={false}
+                writeCustomer={false}
+                writeRemark={false}
+                canResubmit={false}
+                editCheck={false}
+                onAccept={onAccept}
+                remarks={remarks}
+                onRemark={(item) => setRemarks((list) => [item, ...list])}
+                onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
+              />
+            ) : (
+              <section className="page">
+                <h1>Приёмка</h1>
+                <p className="sub">{project} · {date}</p>
+                <DeskEmpty title="Приёмка качества ещё не подключена" description="Решения ПТО и строительного контроля этот экран не записывает. Сообщённый объём остаётся в смене и в сводке. Кнопка принятия здесь не срабатывает." />
+              </section>
+            )
           ) : null}
-          {page === "documents" ? <Documents data={data} canConfirm={false} canDraft={canDraftAct} checklistNote={access.checklistNote} /> : null}
+          {page === "documents" ? <Documents data={data} canConfirm={false} canDraft={false} checklistNote={access.checklistNote} /> : null}
           {page === "settings" ? <Settings session={session} data={data} theme={theme} onTheme={onTheme} onLogout={onLogout} viewLabel={roleTitle(session.role)} viewHint={preview ? access.hint : "Этот вход видит только свои серверные действия."} showAccess={!preview && access.showAccess} slim={access.settingsSlim || preview} /> : null}
         </PageShift>
       </div>
