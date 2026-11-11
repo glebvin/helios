@@ -51,10 +51,12 @@ jobs:
           POSTGRES_USER: helios
           POSTGRES_PASSWORD: helios
           POSTGRES_DB: helios
+          PGPORT: '54339'
+          PGDATA: /var/lib/postgresql/data/codex-api/.data/pg-54339
         ports:
-          - 54339:5432
+          - 54339:54339
         options: >-
-          --health-cmd "pg_isready -U helios -d helios"
+          --health-cmd "pg_isready -U helios -d helios -p 54339"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 12

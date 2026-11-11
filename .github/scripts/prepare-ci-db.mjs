@@ -10,6 +10,10 @@ if (url.hostname !== '127.0.0.1' || url.port !== '54339' || url.pathname !== '/h
 const admin = new pg.Client({connectionString:url.href});
 await admin.connect();
 try {
+  const target = (await admin.query("SELECT current_database() db, current_user usr, inet_server_port() port, current_setting('data_directory') dir")).rows[0];
+  if (target.db !== 'helios' || target.usr !== 'helios' || target.port !== 54339 || !target.dir.endsWith('codex-api/.data/pg-54339')) {
+    throw new Error('CI server does not match the existing isolated-test safety fence');
+  }
   const existing = await admin.query("SELECT to_regclass('public.schema_migrations') AS ledger");
   if (existing.rows[0].ledger) throw new Error('CI expects a fresh empty database');
   await admin.query("CREATE ROLE helios_app LOGIN PASSWORD 'helios_app' NOSUPERUSER NOBYPASSRLS NOCREATEDB");
