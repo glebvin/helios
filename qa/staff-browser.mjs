@@ -26,10 +26,12 @@ async function people(page){
 }
 try{
  const {page}=await login('director');assert.ok(await people(page));
+ const source=await page.request.get(`${base}/api/v1/employees?limit=25`,{headers:await page.evaluate(()=>{const s=JSON.parse(localStorage.getItem('helios.session'));return {authorization:`Bearer ${s.token}`,'x-tenant-id':s.tenantId};})});
+ const total=(await source.json()).total;assert.ok(total>=32&&total<50);
  assert.equal(await page.locator('.sheet tbody tr').count(),25);
  const first=await page.locator('.sheet tbody tr').first().innerText();
  await page.getByRole('button',{name:'Дальше',exact:true}).click();
- await page.waitForFunction(()=>document.querySelectorAll('.sheet tbody tr').length===7);
+ await page.waitForFunction(expected=>document.querySelectorAll('.sheet tbody tr').length===expected,total-25);
  assert.notEqual(await page.locator('.sheet tbody tr').first().innerText(),first);
  await page.getByRole('searchbox').fill('QA Сотрудник 01');
  await page.getByText('На этой странице такого нет. Поиск смотрит только загруженные строки.',{exact:true}).waitFor();
@@ -38,7 +40,7 @@ try{
  const name=await page.locator('.sheet tbody tr').first().locator('b').innerText();
  await page.locator('.sheet tbody tr').first().click();await page.getByRole('heading',{name,exact:true}).waitFor();
  await page.reload();assert.ok(await people(page));
- check('32 employees: real pagination, page-local search, server card and reload');
+ check('real pagination, page-local search, server card and reload');
  await page.route('**/api/v1/employees?*',route=>route.abort());await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await page.getByText('Список не прочитан',{exact:true}).waitFor();
  assert.equal(await page.getByText('Работников пока нет',{exact:true}).count(),0);

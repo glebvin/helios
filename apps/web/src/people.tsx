@@ -264,9 +264,11 @@ function ServerProfile({
     );
   }
   return (
+    <>
+    {error ? <p className="quiet" role="alert">{error} Показана последняя прочитанная версия.</p> : null}
     <Profile
       person={{ id: shown.id, full_name: shown.fullName, phone: shown.phone ?? "", user_id: shown.userId, document_number: data.employees.find((row) => row.id === shown.id)?.document_number ?? null, role: shown.status === "archived" ? "archived" : null }}
-      editor={canWriteStaff(session.role) ? <EmployeeForm session={session} organizations={data.organizations} employee={shown} onSaved={(row) => { setWritten(row); onReload(); }} onReload={onReload} /> : null}
+      editor={canWriteStaff(session.role) ? <EmployeeForm session={session} organizations={data.organizations} employee={shown} onSaved={(row) => { setWritten(row); onReload(); }} /> : null}
       data={data}
       until={until}
       card={card}
@@ -277,6 +279,7 @@ function ServerProfile({
       onAdmit={onAdmit}
       onCard={onCard}
     />
+    </>
   );
 }
 

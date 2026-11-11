@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canWriteStaff, staffBody, staffDraft, staffWriteError } from "./staff-form.ts";
+import { canWriteStaff, staffBody, staffDraft, staffRequest, staffWriteError } from "./staff-form.ts";
 import type { ServerEmployee } from "./staff-list.ts";
 
 const org = [{ id: "org-1", name: "Своя" }];
@@ -33,4 +33,17 @@ test("устаревшая версия и отказ роли не выгляд
   assert.match(staffWriteError(409, "stale_version"), /уже изменена/);
   assert.match(staffWriteError(403, "role_denied"), /недоступна/);
   assert.match(staffWriteError(null), /не подтверждена/);
+});
+
+test("организация не подменяется первой при нескольких или неизвестной организации карточки", () => {
+  assert.equal(staffDraft(null, [...org, { id: "org-2", name: "Другая" }]).organizationId, "");
+  assert.equal(staffDraft({ ...person, organizationId: "missing" }, org).organizationId, "");
+});
+
+test("подтверждение команды переживает сериализацию, изменённое тело получает другую команду", () => {
+  const first = staffRequest({ id: "", key: "" }, "create-body", () => "first-id");
+  const restored = JSON.parse(JSON.stringify(first));
+  assert.equal(staffRequest(restored, "create-body", () => "wrong-new-id").id, "first-id");
+  assert.equal(staffRequest(restored, "different-body", () => "second-id").id, "second-id");
+  assert.match(staffWriteError(409, "conflict"), /конфликт данных/);
 });

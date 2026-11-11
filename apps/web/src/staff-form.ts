@@ -6,7 +6,7 @@ export type StaffDraft = { fullName: string; phone: string; organizationId: stri
 export function staffDraft(employee: ServerEmployee | null, organizations: StaffOrg[]): StaffDraft {
   const organizationId = employee?.organizationId && organizations.some((item) => item.id === employee.organizationId)
     ? employee.organizationId
-    : organizations[0]?.id ?? "";
+    : !employee && organizations.length === 1 ? organizations[0].id : "";
   return {
     fullName: employee?.fullName ?? "",
     phone: employee?.phone ?? "",
@@ -27,7 +27,8 @@ export function staffWriteError(status: number | null, code = "") {
   if (status === 401) return "Сессия закончилась. Войдите снова.";
   if (status === 403) return "Этой роли запись сотрудника недоступна.";
   if (status === 409 && code === "stale_version") return "Карточка уже изменена. Обновите её и повторите.";
-  if (status === 409) return "Повтор не записал вторую карточку. Сервер оставил прежний ответ.";
+  if (status === 409 && code === "idempotency_payload_mismatch") return "Этот запрос относится к другому изменению. Прочитайте карточку перед повтором.";
+  if (status === 409) return "Запись не выполнена: конфликт данных. Проверьте телефон и связанные поля.";
   if (status === 422) return "Организация или связанный вход не подходят. Запись не сохранена.";
   if (status === 400) return "Сервер не принял имя, телефон или организацию.";
   if (status === null) return "Нет ответа сервера. Запись не подтверждена.";
@@ -36,4 +37,8 @@ export function staffWriteError(status: number | null, code = "") {
 
 export function canWriteStaff(role: string) {
   return role === "director";
+}
+
+export function staffRequest(previous: { id: string; key: string }, key: string, createId: () => string) {
+  return previous.id && previous.key === key ? previous : { id: createId(), key };
 }
