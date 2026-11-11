@@ -1009,3 +1009,10 @@ h1, h2, h3, p { margin: 0; }
 .invite-list .panel-tools { flex-wrap: wrap; }
 .login form a, .login > div a { display: block; margin-top: 20px; }
 .login > div { width: min(100%, 440px); padding: 24px; }
+
+.qualifications { padding: 20px; }
+.qualifications h2 { padding: 0; }
+.qualification-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.qualification-list { display: grid; margin-top: 16px; }
+.qualification-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 0; border-top: 1px solid var(--line); min-width: 0; }
+.qualification-row > div { display: grid; gap: 5px; flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
