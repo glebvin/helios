@@ -92,4 +92,5 @@ networks:
     name: helios-staging-edge
 volumes:
   pg: {}
-  evidence: {}
+  evidence:
+    name: ${EVIDENCE_VOLUME:-helios-staging_evidence}
