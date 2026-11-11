@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "./api";
 import { DeskSelect } from "./kit";
-import { chosenProject, civilLabel, projectLabel, sameActor, scopeNotice, type ServerActor, type ServerProject } from "./scope";
+import { chosenProject, civilLabel, hasV1ProjectScope, projectLabel, sameActor, scopeNotice, type ServerActor, type ServerProject } from "./scope";
 import { ApiError, v1 } from "./v1";
 
 type ProjectPage = { items: ServerProject[]; total: number };
@@ -29,7 +29,7 @@ function readError(reason: unknown) {
   return "Нет ответа сервера. Объект и день не подтверждены.";
 }
 
-export function useCabinetScope(session: Session, onUnauthorized: () => void): CabinetScope {
+export function useCabinetScope(session: Session, onUnauthorized: () => void, cabinetProjects: ServerProject[]): CabinetScope {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actor, setActor] = useState<ServerActor | null>(null);
@@ -40,11 +40,13 @@ export function useCabinetScope(session: Session, onUnauthorized: () => void): C
   const [pass, setPass] = useState(0);
   const expire = useRef(onUnauthorized);
   expire.current = onUnauthorized;
+  const cabinetProjectKey = JSON.stringify(cabinetProjects.map(({ id, name }) => ({ id, name })));
 
   useEffect(() => {
     const onFocus = () => { if (document.visibilityState === "visible") setPass((value) => value + 1); };
     window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    const timer = window.setInterval(onFocus, 60000);
+    return () => { window.removeEventListener("focus", onFocus); window.clearInterval(timer); };
   }, []);
 
   useEffect(() => {
@@ -58,7 +60,10 @@ export function useCabinetScope(session: Session, onUnauthorized: () => void): C
           expire.current();
           return;
         }
-        const page = await v1<ProjectPage>(session, "/projects?limit=100");
+        // Additional cabinets retain their existing assigned-project read projection.
+        const page = hasV1ProjectScope(session.role)
+          ? await v1<ProjectPage>(session, "/projects?limit=100")
+          : { items: JSON.parse(cabinetProjectKey) as ServerProject[], total: cabinetProjects.length };
         if (!live) return;
         const clock = await v1<OverviewDay>(session, "/overview");
         if (!live) return;
@@ -73,6 +78,8 @@ export function useCabinetScope(session: Session, onUnauthorized: () => void): C
         if (text === "unauthorized") expire.current();
         else {
           setDay("");
+          setProjects([]);
+          setTotal(0);
           setError(text);
         }
       } finally {
@@ -80,7 +87,7 @@ export function useCabinetScope(session: Session, onUnauthorized: () => void): C
       }
     })();
     return () => { live = false; };
-  }, [session.token, session.userId, session.tenantId, session.role, pass]);
+  }, [session.token, session.userId, session.tenantId, session.role, pass, cabinetProjectKey]);
 
   useEffect(() => {
     setLoading(true);

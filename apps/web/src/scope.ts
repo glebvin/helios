@@ -1,3 +1,15 @@
+import type { Desk } from "./api";
+
+export const hasV1ProjectScope = (role: string) => ["director", "master", "worker", "pto"].includes(role);
+
+export function projectDesk(data: Desk, projectId: string): Desk {
+  const tasks = data.tasks.filter((task) => task.project_id === projectId);
+  const ids = new Set(tasks.map((task) => task.id));
+  return { ...data, projectId, projects: data.projects.filter((project) => project.id === projectId), tasks,
+    shifts: data.shifts.filter((shift) => ids.has(shift.task_id)),
+    reports: data.reports.filter((report) => ids.has(report.task_id)) };
+}
+
 export type ServerActor = {
   userId: string;
   tenantId: string;

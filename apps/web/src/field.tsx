@@ -5,6 +5,7 @@ import { Mark } from "./mark";
 import { minutesLabel, readCheck, useBook, writeCheck, type Check } from "./book";
 import { DayFlow } from "./dayflow";
 import { useCabinetScope } from "./scope-read";
+import { projectDesk } from "./scope";
 import { RoleSwitch, type View } from "./roles";
 import { amount, clock, dayTasks, elapsed, laneOf, personName, progress, statusLabel, todayKey } from "./model";
 
@@ -12,7 +13,7 @@ type WorkerTab = "shift" | "task" | "profile";
 type MasterTab = "today" | "crew" | "accept" | "more";
 
 export function WorkerPhone({
-  session, data, pending, theme, onTheme, onLogout, view, demo = false, preview = false, onRole, onDemoAccount, onStart, onEnd, onSubmit,
+  session, data: sourceData, pending, theme, onTheme, onLogout, view, demo = false, preview = false, onRole, onDemoAccount, onStart, onEnd, onSubmit,
   onExpire,
 }: {
   session: Session;
@@ -40,7 +41,8 @@ export function WorkerPhone({
   const [stopOpen, setStopOpen] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
   const { book, update } = useBook();
-  const scope = useCabinetScope(session, onExpire);
+  const scope = useCabinetScope(session, onExpire, sourceData.projects);
+  const data = projectDesk(sourceData, scope.notice ? "" : scope.projectId);
   const tasks = scope.notice ? [] : data.tasks.filter((task) => String(task.work_date).slice(0, 10) === scope.day);
   const current = tasks.find((task) => laneOf(task.id, data) === "shift") ?? tasks.find((task) => laneOf(task.id, data) === "assigned") ?? tasks[0];
   const shift = current ? data.shifts.find((item) => item.task_id === current.id && item.status === "open") : undefined;

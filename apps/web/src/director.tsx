@@ -13,6 +13,7 @@ import { Mark } from "./mark";
 import { People, type PersonCard } from "./people";
 import { DayFlow } from "./dayflow";
 import { ScopeBar, useCabinetScope } from "./scope-read";
+import { projectDesk } from "./scope";
 import { RoleSwitch, accessOf, roleTitle, serverRights, type Section, type View } from "./roles";
 import { minutesLabel, useBook } from "./book";
 import { amount, dayTasks, laneOf, laneTone, personName, progress, statusLabel, todayKey, type Admission, type Lane, type Remark } from "./model";
@@ -31,7 +32,7 @@ const icons: Record<Section, string> = {
 
 export function DirectorDesk({
   session,
-  data,
+  data: sourceData,
   section,
   onSection,
   theme,
@@ -70,7 +71,8 @@ export function DirectorDesk({
   onDemoAccount: (email: string, password: string) => void;
   onExpire: () => void;
 }) {
-  const scope = useCabinetScope(session, onExpire);
+  const scope = useCabinetScope(session, onExpire, sourceData.projects);
+  const data = projectDesk(sourceData, scope.notice ? "" : scope.projectId);
   const tasks = dayTasks(data);
   const dayTasksOnServer = scope.notice ? [] : data.tasks.filter((task) => String(task.work_date).slice(0, 10) === scope.day);
   const project = scope.projectName;

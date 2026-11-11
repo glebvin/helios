@@ -37,6 +37,8 @@ jobs:
         run: node scripts/check-types.mjs
       - name: Production frontend
         run: corepack pnpm --filter @helios/web build
+      - name: Frontend behavior
+        run: node --experimental-strip-types --test apps/web/src/*.test.ts
       - name: Domain
         run: corepack pnpm --filter @helios/domain test
 

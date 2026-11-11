@@ -1,5 +1,5 @@
 import {JoinPage} from "./invitations";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { acceptReport, createTask, desk, loadSession, login, savePlace, saveSession, syncEvents, type Desk, type NewTask, type Session } from "./api";
 import { DirectorDesk, type Section } from "./director";
 import { BookProvider } from "./book";
@@ -35,6 +35,8 @@ function loadTheme(): "light" | "dark" {
 export function App() {
   const [joinCode,setJoinCode] = useState(() => /^\/join\/([^/]+)\/?$/.exec(location.pathname)?.[1] ?? null);
   const [session, setSession] = useState<Session | null>(() => loadSession());
+  const activeSession = useRef(session);
+  activeSession.current = session;
   const [data, setData] = useState<Desk | null>(null);
   const [error, setError] = useState("");
   const [entering, setEntering] = useState(false);
@@ -51,6 +53,7 @@ export function App() {
   async function refresh(next = session) {
     if (!next) return;
     const body = await desk(next);
+    if (activeSession.current?.token !== next.token || activeSession.current?.tenantId !== next.tenantId) return;
     setData(body);
     setPending(pendingFor(next.tenantId, next.userId).length);
   }
@@ -104,6 +107,7 @@ export function App() {
   }
 
   function expire() {
+    activeSession.current = null;
     saveSession(null);
     setSession(null);
     setData(null);
@@ -117,6 +121,7 @@ export function App() {
     setData(null);
     try {
       const next = await login(email, password);
+      activeSession.current = next;
       const chosen = homeView(next.role);
       setSession(next);
       setView(chosen);
@@ -149,6 +154,7 @@ export function App() {
       return;
     }
     saveSession(null);
+    activeSession.current = null;
     setSession(null);
     setData(null);
   }
