@@ -1,0 +1,29 @@
+name: Ошибка в сценарии
+description: Зафиксировать воспроизводимую проблему без секретов
+title: "Ошибка: "
+labels: [bug]
+body:
+  - type: input
+    id: role
+    attributes:
+      label: Роль и экран
+      placeholder: Прораб → Задания
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Что нажали и что произошло
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Ожидаемый результат
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Версия, браузер и снимок
+      description: Не прикладывать пароли, токены и персональные данные.
