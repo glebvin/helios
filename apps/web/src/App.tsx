@@ -59,9 +59,8 @@ export function App() {
     if (!session || joinCode) return;
     void refresh(session).catch((reason: Error) => {
       if (reason.message === "unauthorized" || reason.message === "tenant_denied") {
-        saveSession(null);
-        setSession(null);
-        setData(null);
+        expire();
+        return;
       }
       setError(explain(reason.message));
     });
@@ -104,9 +103,18 @@ export function App() {
       .finally(() => void refresh(current));
   }
 
+  function expire() {
+    saveSession(null);
+    setSession(null);
+    setData(null);
+    setError("Сессия закончилась. Войдите снова.");
+  }
+
   async function enter(email: string, password: string) {
     if (entering) return;
     setEntering(true);
+    const previous = session;
+    setData(null);
     try {
       const next = await login(email, password);
       const chosen = homeView(next.role);
@@ -116,6 +124,7 @@ export function App() {
       setError("");
     } catch (reason) {
       setError(explain(reason instanceof Error ? reason.message : "Не удалось войти"));
+      if (previous) void refresh(previous).catch(() => {});
     } finally { setEntering(false); }
   }
 
@@ -206,6 +215,7 @@ export function App() {
           onStart={(taskId, employeeId) => queue(session, { kind: "shift_start", payload: { taskId, employeeId } })}
           onEnd={(taskId) => queue(session, { kind: "shift_end", payload: { taskId } })}
           onSubmit={(taskId, quantity) => queue(session, { kind: "submit_volume", payload: { taskId, quantity } })}
+          onExpire={expire}
         />
       </BookProvider>
     );
@@ -247,6 +257,7 @@ export function App() {
         onTheme={toggleTheme}
         onLogout={logout}
         onRole={switchView}
+        onExpire={expire}
         {...deskActions}
       />
     </BookProvider>

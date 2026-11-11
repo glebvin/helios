@@ -588,6 +588,7 @@ h1, h2, h3, p { margin: 0; }
 .crumbs li { display: inline-flex; align-items: center; gap: 8px; }
 .desk-select { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
 .desk-select select { height: 40px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 0 12px; }
+.scope-day { color: var(--muted); font-size: 13px; }
 .smooth-btn { transform-origin: center; }
 .feed { list-style: none; margin: 0; padding: 0 12px 8px; display: grid; gap: 8px; }
 .feed li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
