@@ -221,9 +221,6 @@ importers:
       '@helios/domain':
         specifier: workspace:*
         version: link:../../packages/domain
-      '@helios/offline':
-        specifier: workspace:*
-        version: link:../../packages/offline
       '@helios/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -286,8 +283,6 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
-
-  packages/offline: {}
 
   packages/ui:
     dependencies:

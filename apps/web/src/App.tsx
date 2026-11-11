@@ -6,7 +6,6 @@ import { BookProvider } from "./book";
 import { WorkerPhone } from "./field";
 import { Mark } from "./mark";
 import { enqueue, pendingFor, readOutbox, writeOutbox, type OutboxEvent } from "./outbox";
-import { bindShiftQueue, shiftQueuePending } from "./shift-queue";
 import { accessOf, demoCabinets, homeView, type View } from "./roles";
 
 const entries = [
@@ -48,10 +47,6 @@ export function App() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem("helios.theme", theme);
   }, [theme]);
-
-  useEffect(() => {
-    void bindShiftQueue(session ? { token: session.token, tenantId: session.tenantId, userId: session.userId } : null);
-  }, [session?.token, session?.tenantId, session?.userId]);
 
   async function refresh(next = session) {
     if (!next) return;
@@ -133,7 +128,6 @@ export function App() {
 
   async function logout() {
     if (!session) return;
-    if (await shiftQueuePending() && !window.confirm("На этом устройстве есть непереданные отметки. Выйти? Они останутся этому аккаунту и не отправятся, пока приложение закрыто.")) return;
     try {
       await fetch("/api/v1/auth/logout", {
         method: "POST",
@@ -166,14 +160,14 @@ export function App() {
         >
           <Mark />
           <h1 style={{ fontSize: 32, letterSpacing: "-0.04em" }}>Кто входит</h1>
-          <p className="sub">{demoCabinets ? "Учебные входы отдельно от просмотра кабинета." : "Вход по почте и паролю."}</p>
+          <p className="sub">{demoCabinets ? "Учебные входы отдельно от просмотра кабинета." : "Вход по логину и паролю."}</p>
           {demoCabinets ? entries.map((item) => (
             <button className="role-pick" type="button" key={item.email} onClick={() => void enter(item.email, item.password)}>
               <strong>{item.role}</strong>
               <small>{item.hint}</small>
             </button>
           )) : null}
-          <label className="field"><span>Почта</span><input name="email" required maxLength={320} defaultValue={demoCabinets ? "director@pilot.helios" : ""} autoComplete="username" /></label>
+          <label className="field"><span>Логин</span><input name="email" required maxLength={320} defaultValue={demoCabinets ? "director@pilot.helios" : ""} autoComplete="username" autoCapitalize="none" autoCorrect="off" /></label>
           <label className="field"><span>Пароль</span><input name="password" required maxLength={1024} type="password" defaultValue={demoCabinets ? "pilot-director" : ""} autoComplete="current-password" /></label>
           {error ? <div className="alert" role="alert">{error}</div> : null}
           <button className="fill" type="submit" disabled={entering}>{entering ? "Входим…" : "Войти"}</button>
@@ -199,10 +193,19 @@ export function App() {
         <WorkerPhone
           key={`${session.userId}:${shown}`}
           session={session}
+          data={data}
+          pending={pending}
           theme={theme}
           onTheme={toggleTheme}
-          onLogout={() => void logout()}
+          onLogout={logout}
+          view={shown}
+          demo={demoCabinets}
           preview={preview}
+          onRole={switchView}
+          onDemoAccount={(email, password) => void enter(email, password)}
+          onStart={(taskId, employeeId) => queue(session, { kind: "shift_start", payload: { taskId, employeeId } })}
+          onEnd={(taskId) => queue(session, { kind: "shift_end", payload: { taskId } })}
+          onSubmit={(taskId, quantity) => queue(session, { kind: "submit_volume", payload: { taskId, quantity } })}
         />
       </BookProvider>
     );

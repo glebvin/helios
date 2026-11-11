@@ -16,6 +16,7 @@ import { reportJob } from "./jobs.js";
 import { uuid } from "./api-input.js";
 import { taskJoin, taskVisible } from "./director-api.service.js";
 import { parsePlace } from "./place.js";
+import { cabinetReadRole } from "./cabinet-roles.js";
 
 export type Actor = {
   userId: string;
@@ -58,8 +59,8 @@ export class WorkforceService {
 
   summary(actor: Actor) {
     return this.with(actor, async (client) => {
-      const tasks = await client.query(`SELECT count(*)::int AS n ${taskJoin} WHERE ${taskVisible} AND t.work_date = CURRENT_DATE`,[actor.role,actor.userId]);
-      const shifts = await client.query(`SELECT count(*)::int AS n FROM shifts s JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.id=s.task_id JOIN projects p ON p.tenant_id=t.tenant_id AND p.id=t.project_id JOIN employees e ON e.tenant_id=t.tenant_id AND e.id=t.assignee_employee_id WHERE s.status='open' AND ${taskVisible} AND ($1<>'worker' OR s.employee_id IN (SELECT id FROM employees WHERE user_id=$2))`,[actor.role,actor.userId]);
+      const tasks = await client.query(`SELECT count(*)::int AS n ${taskJoin} WHERE ${taskVisible} AND t.work_date = CURRENT_DATE`,[cabinetReadRole(actor.role),actor.userId]);
+      const shifts = await client.query(`SELECT count(*)::int AS n FROM shifts s JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.id=s.task_id JOIN projects p ON p.tenant_id=t.tenant_id AND p.id=t.project_id JOIN employees e ON e.tenant_id=t.tenant_id AND e.id=t.assignee_employee_id WHERE s.status='open' AND ${taskVisible} AND ($1<>'worker' OR s.employee_id IN (SELECT id FROM employees WHERE user_id=$2))`,[cabinetReadRole(actor.role),actor.userId]);
       return {
         sample: true,
         label: "Учебные цифры, не расчёт по объекту",
@@ -75,14 +76,14 @@ export class WorkforceService {
         `SELECT e.id, e.full_name, e.phone, e.document_number, e.user_id,
            (SELECT role FROM memberships WHERE user_id=e.user_id) AS role FROM employees e
          WHERE ${deskEmployeeVisible} ORDER BY e.full_name`,
-        [actor.role, actor.userId],
+        [cabinetReadRole(actor.role), actor.userId],
       );
       const tasks = await client.query(
         `SELECT t.id, t.title, t.work_date::text AS work_date, t.planned_quantity::text, t.unit, t.assignee_employee_id, t.status, t.version, t.project_id
          ${taskJoin}
          WHERE ${taskVisible}
          ORDER BY t.work_date DESC, t.title`,
-        [actor.role, actor.userId],
+        [cabinetReadRole(actor.role), actor.userId],
       );
       const shifts = await client.query(
         `SELECT s.id,s.task_id,s.employee_id,s.status,s.version,s.started_at,s.finished_at,s.occurred_started_at,s.occurred_finished_at,s.clock_requires_review
@@ -91,7 +92,7 @@ export class WorkforceService {
          JOIN employees e ON e.tenant_id=t.tenant_id AND e.id=t.assignee_employee_id
          WHERE ${taskVisible} AND ($1 <> 'worker' OR s.employee_id IN (SELECT id FROM employees WHERE user_id = $2))
          ORDER BY s.started_at DESC NULLS LAST`,
-        [actor.role, actor.userId],
+        [cabinetReadRole(actor.role), actor.userId],
       );
       const reports = await client.query(
         `SELECT r.id, r.task_id, r.submitted_quantity::text, r.accepted_quantity::text, r.version
@@ -101,12 +102,12 @@ export class WorkforceService {
          JOIN employees e ON e.tenant_id = t.tenant_id AND e.id = t.assignee_employee_id
          WHERE ${taskVisible}
          ORDER BY r.created_at DESC`,
-        [actor.role, actor.userId],
+        [cabinetReadRole(actor.role), actor.userId],
       );
       const cabinet = await client.query(`SELECT name FROM tenants WHERE id = $1`, [actor.tenantId]);
       const organizations = await client.query(`SELECT id, name, kind FROM organizations ORDER BY name`);
       const projects = await client.query(
-        `SELECT id, name, address, latitude, longitude FROM projects p WHERE $1='director' OR EXISTS (SELECT 1 FROM project_memberships pm WHERE pm.project_id=p.id AND pm.user_id=$2 AND pm.status='active') ORDER BY name`, [actor.role,actor.userId],
+        `SELECT id, name, address, latitude, longitude FROM projects p WHERE $1='director' OR EXISTS (SELECT 1 FROM project_memberships pm WHERE pm.project_id=p.id AND pm.user_id=$2 AND pm.status='active') ORDER BY name`, [cabinetReadRole(actor.role),actor.userId],
       );
       const files =
         actor.role === "worker"
@@ -151,7 +152,7 @@ export class WorkforceService {
     uuid(id);
     const row = await this.with(actor, async (client) => {
       const result = await client.query(`SELECT e.id, e.full_name, e.phone FROM employees e
-        WHERE ${deskEmployeeVisible} AND e.id = $3`, [actor.role, actor.userId, id]);
+        WHERE ${deskEmployeeVisible} AND e.id = $3`, [cabinetReadRole(actor.role), actor.userId, id]);
       return result.rows[0] ?? null;
     });
     if (!row) throw httpError(404, "not_found");
@@ -241,8 +242,8 @@ export class WorkforceService {
   }
 
   private async summaryCounts(client: PoolClient,actor:Actor) {
-    const tasks = await client.query(`SELECT count(*)::int AS n ${taskJoin} WHERE ${taskVisible} AND t.work_date = CURRENT_DATE`,[actor.role,actor.userId]);
-    const shifts = await client.query(`SELECT count(*)::int AS n FROM shifts s JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.id=s.task_id JOIN projects p ON p.tenant_id=t.tenant_id AND p.id=t.project_id JOIN employees e ON e.tenant_id=t.tenant_id AND e.id=t.assignee_employee_id WHERE s.status='open' AND ${taskVisible} AND ($1<>'worker' OR s.employee_id IN (SELECT id FROM employees WHERE user_id=$2))`,[actor.role,actor.userId]);
+    const tasks = await client.query(`SELECT count(*)::int AS n ${taskJoin} WHERE ${taskVisible} AND t.work_date = CURRENT_DATE`,[cabinetReadRole(actor.role),actor.userId]);
+    const shifts = await client.query(`SELECT count(*)::int AS n FROM shifts s JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.id=s.task_id JOIN projects p ON p.tenant_id=t.tenant_id AND p.id=t.project_id JOIN employees e ON e.tenant_id=t.tenant_id AND e.id=t.assignee_employee_id WHERE s.status='open' AND ${taskVisible} AND ($1<>'worker' OR s.employee_id IN (SELECT id FROM employees WHERE user_id=$2))`,[cabinetReadRole(actor.role),actor.userId]);
     return {
       sample: true,
       label: "Учебные цифры, не расчёт по объекту",

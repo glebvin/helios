@@ -17,7 +17,7 @@ for name in ['apps','packages']:
 shutil.copytree(root/'apps/api/sql',out/'apps/api/sql',dirs_exist_ok=True)
 shutil.copy2(root/'apps/api/openapi.json',out/'apps/api/openapi.json')
 (out/'deploy/helios-staging').mkdir(parents=True,exist_ok=True)
-for name in ['entry.mjs','seed-staging.mjs']:
+for name in ['entry.mjs','seed-staging.mjs','seed-clean-cabinets.mjs']:
     shutil.copy2(deploy/name,out/'deploy/helios-staging'/name)
 for name in ['package.json','package-lock.json']:
     shutil.copy2(deploy/('runtime-'+name),out/name)
@@ -25,7 +25,7 @@ for name in ['package.json','package-lock.json']:
 (out/'apps/api/package.json').write_text(json.dumps({'name':'@helios/api','version':'0.1.0','type':'module','exports':{'./db':'./src/db.js','./jobs':'./src/jobs.js'}})+'\n')
 index=out/'web/index.html'
 text=index.read_text()
-banner='<aside role="note" style="padding:8px 16px;background:#fff4dc;color:#604000;font:13px/1.4 system-ui">HELIOS · тестовый стенд. Только учебные данные. Рабочий день — серверный; качество, материалы и ИД пока демонстрационные. Офлайн ещё не подключён.</aside>'
+banner='<aside role="note" style="padding:8px 16px;background:#fff4dc;color:#604000;font:13px/1.4 system-ui">HELIOS · чистый тестовый стенд. Прежний интерфейс, 13 кабинетов. Некоторые действия пока демонстрационные; офлайн не подключён.</aside>'
 index.write_text(text.replace('<body>','<body>'+banner))
 shutil.copy2(deploy/'Dockerfile',out/'Dockerfile')
 shutil.copy2(deploy/'compose.yaml',out/'compose.yaml')

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { Desk, NewTask, Session } from "./api";
-import { TaskDesk } from "./work";
+import { WorkBoard } from "./board";
 import { Inbox } from "./inbox";
 import { Icon, paths } from "./icons";
 import { DeskBadge, DeskEmpty, DeskProgress, DeskSelect, PageShift, ProfileMenu, StatGrid, ThemeButton } from "./kit";
@@ -11,9 +11,7 @@ import { Quality } from "./quality";
 import { Settings } from "./settings";
 import { Mark } from "./mark";
 import { People, type PersonCard } from "./people";
-import { AccessDesk, CatalogDesk, StaffDesk, labelDay, useCabinetScope } from "./staff";
-import { ShiftWatch } from "./shift";
-import { ServerInbox, TimeDesk, TodaySummary } from "./timesheet";
+import { DayFlow } from "./dayflow";
 import { RoleSwitch, accessOf, roleTitle, serverRights, type Section, type View } from "./roles";
 import { minutesLabel, useBook } from "./book";
 import { amount, dayTasks, laneOf, laneTone, personName, progress, statusLabel, todayKey, type Admission, type Lane, type Remark } from "./model";
@@ -28,7 +26,6 @@ const icons: Record<Section, string> = {
   documents: paths.file,
   objects: paths.pin,
   settings: paths.gear,
-  time: paths.calendar,
 };
 
 export function DirectorDesk({
@@ -71,9 +68,8 @@ export function DirectorDesk({
   onDemoAccount: (email: string, password: string) => void;
 }) {
   const tasks = dayTasks(data);
-  const scope = useCabinetScope(session);
-  const project = scope.projects.find((item) => item.id === scope.projectId)?.name ?? (scope.loading ? "Загрузка" : "Объект не выбран");
-  const date = scope.day ? labelDay(scope.day) : "День кабинета";
+  const project = data.projects[0]?.name ?? "Объект";
+  const date = new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
   const waiting = data.reports.filter((report) => tasks.some((task) => task.id === report.task_id) && !report.accepted_quantity);
   const onShift = new Set(data.shifts.filter((shift) => shift.status === "open").map((shift) => shift.employee_id).filter(Boolean));
   const accepted = tasks.filter((task) => laneOf(task.id, data) === "accepted").length;
@@ -93,7 +89,6 @@ export function DirectorDesk({
   const [cards, setCards] = useState<PersonCard[]>([]);
   const [remarks, setRemarks] = useState<Remark[]>([]);
   const [openTask, setOpenTask] = useState<{ id: string; token: number } | null>(null);
-  const [timeFocus, setTimeFocus] = useState<{ employeeId: string; day: string } | null>(null);
   const access = accessOf(view);
   const rights = serverRights(session.role);
   const canCreate = !preview && rights.createTask && access.createTask;
@@ -102,8 +97,12 @@ export function DirectorDesk({
   const canInviteWorker = !preview && ["director","master"].includes(session.role) && access.inviteWorker;
   const canInviteForeman = !preview && session.role === "director" && access.inviteForeman;
   const canRecordSupply = !preview && access.recordSupply;
+  const canDraftAct = !preview && access.draftAct;
+  const canPrepareAdmit = !preview && access.prepareAdmit;
   const canPrepareDay = !preview && access.prepareDay;
   const canCloseDay = !preview && access.closeDay;
+  const canResubmit = !preview && access.resubmit;
+  const canEditCheck = !preview && access.editCheck;
   const menu = access.sections;
   const page = menu.some((item) => item.id === section) ? section : (menu[0]?.id ?? "overview");
   const foreman = access.shell === "foreman";
@@ -132,16 +131,7 @@ export function DirectorDesk({
       </aside>
       <div className="workspace">
         <header className="topbar">
-          <DeskSelect
-            label="Объект"
-            value={scope.projectId}
-            options={scope.projects.length ? scope.projects.map((item) => ({ value: item.id, label: item.name })) : [{ value: "", label: scope.loading ? "Загрузка" : "Нет доступных объектов" }]}
-            onChange={(value) => { if (value) void scope.chooseProject(value); }}
-          />
-          <label className="desk-select">
-            <span>День</span>
-            <input type="date" aria-label="Гражданский день кабинета" value={scope.day} disabled={!scope.day} onChange={(event) => scope.chooseDay(event.target.value)} />
-          </label>
+          <DeskSelect label="Объект" value={project} options={[{ value: project, label: project }]} onChange={() => {}} />
           <span className="grow" />
           {demo ? <RoleSwitch view={view} onView={onRole} /> : null}
           {demo ? <DemoAccounts email={session.email} onAccount={onDemoAccount} /> : null}
@@ -152,8 +142,8 @@ export function DirectorDesk({
         <PageShift pageKey={page}>
           {page === "overview" ? (
             <>
-            {preview || !scope.projectId || !scope.day ? null : <ShiftWatch session={session} projectId={scope.projectId} day={scope.day} timeZone={scope.timezone || "Europe/Moscow"} />}
-            {preview ? <Overview
+            {preview ? null : <DayFlow session={session} />}
+            <Overview
               title={access.overviewTitle}
               project={project}
               date={date}
@@ -168,11 +158,11 @@ export function DirectorDesk({
               crew={crew}
               openLabel={access.sections.some((item) => item.id === "mine") ? "Открыть дела" : "К приёмке"}
               onOpen={() => onSection(access.sections.some((item) => item.id === "mine") ? "mine" : "quality")}
-            /> : scope.projectId && scope.day ? <TodaySummary session={session} projectId={scope.projectId} projectName={project} day={scope.day} /> : <DeskEmpty title={scope.loading ? "Загружаем объект" : "Объект не выбран"} description={scope.error || "Сводка появится, когда у входа будет доступ к объекту."} />}
+            />
             </>
           ) : null}
           {page === "mine" ? (
-            preview || !scope.projectId || !scope.day ? <Inbox
+            <Inbox
               data={data}
               remarks={remarks}
               canAccept={canAccept}
@@ -184,96 +174,64 @@ export function DirectorDesk({
               onOpenBoard={() => onSection("tasks")}
               onOpenQuality={() => onSection("quality")}
               onOpenDocuments={() => onSection("documents")}
-            /> : <ServerInbox session={session} projectId={scope.projectId} day={scope.day} onOpenTasks={() => onSection("tasks")} onOpenDay={(employeeId, day) => { setTimeFocus({ employeeId, day }); onSection("time"); }} />
+            />
           ) : null}
-          {page === "time" ? (
-            scope.projectId && scope.day ? <TimeDesk session={session} projectId={scope.projectId} projectName={project} day={scope.day} canApprove={!preview && session.role === "director"} canExport={!preview && (session.role === "director" || session.role === "master" || session.role === "pto")} focus={timeFocus} /> : <DeskEmpty title={scope.loading ? "Загружаем объект" : "Объект не выбран"} description={scope.error || "Табель появится, когда у входа будет доступ к объекту."} />
-          ) : null}
-          {page === "objects" ? (
-            <>
-              <Objects data={data} canEdit={canPlace} normsNote={access.normsNote} onSavePlace={onSavePlace} onTasks={() => onSection("tasks")} />
-              {scope.projectId ? <CatalogDesk session={session} projectId={scope.projectId} canManage={!preview && session.role === "director"} /> : null}
-            </>
-          ) : null}
+          {page === "objects" ? <Objects data={data} canEdit={canPlace} normsNote={access.normsNote} onSavePlace={onSavePlace} onTasks={() => onSection("tasks")} /> : null}
           {page === "people" ? (
-            <>
-              {scope.error ? <p className="alert" role="alert">{scope.error}</p> : null}
-              {scope.truncated ? <p className="quiet">В списке объектов показаны первые 2000.</p> : null}
-              {scope.timezone ? <p className="quiet">Гражданский день считается в поясе кабинета {scope.timezone}, не в поясе компьютера.</p> : null}
-              {scope.projectId && !preview && session.role === "director" ? <AccessDesk session={session} projectId={scope.projectId} /> : null}
-              {scope.projectId ? (
-                <StaffDesk
-                  key={`${scope.projectId}:${scope.epoch}`}
-                  session={session}
-                  projectId={scope.projectId}
-                  epoch={scope.epoch}
-                  organizations={data.organizations}
-                  canManage={!preview && session.role === "director"}
-                  inviteWorker={canInviteWorker}
-                  inviteForeman={canInviteForeman}
-                />
-              ) : null}
-              {access.peopleTabs.some((item) => item === "contractors" || (preview && item === "sheet")) ? (
-                <People
-                  key={view}
-                  session={session}
-                  data={data}
-                  onOpenTask={(id) => { setOpenTask({ id, token: Date.now() }); onSection("tasks"); }}
-                  inviteWorker={false}
-                  inviteForeman={false}
-                  peopleTabs={access.peopleTabs.filter((item) => item === "contractors" || (preview && item === "sheet"))}
-                  admitStep="none"
-                  dayStep={canPrepareDay ? "prepare" : canCloseDay ? "close" : "none"}
-                  canExport={false}
-                  admissions={admissions}
-                  onAdmit={(employeeId, until) => setAdmissions((list) => [...list.filter((item) => item.employeeId !== employeeId), { employeeId, until }])}
-                  cards={cards}
-                  onCard={(card) => setCards((list) => [...list.filter((item) => item.employeeId !== card.employeeId), card])}
-                />
-              ) : null}
-            </>
+            <People
+              key={view}
+              session={session}
+              data={data}
+              onOpenTask={(id) => { setOpenTask({ id, token: Date.now() }); onSection("tasks"); }}
+              inviteWorker={canInviteWorker}
+              inviteForeman={canInviteForeman}
+              peopleTabs={access.peopleTabs}
+              admitStep={canPrepareAdmit ? "prepare" : "none"}
+              dayStep={canPrepareDay ? "prepare" : canCloseDay ? "close" : "none"}
+              canExport={access.exportPeople}
+              admissions={admissions}
+              onAdmit={(employeeId, until) => setAdmissions((list) => [...list.filter((item) => item.employeeId !== employeeId), { employeeId, until }])}
+              cards={cards}
+              onCard={(card) => setCards((list) => [...list.filter((item) => item.employeeId !== card.employeeId), card])}
+            />
           ) : null}
           {page === "tasks" ? (
-            scope.projectId && scope.day ? (
-              <TaskDesk
-                key={`${scope.projectId}:${scope.day}:${scope.epoch}`}
-                session={session}
-                projectId={scope.projectId}
-                day={scope.day}
-                timeZone={scope.timezone || "Europe/Moscow"}
-                canPrepare={!preview && (session.role === "director" || session.role === "master")}
-                canDirect={!preview && session.role === "director"}
-              />
-            ) : <DeskEmpty title={scope.loading ? "Загружаем объект" : "Объект не выбран"} description={scope.error || "Задания появятся, когда у входа будет доступ к объекту."} />
+            <WorkBoard
+              data={data}
+              tasks={tasks}
+              canAccept={canAccept}
+              canCreate={canCreate}
+              onStart={onStart}
+              onEnd={onEnd}
+              onSubmit={onSubmit}
+              onAccept={onAccept}
+              onCreate={onCreate}
+              openTask={openTask}
+              admissions={admissions}
+              remarks={remarks}
+              onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
+            />
           ) : null}
           {page === "materials" ? <Materials canEdit={canRecordSupply} /> : null}
           {page === "quality" ? (
-            preview ? (
-              <Quality
-                key={view}
-                data={data}
-                tabs={access.qualityTabs}
-                first={access.qualityFirst}
-                canAccept={false}
-                writeCheck={false}
-                writeCustomer={false}
-                writeRemark={false}
-                canResubmit={false}
-                editCheck={false}
-                onAccept={onAccept}
-                remarks={remarks}
-                onRemark={(item) => setRemarks((list) => [item, ...list])}
-                onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
-              />
-            ) : (
-              <section className="page">
-                <h1>Приёмка</h1>
-                <p className="sub">{project} · {date}</p>
-                <DeskEmpty title="Приёмка качества ещё не подключена" description="Решения ПТО и строительного контроля этот экран не записывает. Сообщённый объём остаётся в смене и в сводке. Кнопка принятия здесь не срабатывает." />
-              </section>
-            )
+            <Quality
+              key={view}
+              data={data}
+              tabs={access.qualityTabs}
+              first={access.qualityFirst}
+              canAccept={canAccept}
+              writeCheck={false}
+              writeCustomer={false}
+              writeRemark={false}
+              canResubmit={canResubmit}
+              editCheck={canEditCheck}
+              onAccept={onAccept}
+              remarks={remarks}
+              onRemark={(item) => setRemarks((list) => [item, ...list])}
+              onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
+            />
           ) : null}
-          {page === "documents" ? <Documents data={data} canConfirm={false} canDraft={false} checklistNote={access.checklistNote} /> : null}
+          {page === "documents" ? <Documents data={data} canConfirm={false} canDraft={canDraftAct} checklistNote={access.checklistNote} /> : null}
           {page === "settings" ? <Settings session={session} data={data} theme={theme} onTheme={onTheme} onLogout={onLogout} viewLabel={roleTitle(session.role)} viewHint={preview ? access.hint : "Этот вход видит только свои серверные действия."} showAccess={!preview && access.showAccess} slim={access.settingsSlim || preview} /> : null}
         </PageShift>
       </div>

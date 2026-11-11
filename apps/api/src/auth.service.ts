@@ -5,6 +5,7 @@ import { httpError } from "./errors.js";
 import { hashToken, newToken, verifyPassword } from "./password.js";
 import type { Actor } from "./workforce.service.js";
 import { uuid } from "./api-input.js";
+import { readOnlyCabinetRoles } from "./cabinet-roles.js";
 
 @Injectable()
 export class AuthService {
@@ -60,6 +61,8 @@ export class AuthService {
 
 export type ActorRequest = {
   headers: Record<string, unknown>;
+  method?: string;
+  path?: string;
   rawHeaders?: string[];
   actor?: Actor;
   sessionToken?: string;
@@ -80,6 +83,10 @@ export class TenantGuard implements CanActivate {
     const token = header.slice(7);
     const actor = await this.auth.actor(token, tenantId);
     if (!actor) throw httpError(403, "tenant_denied");
+    if (readOnlyCabinetRoles.has(actor.role) &&
+        !["GET", "HEAD"].includes(request.method ?? "") && request.path !== "/api/v1/auth/logout") {
+      throw httpError(403, "role_denied");
+    }
     request.actor = actor;
     request.sessionToken = token;
     return true;
