@@ -692,7 +692,21 @@ h1, h2, h3, p { margin: 0; }
   flex-direction: column;
   overflow: hidden;
 }
-.phone-body { padding: 18px 16px 20px; display: grid; gap: 14px; align-content: start; flex: 1; min-height: 0; overflow: auto; }
+.phone-body { padding: 18px 16px 20px; display: grid; gap: 14px; align-content: start; flex: 1; min-height: 0; overflow: auto; overflow-x: hidden; }
+.phone .day-copy, .phone .job, .phone .field input, .phone .field select, .phone .note { font-size: 16px; }
+.phone .quiet, .phone .kicker, .phone .field span { font-size: 14px; }
+.phone .fill, .phone .ghost, .phone .tabs button { min-height: 48px; height: auto; }
+.phone .tabs button { font-size: 14px; }
+.phone .stack, .phone .photo-row { gap: 10px; }
+.day-history { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 16px; }
+.photo-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.photo-row button { width: 72px; min-height: 72px; border: 0; background: transparent; padding: 0; display: grid; gap: 4px; font-size: 12px; }
+.photo-row img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; }
+.photo-view { max-width: min(100%, 420px); max-height: 70vh; }
+.file-pick { position: relative; display: flex; align-items: center; justify-content: center; }
+.file-pick input { position: absolute; inset: 0; opacity: 0; }
+.dialog-back.is-sheet { align-items: flex-end; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .phone h1 { font-size: 32px; letter-spacing: -0.04em; font-weight: 500; }
 .phone .roles { flex-wrap: nowrap; max-width: 100%; overflow-x: auto; }
 .kicker { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
@@ -1002,6 +1016,7 @@ h1, h2, h3, p { margin: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   .dialog { animation: none; }
+  .ghost, .fill, .roles button, .tabs button { transition: none; }
   .fill:active, .ghost:active, .roles button:active, .tabs button:active { transform: none; }
 }
 

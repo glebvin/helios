@@ -13,6 +13,7 @@ import { Mark } from "./mark";
 import { People, type PersonCard } from "./people";
 import { AccessDesk, CatalogDesk, StaffDesk, labelDay, useCabinetScope } from "./staff";
 import { DayFlow } from "./dayflow";
+import { ShiftWatch } from "./shift";
 import { RoleSwitch, accessOf, roleTitle, serverRights, type Section, type View } from "./roles";
 import { minutesLabel, useBook } from "./book";
 import { amount, dayTasks, laneOf, laneTone, personName, progress, statusLabel, todayKey, type Admission, type Lane, type Remark } from "./model";
@@ -153,6 +154,7 @@ export function DirectorDesk({
         <PageShift pageKey={page}>
           {page === "overview" ? (
             <>
+            {preview || !scope.projectId || !scope.day ? null : <ShiftWatch session={session} projectId={scope.projectId} day={scope.day} timeZone={scope.timezone || "Europe/Moscow"} />}
             {preview ? null : <DayFlow session={session} />}
             <Overview
               title={access.overviewTitle}
