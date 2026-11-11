@@ -54,7 +54,7 @@ export function useStaffList(session: Session) {
     return () => { live = false; };
   }, [session.token, session.tenantId, offset, pass]);
 
-  return { offset, setOffset, loading, error, items, total, limit };
+  return { offset, setOffset, loading, error, items, total, limit, reload: () => setPass((value) => value + 1) };
 }
 
 export function useStaffCard(session: Session, id: string | null) {
@@ -95,5 +95,5 @@ export function useStaffCard(session: Session, id: string | null) {
     return () => { live = false; };
   }, [session.token, session.tenantId, id, pass]);
 
-  return { loading, error, employee };
+  return { loading, error, employee, reload: () => setPass((value) => value + 1) };
 }
