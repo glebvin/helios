@@ -104,7 +104,7 @@ export function TimeSheet({ session, projectId, canDecide = false }: { session: 
     {!problem && !error && page && rows.length === 0 ? <DeskEmpty title="Записанных дней нет" description="В этом периоде сервер не отдал ни одного дня. Пустой список не означает, что людей не было." /> : null}
     {!problem && rows.length > 0 ? <motion.div key={scope} className="sheet-split" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}>
       <div className="sheet-wrap">
-        <table className="sheet">
+        <table className="sheet time-sheet-grid">
           <thead><tr><th>Сотрудник</th><th>День</th><th>Присутствие</th><th>Работа</th><th>Статус</th></tr></thead>
           <tbody>
             {rows.map((row) => <tr className={selected && rowKey(selected) === rowKey(row) ? "is-link is-on" : "is-link"} key={rowKey(row)} tabIndex={0} onClick={() => setPicked(rowKey(row))} onKeyDown={(event) => { if (event.key === "Enter") setPicked(rowKey(row)); }}>
