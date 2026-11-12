@@ -8,6 +8,7 @@ import { useCabinetScope } from "./scope-read";
 import { projectDesk } from "./scope";
 import { RoleSwitch, type View } from "./roles";
 import { amount, clock, dayTasks, elapsed, laneOf, personName, progress, statusLabel, todayKey } from "./model";
+import { TaskRead } from "./task-read-panel";
 
 type WorkerTab = "shift" | "task" | "profile";
 type MasterTab = "today" | "crew" | "accept" | "more";
@@ -101,21 +102,7 @@ export function WorkerPhone({
           </>
         ) : null}
         {tab === "shift" && !current ? <><h1>Моя смена</h1><p className="quiet">{scope.notice || "На сегодня заданий нет. Их ставит прораб."}</p></> : null}
-        {tab === "task" ? (
-          <>
-            <h1>Задание</h1>
-            {tasks.map((task) => {
-              const itemReport = data.reports.find((item) => item.task_id === task.id);
-              return (
-                <article className="job-card" key={task.id}>
-                  <b>{task.title}</b>
-                  <div className="quiet">{statusLabel(laneOf(task.id, data))} · {amount(task.planned_quantity)} {task.unit}</div>
-                  <div className="track"><span style={{ width: `${progress(task, itemReport)}%` }} /></div>
-                </article>
-              );
-            })}
-          </>
-        ) : null}
+        {tab === "task" ? <TaskRead compact session={session} projectId={scope.projectId} day={scope.day} notice={scope.notice} /> : null}
         {tab === "profile" ? (
           <>
             <h1>Профиль</h1>

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { Desk, NewTask, Session } from "./api";
-import { WorkBoard } from "./board";
+import { TaskRead } from "./task-read-panel";
 import { Inbox } from "./inbox";
 import { Icon, paths } from "./icons";
 import { DeskBadge, DeskEmpty, DeskProgress, PageShift, ProfileMenu, StatGrid, ThemeButton } from "./kit";
@@ -212,23 +212,7 @@ export function DirectorDesk({
               onCard={(card) => setCards((list) => [...list.filter((item) => item.employeeId !== card.employeeId), card])}
             />
           ) : null}
-          {page === "tasks" ? (
-            <WorkBoard
-              data={data}
-              tasks={tasks}
-              canAccept={canAccept}
-              canCreate={canCreate}
-              onStart={onStart}
-              onEnd={onEnd}
-              onSubmit={onSubmit}
-              onAccept={onAccept}
-              onCreate={onCreate}
-              openTask={openTask}
-              admissions={admissions}
-              remarks={remarks}
-              onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
-            />
-          ) : null}
+          {page === "tasks" ? <TaskRead session={session} projectId={templateProjectId} day={scope.day} notice={scope.notice} openTaskId={openTask?.id ?? ""} openToken={openTask?.token ?? 0} /> : null}
           {page === "materials" ? <Materials canEdit={canRecordSupply} /> : null}
           {page === "quality" ? (
             <Quality
