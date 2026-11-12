@@ -20,6 +20,7 @@ export type ServerTask = {
 };
 
 export type TaskArea = "plan" | "shift" | "quality" | "other";
+export type BoardColumn = "assigned" | "shift" | "submitted" | "accepted";
 
 const plan = new Set(["draft", "pending_approval", "published", "cancelled"]);
 const shift = new Set(["in_progress", "suspended"]);
@@ -44,6 +45,13 @@ export function taskArea(status: string): TaskArea {
   if (shift.has(status)) return "shift";
   if (quality.has(status)) return "quality";
   return "other";
+}
+
+export function boardColumn(status: string): BoardColumn {
+  if (shift.has(status)) return "shift";
+  if (status === "submitted" || status === "in_review" || status === "needs_fix") return "submitted";
+  if (status === "accepted" || status === "partially_accepted" || status === "closed") return "accepted";
+  return "assigned";
 }
 
 export function taskStatusText(status: string) {

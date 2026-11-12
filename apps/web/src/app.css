@@ -686,6 +686,8 @@ h1, h2, h3, p { margin: 0; }
   touch-action: none;
   user-select: none;
 }
+.kanban .card.is-read { cursor: pointer; touch-action: auto; user-select: text; }
+.kanban .card .badge { margin-top: 8px; }
 .kanban .card.is-dragging { z-index: 40; }
 .kanban .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .kanban .card.is-selected { outline: 2px solid var(--accent); outline-offset: 2px; }

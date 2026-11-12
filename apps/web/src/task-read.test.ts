@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { shownTaskStatus, taskArea, taskListPath, taskStatusText } from "./task-read.ts";
+import { boardColumn, shownTaskStatus, taskArea, taskListPath, taskStatusText } from "./task-read.ts";
 
 test("a local move does not change the server status", () => {
   const task = { status: "published" };
@@ -17,6 +17,15 @@ test("plan, shift and quality stay different statuses", () => {
   assert.equal(taskArea("needs_fix"), "quality");
   assert.equal(taskStatusText("published"), "Опубликовано");
   assert.equal(taskStatusText("made_up"), "made_up");
+});
+
+test("the board column follows the server status and a drag does not choose it", () => {
+  assert.equal(boardColumn(shownTaskStatus({ status: "published" }, "accepted")), "assigned");
+  assert.equal(boardColumn("in_progress"), "shift");
+  assert.equal(boardColumn("submitted"), "submitted");
+  assert.equal(boardColumn("accepted"), "accepted");
+  assert.equal(boardColumn("cancelled"), "assigned");
+  assert.notEqual(boardColumn("cancelled"), "accepted");
 });
 
 test("the day list does not ask the server to invent a status", () => {
