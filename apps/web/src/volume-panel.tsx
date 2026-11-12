@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Session } from "./api";
 import { Dialog } from "./dialog";
 import { EvidenceFiles } from "./evidence-panel";
+import { NoteMark } from "./note-mark";
 import { segmentListPath } from "./segment";
 import { ApiError, v1 } from "./v1";
 import { dayReadPath, type DayReading } from "./worker-day";
@@ -10,13 +11,14 @@ import { positiveWork, reportListPath, reportsForTask, volumeBatchError, volumeE
 type Page<T> = { items: T[]; total: number };
 export type VolumeTask = { id: string; title: string; unit: string; status: string; workflowKind: string };
 
-export function VolumeDesk({ session, projectId, employeeId, day, tasks, writable, onDone }: {
+export function VolumeDesk({ session, projectId, employeeId, day, tasks, writable, compact = false, onDone }: {
   session: Session;
   projectId: string;
   employeeId: string;
   day: string;
   tasks: VolumeTask[];
   writable: boolean;
+  compact?: boolean;
   onDone: (message: string) => void;
 }) {
   const taskKey = tasks.map((task) => `${task.id}:${task.status}:${task.workflowKind}`).join("|");
@@ -72,27 +74,40 @@ export function VolumeDesk({ session, projectId, employeeId, day, tasks, writabl
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, employeeId, day, pass, taskKey]);
   const open = tasks.find((task) => task.id === taskId) ?? null;
-  return <section className="panel" aria-label="Объём">
-    <h2>Объём</h2>
-    {error ? <p role="alert">{error}</p> : <p className="quiet">{shiftText}</p>}
+  const body = tasks.map((task) => {
+    const found = reportsForTask(reports, reportsReady ? reports.length : reports.length + 1, task.id);
+    const rows = found.kind === "ready" ? found.items : [];
+    const eligible = task.status === "published" && task.workflowKind === "managed02b";
+    const canSend = Boolean(writable && reportsReady && version !== null && closed && eligible && work[task.id] === "yes" && !rows.some((row) => row.shiftId === closed.id));
+    const quietLine = closed && work[task.id] === "no" && eligible ? "В этой смене нет закрытой работы по заданию." : closed && work[task.id] === "incomplete" ? "Интервалы смены прочитаны не полностью." : "";
+    if (compact && ready && !rows.length && !canSend && !quietLine) return null;
+    return <div className={compact ? "worker-volume" : undefined} key={task.id}>
+      {compact || tasks.length === 1 ? null : <p className="task-volume-name">{task.title}</p>}
+      {compact && (rows.length || canSend) ? <div className="worker-meta">Объём <NoteMark label="Про объём"><p>Сообщённый объём приёмкой не считается и колонку «Сдано» не включает. Файл сохраняется после привязки к отчёту.</p></NoteMark></div> : null}
+      {rows.map((row) => compact ? <div className="worker-reported" key={row.reportId}><b>{row.submittedQuantity} {row.unit || task.unit}</b><span className="quiet">Не принято</span></div> : <div className="rowline task-amount" key={row.reportId}><b>{row.submittedQuantity} {row.unit || task.unit}</b><span className="quiet">Не принято</span></div>)}
+      {reportsReady ? rows.map((row) => <EvidenceFiles key={row.reportId} session={session} projectId={projectId} employeeId={employeeId} reportId={row.reportId} onDone={onDone} />) : null}
+      {quietLine ? <p className="quiet">{quietLine}</p> : null}
+      {canSend ? <div className="template-bar"><button className="ghost desk-action" type="button" onClick={() => setTaskId(task.id)}>Сдать объём</button></div> : null}
+    </div>;
+  });
+  const face = reportsReady && reports.length === 0 ? volumeFace(shiftText) : "";
+  return <section className={compact ? "worker-volume-slot" : "panel"} aria-label="Объём">
+    {compact ? null : <div className="panel-head"><h2>Объём</h2><NoteMark label="Про объём"><p>{shiftText} Сообщённый объём приёмкой не считается и колонку «Сдано» не включает. Файл сохраняется после привязки к отчёту.</p></NoteMark></div>}
+    {error ? <p role="alert">{error}</p> : null}
+    {!compact && !ready && !error ? <p className="quiet">Читаем объём…</p> : null}
     {ready && !reportsReady && !error ? <p className="quiet">Сервер отдал не все отчёты. Повтор не показываем.</p> : null}
-    {ready && reportsReady && reports.length === 0 ? <p className="quiet">Фото привязывается к сданному отчёту. Незавершённый файл сохранённым не считается.</p> : null}
-    {tasks.map((task) => {
-      const found = reportsForTask(reports, reportsReady ? reports.length : reports.length + 1, task.id);
-      const rows = found.kind === "ready" ? found.items : [];
-      const eligible = task.status === "published" && task.workflowKind === "managed02b";
-      const canSend = Boolean(writable && reportsReady && version !== null && closed && eligible && work[task.id] === "yes" && !rows.some((row) => row.shiftId === closed.id));
-      return <div key={task.id}>
-        <p>{task.title}</p>
-        {rows.map((row) => <p className="quiet" key={row.reportId}>Сообщено {row.submittedQuantity} {row.unit || task.unit}. Не принято.</p>)}
-        {reportsReady ? rows.map((row) => <EvidenceFiles key={row.reportId} session={session} projectId={projectId} employeeId={employeeId} reportId={row.reportId} onDone={onDone} />) : null}
-        {closed && work[task.id] === "no" && eligible ? <p className="quiet">В этой смене нет закрытой работы по заданию.</p> : null}
-        {closed && work[task.id] === "incomplete" ? <p className="quiet">Интервалы смены прочитаны не полностью.</p> : null}
-        {canSend ? <div className="template-bar"><button className="ghost desk-action" type="button" onClick={() => setTaskId(task.id)}>Сдать объём</button></div> : null}
-      </div>;
-    })}
+    {!compact && ready && shiftText.startsWith("Страница") ? <p className="quiet">{shiftText}</p> : null}
+    {!compact && face ? <p className="task-state">{face}</p> : null}
+    {body}
     {open && closed && version !== null ? <VolumeDialog session={session} projectId={projectId} employeeId={employeeId} shift={closed} version={version} task={open} needsReason={volumeNeedsReason(session.role)} onClose={() => setTaskId("")} onDone={(message) => { setTaskId(""); setPass((value) => value + 1); onDone(message); }} /> : null}
   </section>;
+}
+
+function volumeFace(text: string) {
+  if (text.startsWith("Смена закрыта")) return "Нет сдачи";
+  if (text.startsWith("Объём сдаётся")) return "Нет закрытой смены";
+  if (text.startsWith("Закрытых смен")) return "Несколько смен";
+  return "";
 }
 
 function VolumeDialog({ session, projectId, employeeId, shift, version, task, needsReason, onClose, onDone }: {

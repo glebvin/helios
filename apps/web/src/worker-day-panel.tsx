@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { motion, useReducedMotion } from "motion/react";
+import { motion, useMotionValue, useReducedMotion, useTransform } from "motion/react";
 import type { Session } from "./api";
 import { Flash } from "./flash";
 import { DeskBadge } from "./kit";
+import { NoteMark } from "./note-mark";
 import { taskListPath, taskStatusText, type ServerTask } from "./task-read";
 import { ApiError, v1 } from "./v1";
 import { SegmentPanel } from "./segment-panel";
@@ -19,11 +20,13 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
   const expire = useRef(onExpire);
   expire.current = onExpire;
   const [pass, setPass] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [stamp, setStamp] = useState("");
+  const scope = `${projectId}:${day}`;
+  const scopeSeen = useRef("");
   const [gap, setGap] = useState("");
-  const [employeeName, setEmployeeName] = useState("");
   const [employeeId, setEmployeeId] = useState("");
   const [shiftKind, setShiftKind] = useState<"shift_start" | "shift_end" | null>(null);
+  const [slideKey, setSlideKey] = useState(0);
   const [saved, setSaved] = useState("");
   const [pulse, setPulse] = useState(0);
   const [reading, setReading] = useState<DayReading | null>(null);
@@ -42,26 +45,28 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
   }, []);
 
   useEffect(() => {
-    if (!ready) { setLoading(false); return; }
+    if (!ready) return;
+    const switched = scopeSeen.current !== scope;
+    scopeSeen.current = scope;
+    if (switched) setStamp("");
     let live = true;
-    setLoading(true);
-    setGap("");
     void (async () => {
       const people = await readPage<DayEmployee>(session, employeeListPath(projectId));
       if (!live) return;
       if (!people.ok) {
         if (people.status === 401) expire.current();
-        setReading(null); setShifts(null); setTasks(null); setTasksTruncated(false); setEmployeeId("");
+        if (switched) { setReading(null); setShifts(null); setTasks(null); setTasksTruncated(false); setEmployeeId(""); }
         setGap(""); setDayError(dayReadError(people.status, "people"));
-        setLoading(false);
+        setStamp(scope);
         return;
       }
       const employee = ownEmployee(people.ok.items, session.userId);
       if (!employee) {
         const own = people.ok.items.filter((item) => item.userId === session.userId);
-        setReading(null); setShifts(null); setTasks(null); setTasksTruncated(false); setEmployeeId(""); setDayError("");
+        if (switched) { setReading(null); setShifts(null); setTasks(null); setTasksTruncated(false); setEmployeeId(""); }
+        setDayError("");
         setGap(people.ok.items.length === 0 ? "Вас не назначили на этот объект. Без назначения день и задания не читаются." : own.length > 1 ? "Сервер показал больше одной своей карточки. День не выбирается сам." : "Своей карточки на этом объекте нет.");
-        setLoading(false);
+        setStamp(scope);
         return;
       }
       const [dayResult, shiftResult, taskResult] = await Promise.all([
@@ -70,49 +75,52 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
         readPage<ServerTask>(session, taskListPath(projectId, day)),
       ]);
       if (!live) return;
-      if (dayResult.status === 401 || shiftResult.status === 401 || taskResult.status === 401) { expire.current(); setLoading(false); return; }
-      setEmployeeName(employee.fullName);
+      if (dayResult.status === 401 || shiftResult.status === 401 || taskResult.status === 401) { expire.current(); setStamp(scope); return; }
       setEmployeeId(employee.id);
-      setReading(dayResult.ok ?? null);
+      if (dayResult.ok || switched) setReading(dayResult.ok ?? null);
       setDayError(dayResult.ok ? "" : dayReadError(dayResult.status, "day"));
-      setShifts(shiftResult.ok ? shiftReading(shiftResult.ok.items, shiftResult.ok.total, employee.id, projectId) : null);
+      if (shiftResult.ok || switched) setShifts(shiftResult.ok ? shiftReading(shiftResult.ok.items, shiftResult.ok.total, employee.id, projectId) : null);
       setShiftError(shiftResult.ok ? "" : dayReadError(shiftResult.status, "shifts"));
-      setTasks(taskResult.ok ? visibleWorkerTasks(taskResult.ok.items, employee.id) : null);
-      setTasksTruncated(Boolean(taskResult.ok && taskResult.ok.items.length < taskResult.ok.total));
+      if (taskResult.ok || switched) {
+        setTasks(taskResult.ok ? visibleWorkerTasks(taskResult.ok.items, employee.id) : null);
+        setTasksTruncated(Boolean(taskResult.ok && taskResult.ok.items.length < taskResult.ok.total));
+      }
       setTaskError(taskResult.ok ? "" : dayReadError(taskResult.status, "tasks"));
-      setLoading(false);
+      setStamp(scope);
     })();
     return () => { live = false; };
   }, [session.token, session.userId, session.tenantId, projectId, day, pass, ready]);
 
+  const fresh = stamp === scope;
   const retry = <button className="ghost desk-action" type="button" onClick={() => setPass((value) => value + 1)}>Повторить чтение</button>;
+  const canShift = Boolean(fresh && reading && employeeId && Number.isSafeInteger(reading.version) && (shifts?.kind === "one" || shifts?.kind === "none"));
   return (
-    <section className="worker-day" aria-busy={loading}>
+    <section className="worker-day" aria-busy={!fresh}>
       <h1>Моя смена</h1>
-      <motion.div key={`${projectId}:${day}:${pass}`} initial={reduce ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.32, ease: [0.23, 1, 0.32, 1] }}>
+      <motion.div className="worker-stack" key={scope} initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}>
         {!ready ? <p className="quiet worker-hold">{notice || "Объект и день не подтверждены."}</p> : null}
-        {ready && loading ? <p className="quiet worker-hold" role="status">Читаем день на сервере…</p> : null}
-        {ready && !loading && gap ? <p className="quiet worker-hold">{gap}</p> : null}
-        {ready && !loading && dayError ? <p role="alert">{dayError} {retry}</p> : null}
-        {ready && !loading && reading ? <DayFacts reading={reading} shifts={shifts} shiftError={shiftError} retry={retry} /> : null}
-        {ready && !loading && reading && employeeId && shifts?.kind === "one" && Number.isSafeInteger(reading.version) ? <SegmentPanel session={session} projectId={projectId} employeeId={employeeId} shiftId={shifts.shift.id} version={reading.version} tasks={(tasks ?? []).map((item) => ({ id: item.id, title: item.title }))} writable={canWriteShift(session.role)} onDone={(message) => { setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
-        {ready && !loading && reading && employeeId && (shifts?.kind === "one" || shifts?.kind === "none") && Number.isSafeInteger(reading.version) ? <div className="template-bar">
-          {shifts.kind === "one" ? <button className="ghost desk-action" type="button" onClick={() => setShiftKind("shift_end")}>Закончить смену</button> : <button className="fill desk-action" type="button" onClick={() => setShiftKind("shift_start")}>Начать смену</button>}
-        </div> : null}
+        {ready && !fresh ? <p className="quiet worker-hold" role="status">Читаем день…</p> : null}
+        {fresh && gap ? <p className="quiet worker-hold">{gap}</p> : null}
+        {fresh && dayError ? <p role="alert">{dayError} {retry}</p> : null}
+        {fresh && reading ? <DayFacts reading={reading} shifts={shifts} shiftError={shiftError} retry={retry} /> : null}
+        {canShift && shifts?.kind === "one" ? <EndSlide key={slideKey} onEnd={() => setShiftKind("shift_end")} /> : null}
+        {canShift && shifts?.kind === "none" ? <button className="fill desk-action worker-start" type="button" onClick={() => setShiftKind("shift_start")}>Начать смену</button> : null}
+        {fresh && reading && employeeId && shifts?.kind === "one" && Number.isSafeInteger(reading.version) ? <SegmentPanel compact session={session} projectId={projectId} employeeId={employeeId} shiftId={shifts.shift.id} version={reading.version} tasks={(tasks ?? []).map((item) => ({ id: item.id, title: item.title }))} writable={canWriteShift(session.role)} onDone={(message) => { setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
         <Flash message={saved} pulse={pulse} />
-        {shiftKind && reading && employeeId ? <ShiftDialog session={session} projectId={projectId} employeeId={employeeId} kind={shiftKind} shiftId={shifts?.kind === "one" ? shifts.shift.id : ""} expectedVersion={reading.version} previousEventId={shifts?.kind === "one" ? shifts.shift.startEvent?.requestId ?? "" : ""} needsReason={shiftNeedsReason(session.role)} open={shifts?.kind === "one"} onClose={() => setShiftKind(null)} onDone={(message) => { setShiftKind(null); setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
-        {ready && !loading && !gap && taskError ? <p role="alert">{taskError} {retry}</p> : null}
-        {ready && !loading && tasks && tasks.length === 0 ? <p className="quiet">На сегодня опубликованных заданий нет. Их ставит прораб.</p> : null}
-        {ready && !loading && tasksTruncated ? <p className="quiet">Сервер отдал не все задания этого дня.</p> : null}
-        {ready && !loading && tasks ? tasks.map((item) => (
+        {shiftKind && reading && employeeId ? <ShiftDialog session={session} projectId={projectId} employeeId={employeeId} kind={shiftKind} shiftId={shifts?.kind === "one" ? shifts.shift.id : ""} expectedVersion={reading.version} previousEventId={shifts?.kind === "one" ? shifts.shift.startEvent?.requestId ?? "" : ""} needsReason={shiftNeedsReason(session.role)} open={shifts?.kind === "one"} immediate={shiftKind === "shift_end" && !shiftNeedsReason(session.role)} onClose={() => { setShiftKind(null); setSlideKey((value) => value + 1); }} onDone={(message) => { setShiftKind(null); setSlideKey((value) => value + 1); setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
+        {fresh && !gap && taskError ? <p role="alert">{taskError} {retry}</p> : null}
+        {fresh && tasks && tasks.length === 0 ? <p className="quiet">На сегодня опубликованных заданий нет. Их ставит прораб.</p> : null}
+        {fresh && tasksTruncated ? <p className="quiet">Сервер отдал не все задания этого дня.</p> : null}
+        {fresh && tasks ? tasks.map((item) => (
           <article className="job" key={item.id}>
-            <div className="label">Моё задание</div>
-            <h2>{item.title}</h2>
-            <div className="quiet">{employeeName}</div>
-            <div className="rowline quiet"><span>{item.plannedQuantity} {item.unit}</span><DeskBadge tone="accent">{taskStatusText(item.status)}</DeskBadge></div>
+            <div className="rowline">
+              <h2>{item.title}</h2>
+              <DeskBadge tone="accent">{taskStatusText(item.status)}</DeskBadge>
+            </div>
+            <div className="quiet">{item.plannedQuantity} {item.unit}</div>
+            {reading && employeeId ? <VolumeDesk compact session={session} projectId={projectId} employeeId={employeeId} day={day} tasks={[{ id: item.id, title: item.title, unit: item.unit, status: item.status, workflowKind: item.workflowKind }]} writable={canWriteVolume(session.role)} onDone={(message) => { setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
           </article>
         )) : null}
-        {ready && !loading && reading && employeeId && tasks && tasks.length ? <VolumeDesk session={session} projectId={projectId} employeeId={employeeId} day={day} tasks={tasks.map((item) => ({ id: item.id, title: item.title, unit: item.unit, status: item.status, workflowKind: item.workflowKind }))} writable={canWriteVolume(session.role)} onDone={(message) => { setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
       </motion.div>
     </section>
   );
@@ -120,17 +128,37 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
 
 function DayFacts({ reading, shifts, shiftError, retry }: { reading: DayReading; shifts: ShiftReading | null; shiftError: string; retry: ReactNode }) {
   const presence = durationLabel(reading.presenceMs);
-  const shiftText = shiftError ? "" : shifts?.kind === "one" ? `Смена открыта с ${clockLabel(shifts.shift.startedAt, reading.timezone) || "сервера"}.` : shifts?.kind === "none" ? "Смена на сервере не открыта." : shifts?.kind === "many" ? `Открытых смен: ${shifts.count}. Экран не выбирает одну.` : "Страница смен неполная. Открытую смену не выбираем.";
+  const open = shifts?.kind === "one";
+  const title = shiftError ? "Смена не прочитана" : shifts?.kind === "many" ? "Несколько открытых смен" : shifts?.kind === "incomplete" ? "Смена не выбрана" : open ? "Смена открыта" : presence && presence !== "0 мин" ? "Смена закрыта" : "Смена не начата";
+  const figure = shiftError || shifts?.kind === "many" || shifts?.kind === "incomplete" ? "" : open ? clockLabel(shifts.shift.startedAt, reading.timezone) : presence && presence !== "0 мин" ? presence : "";
+  const aside = shiftError ? "" : shifts?.kind === "many" ? "Экран не выбирает одну." : shifts?.kind === "incomplete" ? "Страница смен неполная." : "";
   return (
-    <div className="shift-card">
+    <div className="shift-card worker-status">
       <div>
-        <div className="kicker">{shiftError ? "Смены не прочитаны" : reading.hasOpenIntervals ? "Интервал открыт" : "Интервал закрыт"}</div>
-        <div className="quiet">{shiftError ? <>{shiftError} {retry}</> : shiftText}</div>
+        <h2>{title}</h2>
+        <div className="worker-meta">
+          {shiftError ? <>{shiftError} {retry}</> : aside ? aside : <>не утверждено <NoteMark label="Про часы"><p>Часы этого дня сервер ещё не утверждал. Смена не переносит задание в другую колонку.</p></NoteMark></>}
+        </div>
       </div>
-      <div className="worker-time">
-        <b>{presence || "—"}</b>
-        <div className="quiet">Не утверждено</div>
-      </div>
+      {figure ? <b className="worker-figure">{figure}</b> : null}
+    </div>
+  );
+}
+
+function EndSlide({ onEnd }: { onEnd: () => void }) {
+  const reduce = useReducedMotion();
+  const track = useRef<HTMLDivElement>(null);
+  const x = useMotionValue(0);
+  const fade = useTransform(x, [0, 120], [1, 0.4]);
+  return (
+    <div className="end-slide" ref={track}>
+      <motion.span className="end-slide-label" style={{ opacity: fade }}>Закончить смену</motion.span>
+      <motion.button type="button" className="end-slide-thumb" aria-label="Сдвиньте, чтобы закончить смену" style={{ x }} drag="x" dragConstraints={track} dragElastic={reduce ? 0 : 0.06} dragMomentum={false} onDragEnd={(_, info) => {
+        const travel = Math.max(1, (track.current?.clientWidth ?? 0) - 48);
+        if (info.offset.x > travel * 0.5 || info.velocity.x > 700) onEnd();
+      }}>
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4.2 2.4 7.8 6 4.2 9.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </motion.button>
     </div>
   );
 }

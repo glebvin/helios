@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Session } from "./api";
 import { Dialog } from "./dialog";
 import { DeskSelect } from "./kit";
+import { NoteMark } from "./note-mark";
 import { shiftNeedsReason } from "./shift-command";
 import { downtimeReasons, openSegment, segmentActionLabel, segmentActions, segmentBatchError, segmentEventBody, segmentLabel, segmentListPath, segmentProblem, type DowntimeReason, type SegmentMode, type SegmentRow } from "./segment";
 import { ApiError, v1 } from "./v1";
@@ -9,7 +10,7 @@ import { ApiError, v1 } from "./v1";
 type Page<T> = { items: T[]; total: number };
 type TaskChoice = { id: string; title: string };
 
-export function SegmentPanel({ session, projectId, employeeId, shiftId, version, tasks, writable, onDone }: {
+export function SegmentPanel({ session, projectId, employeeId, shiftId, version, tasks, writable, compact = false, onDone }: {
   session: Session;
   projectId: string;
   employeeId: string;
@@ -17,6 +18,7 @@ export function SegmentPanel({ session, projectId, employeeId, shiftId, version,
   version: number;
   tasks: TaskChoice[];
   writable: boolean;
+  compact?: boolean;
   onDone: (message: string) => void;
 }) {
   const [pass, setPass] = useState(0);
@@ -43,13 +45,32 @@ export function SegmentPanel({ session, projectId, employeeId, shiftId, version,
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, employeeId, shiftId, pass]);
   const actions = current ? segmentActions(current.mode) : [];
+  const modeName = current ? segmentLabel(current.mode) : "";
+  const buttons = writable && current && actions.length ? <div className={actions.length > 1 ? "worker-actions" : "worker-actions is-one"}>
+    {actions.map((action) => {
+      const primary = actions.length > 1 && action === "break";
+      const short = action === "idle" ? "Завершить" : segmentActionLabel(current.mode, action);
+      return <button className={`${primary ? "fill" : "ghost"} desk-action`} key={action} type="button" onClick={() => setMode(action)}>{glyph(action)}{compact ? short : segmentActionLabel(current.mode, action)}</button>;
+    })}
+  </div> : null;
+  const note = <NoteMark label="Про интервал"><p>Перерыв и простой колонку задания не меняют.</p></NoteMark>;
   return <>
-    {error ? <p role="alert">{error}</p> : <p className="quiet">{text} Перерыв и простой колонку задания не меняют.</p>}
-    {writable && current && actions.length ? <div className="template-bar">
-      {actions.map((action) => <button className="ghost desk-action" key={action} type="button" onClick={() => setMode(action)}>{segmentActionLabel(current.mode, action)}</button>)}
-    </div> : null}
+    {compact ? <section className="job worker-interval">
+      {error ? <p role="alert">{error}</p> : <div className="worker-meta">{modeName || text} {current ? note : null}</div>}
+      {buttons}
+    </section> : <>
+      {error ? <p role="alert">{error}</p> : <p className="task-now">{current ? modeName : text} {current ? note : null}</p>}
+      {buttons}
+    </>}
     {mode && current ? <SegmentDialog session={session} projectId={projectId} employeeId={employeeId} shiftId={shiftId} version={version} mode={mode} current={current} tasks={tasks} needsBehalf={shiftNeedsReason(session.role)} onClose={() => setMode(null)} onDone={(message) => { setMode(null); setPass((value) => value + 1); onDone(message); }} /> : null}
   </>;
+}
+
+function glyph(action: SegmentMode) {
+  if (action === "work") return <svg className="worker-glyph" viewBox="0 0 12 12" aria-hidden="true"><path d="M3.2 1.8v8.4L10 6Z" fill="currentColor" /></svg>;
+  if (action === "break") return <svg className="worker-glyph" viewBox="0 0 12 12" aria-hidden="true"><path d="M3.2 1.8h1.8v8.4H3.2Zm3.8 0h1.8v8.4H7Z" fill="currentColor" /></svg>;
+  if (action === "idle") return <svg className="worker-glyph" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.4" y="2.4" width="7.2" height="7.2" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.4" /></svg>;
+  return null;
 }
 
 function SegmentDialog({ session, projectId, employeeId, shiftId, version, mode, current, tasks, needsBehalf, onClose, onDone }: {

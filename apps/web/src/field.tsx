@@ -35,7 +35,6 @@ export function WorkerPhone({
   const [tab, setTab] = useState<WorkerTab>("shift");
   const scope = useCabinetScope(session, onExpire, sourceData.projects);
   const project = scope.projectName;
-  const place = scope.notice || (project && scope.dayLabel ? `${project} · ${scope.dayLabel}` : "Объект и день не подтверждены.");
 
   return (
     <div className="phone">
@@ -57,9 +56,12 @@ export function WorkerPhone({
         {tab === "profile" ? (
           <>
             <h1>Профиль</h1>
-            <article className="job"><b>{scope.actor?.name ?? session.name}</b><div className="quiet">Рабочий · {place}</div></article>
-            <button className="ghost" type="button" onClick={onTheme}>{theme === "dark" ? "Светлая тема" : "Тёмная тема"}</button>
-            <button className="fill" type="button" onClick={onLogout}>Выйти</button>
+            <article className="job">
+              <h2>{scope.actor?.name ?? session.name}</h2>
+              <p className="quiet">Рабочий{project ? ` · ${project}` : ""}</p>
+            </article>
+            <button className="ghost desk-action worker-start" type="button" onClick={onTheme}>{theme === "dark" ? "Светлая тема" : "Тёмная тема"}</button>
+            <button className="fill desk-action worker-start" type="button" onClick={onLogout}>Выйти</button>
           </>
         ) : null}
       </div>
