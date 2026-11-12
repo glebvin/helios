@@ -36,7 +36,7 @@ const peopleTabLabels: { id: Tab; label: string }[] = [
 ];
 
 export function People({
-  session, projectId = "", data, onOpenTask, inviteWorker = false, inviteForeman = false, peopleTabs = ["people"], admitStep = "none", canExport = false, admissions = [], onAdmit, cards = [], onCard,
+  session, projectId = "", data, onOpenTask, inviteWorker = false, inviteForeman = false, peopleTabs = ["people"], admitStep = "none", canExport = false, canDecideHours = false, admissions = [], onAdmit, cards = [], onCard,
 }: {
   session: Session;
   projectId?: string;
@@ -47,6 +47,7 @@ export function People({
   peopleTabs?: Tab[];
   admitStep?: "prepare" | "none";
   canExport?: boolean;
+  canDecideHours?: boolean;
   admissions?: Admission[];
   onAdmit?: (employeeId: string, until: string) => void;
   cards?: PersonCard[];
@@ -170,7 +171,7 @@ export function People({
           </div>
         )
       ) : null}
-      {tab === "sheet" ? <TimeSheet session={session} projectId={projectId} /> : null}
+      {tab === "sheet" ? <TimeSheet session={session} projectId={projectId} canDecide={canDecideHours} /> : null}
     </section>
   );
 }

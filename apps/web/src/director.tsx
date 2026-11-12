@@ -207,6 +207,7 @@ export function DirectorDesk({
               peopleTabs={access.peopleTabs}
               admitStep={canPrepareAdmit ? "prepare" : "none"}
               canExport={access.exportPeople}
+              canDecideHours={!preview && session.role === "director"}
               admissions={admissions}
               onAdmit={(employeeId, until) => setAdmissions((list) => [...list.filter((item) => item.employeeId !== employeeId), { employeeId, until }])}
               cards={cards}
