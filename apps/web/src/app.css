@@ -1039,3 +1039,10 @@ h1, h2, h3, p { margin: 0; }
 .check-result > p, .check-result details, .check-point .desk-select { margin-top: 8px; }
 .check-stale { color: var(--warn); }
 .check-result summary { cursor: pointer; }
+
+.project-access { padding: 20px; min-width: 0; }
+.project-access h2 { padding: 0; }
+.project-access p, .project-access .badge, .access-actions { margin-top: 10px; }
+.access-part { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 16px; overflow-wrap: anywhere; }
+.access-actions > button { margin-top: 10px; }
+.project-access .access-actions button { height: auto; min-height: 40px; padding: 8px 14px; line-height: 1.3; }

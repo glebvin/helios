@@ -6,6 +6,7 @@ import { useStaffCard, useStaffList } from "./staff-read";
 import { hasV1ProjectScope } from "./scope";
 import type { Desk, Session } from "./api";
 import { Dialog } from "./dialog";
+import { ProjectAccessPanel } from "./project-access-panel";
 import { AdmissionChecksPanel } from "./admission-check-panel";
 import { QualificationsPanel } from "./qualifications-panel";
 import { EmployeeForm } from "./employee-form";
@@ -273,6 +274,7 @@ function ServerProfile({
     {error ? <p className="quiet" role="alert">{error} Показана последняя прочитанная версия.</p> : null}
     <Profile
       person={{ id: shown.id, full_name: shown.fullName, phone: shown.phone ?? "", user_id: shown.userId, document_number: data.employees.find((row) => row.id === shown.id)?.document_number ?? null, role: shown.status === "archived" ? "archived" : null }}
+      projectAccess={<ProjectAccessPanel key={`${session.token}:${session.tenantId}:${shown.id}:${projectId}:${shown.userId}`} session={session} employeeId={shown.id} userId={shown.userId} projectId={projectId} archived={shown.status === "archived"} />}
       admissionChecks={<AdmissionChecksPanel key={`${session.token}:${session.tenantId}:${shown.id}:${projectId}`} session={session} employeeId={shown.id} projectId={projectId} archived={shown.status === "archived"} />}
       qualifications={<QualificationsPanel key={`${session.token}:${shown.id}`} session={session} employeeId={shown.id} archived={shown.status === "archived"} />}
       editor={canWriteStaff(session.role) ? <EmployeeForm session={session} organizations={data.organizations} employee={shown} onSaved={(row) => { setWritten(row); onReload(); }} /> : null}
@@ -291,7 +293,7 @@ function ServerProfile({
 }
 
 function Profile({
-  person, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, editor = null, qualifications = null, admissionChecks = null,
+  person, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, editor = null, qualifications = null, admissionChecks = null, projectAccess = null,
 }: {
   person: Desk["employees"][number];
   data: Desk;
@@ -306,6 +308,7 @@ function Profile({
   editor?: ReactNode;
   qualifications?: ReactNode;
   admissionChecks?: ReactNode;
+  projectAccess?: ReactNode;
 }) {
   const [tab, setTab] = useState<ProfileTab>("overview");
   const [photoError, setPhotoError] = useState("");
@@ -418,6 +421,7 @@ function Profile({
         <>
           {qualifications}
           {admissionChecks ?? <Permits person={person} until={until} scans={card.files.length} admitStep={admitStep} onAdmit={onAdmit} />}
+          {projectAccess}
           <PersonFiles card={card} onCard={onCard} />
         </>
       ) : null}
