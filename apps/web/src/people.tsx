@@ -444,7 +444,7 @@ function Questionnaire({ person, card, onCard, editor = null, organization, work
   const [toast, setToast] = useState("");
   const [pulse, setPulse] = useState(0);
   const form = editing && isValidElement(editor)
-    ? cloneElement(editor as ReactElement<{ onSaved?: (row: ServerEmployee) => void; toast?: boolean; extra?: ReactNode }>, {
+    ? cloneElement(editor as ReactElement<{ onSaved?: (row: ServerEmployee) => void; onRead?: (row: ServerEmployee) => void; toast?: boolean; extra?: ReactNode }>, {
         toast: false,
         extra: (
           <div className="anketa">
@@ -453,6 +453,9 @@ function Questionnaire({ person, card, onCard, editor = null, organization, work
             <label className="field"><span>Заметка</span><input value={card.note} onChange={(event) => onCard({ ...card, note: event.target.value })} /></label>
           </div>
         ),
+        onRead: (row: ServerEmployee) => {
+          (editor as ReactElement<{ onSaved?: (row: ServerEmployee) => void }>).props.onSaved?.(row);
+        },
         onSaved: (row: ServerEmployee) => {
           (editor as ReactElement<{ onSaved?: (row: ServerEmployee) => void }>).props.onSaved?.(row);
           setEditing(false);
