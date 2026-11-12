@@ -2,6 +2,8 @@
 
 GitHub: [R07 · задача #7](https://github.com/glebvin/helios/issues/7).
 
+[PR60 — доступ и назначение сотрудника](https://github.com/glebvin/helios/pull/60).
+
 Статус: **review**. Реализован для общей оценки пакета R04–R07 владельцем; merge/deploy не выполнены.
 
 [Технический отчёт и снимки](../../qa/r07-project-access-2026-11-12.md) · [Сценарий владельца](../../PEOPLE-TESTING.md).
