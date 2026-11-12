@@ -1,20 +1,19 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Desk, Session } from "./api";
 import { Icon, paths } from "./icons";
 import { Mark } from "./mark";
-import { minutesLabel, readCheck, useBook, writeCheck, type Check } from "./book";
-import { DayFlow } from "./dayflow";
-import { useCabinetScope } from "./scope-read";
-import { projectDesk } from "./scope";
+import { readCheck, writeCheck, type Check } from "./book";
+import { ScopeBar, useCabinetScope } from "./scope-read";
+import { WorkerDayPanel } from "./worker-day-panel";
 import { RoleSwitch, type View } from "./roles";
-import { amount, clock, dayTasks, elapsed, laneOf, personName, progress, statusLabel, todayKey } from "./model";
+import { amount, dayTasks, laneOf, personName, progress, statusLabel } from "./model";
 import { TaskRead } from "./task-read-panel";
 
 type WorkerTab = "shift" | "task" | "profile";
 type MasterTab = "today" | "crew" | "accept" | "more";
 
 export function WorkerPhone({
-  session, data: sourceData, pending, theme, onTheme, onLogout, view, demo = false, preview = false, onRole, onDemoAccount, onStart, onEnd, onSubmit,
+  session, data: sourceData, theme, onTheme, onLogout, view, demo = false, preview = false, onRole, onDemoAccount,
   onExpire,
 }: {
   session: Session;
@@ -34,27 +33,8 @@ export function WorkerPhone({
   onExpire: () => void;
 }) {
   const [tab, setTab] = useState<WorkerTab>("shift");
-  const [now, setNow] = useState(Date.now());
-  const [breakOn, setBreakOn] = useState(false);
-  const [problem, setProblem] = useState("");
-  const [problemOpen, setProblemOpen] = useState(false);
-  const [quantity, setQuantity] = useState("");
-  const [stopOpen, setStopOpen] = useState(false);
-  const [volumeOpen, setVolumeOpen] = useState(false);
-  const { book, update } = useBook();
   const scope = useCabinetScope(session, onExpire, sourceData.projects);
-  const data = projectDesk(sourceData, scope.notice ? "" : scope.projectId);
-  const tasks = scope.notice ? [] : data.tasks.filter((task) => String(task.work_date).slice(0, 10) === scope.day);
-  const current = tasks.find((task) => laneOf(task.id, data) === "shift") ?? tasks.find((task) => laneOf(task.id, data) === "assigned") ?? tasks[0];
-  const shift = current ? data.shifts.find((item) => item.task_id === current.id && item.status === "open") : undefined;
-  const report = current ? data.reports.find((item) => item.task_id === current.id) : undefined;
   const project = scope.projectName;
-  const place = scope.notice || (project && scope.dayLabel ? `${project} · ${scope.dayLabel}` : "Объект и день не подтверждены.");
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 30000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   return (
     <div className="phone">
@@ -70,45 +50,18 @@ export function WorkerPhone({
         ) : null}
         {preview ? <p className="quiet">Просмотр кабинета. Смена и объём от этого вида не записываются: вход остаётся {session.name}.</p> : null}
         <Mark compact />
-        {tab === "shift" && !preview ? <DayFlow session={session} /> : null}
-        {tab === "shift" && current ? (
-          <>
-            <h1>Моя смена</h1>
-            <div className="kicker"><Icon d={paths.pin} size={16} /> {place}</div>
-            <div className="shift-card">
-              <div className="kicker">{shift ? "Смена идёт" : "Смена не начата"}</div>
-              <div style={{ textAlign: "right" }}>
-                <b>{shift ? elapsed(shift.started_at, now) || "только что" : "—"}</b>
-                <div className="quiet">{shift?.started_at ? `Начало в ${clock(shift.started_at)}` : "Начните, когда вышли на работу"}</div>
-              </div>
-            </div>
-            <article className="job">
-              <div className="label">Моё задание</div>
-              <h2 style={{ fontSize: 26, letterSpacing: "-0.04em" }}>{current.title}</h2>
-              <div className="quiet">{personName(data, current.assignee_employee_id)}</div>
-              <div className="track"><span style={{ width: `${progress(current, report)}%` }} /></div>
-              <div className="rowline quiet"><span /><span>{report ? amount(report.submitted_quantity) : "0"} из {amount(current.planned_quantity)} {current.unit}</span></div>
-            </article>
-            <div className="pair">
-              <button className="ghost" type="button" onClick={() => setBreakOn((value) => !value)}>{breakOn ? "Перерыв идёт" : "Перерыв"}</button>
-              <button className="ghost" type="button" onClick={() => setProblemOpen(true)}>Сообщить о проблеме</button>
-            </div>
-            {preview ? null : <button className="ghost wide" type="button" onClick={() => setStopOpen(true)}>Записать простой на телефоне</button>}
-            {current ? book.downtime.filter((item) => item.taskId === current.id).map((item) => (
-              <p className="quiet" key={item.id}>Простой {minutesLabel(item.minutes)} · {item.cause}</p>
-            )) : null}
-            {pending ? <div className="alert-note"><Icon d={paths.alert} /><div><b>Старая очередь</b><div>Эти отметки не относятся к рабочему дню на сервере.</div></div></div> : null}
-            {problem ? <p className="quiet">Проблема на телефоне: {problem}</p> : null}
-          </>
-        ) : null}
-        {tab === "shift" && !current ? <><h1>Моя смена</h1><p className="quiet">{scope.notice || "На сегодня заданий нет. Их ставит прораб."}</p></> : null}
+        <ScopeBar scope={scope} />
+        {tab === "shift" ? <WorkerDayPanel key={`${session.tenantId}:${scope.projectId}:${scope.day}`} session={session} projectId={scope.projectId} day={scope.day} notice={scope.notice} onExpire={onExpire} /> : null}
         {tab === "task" ? <TaskRead key={`${session.tenantId}:${scope.projectId}:${scope.day}`} compact session={session} projectId={scope.projectId} day={scope.day} notice={scope.notice} /> : null}
         {tab === "profile" ? (
           <>
             <h1>Профиль</h1>
-            <article className="job"><b>{scope.actor?.name ?? session.name}</b><div className="quiet">Рабочий · {place}</div></article>
-            <button className="ghost" type="button" onClick={onTheme}>{theme === "dark" ? "Светлая тема" : "Тёмная тема"}</button>
-            <button className="fill" type="button" onClick={onLogout}>Выйти</button>
+            <article className="job">
+              <h2>{scope.actor?.name ?? session.name}</h2>
+              <p className="quiet">Рабочий{project ? ` · ${project}` : ""}</p>
+            </article>
+            <button className="ghost desk-action worker-start" type="button" onClick={onTheme}>{theme === "dark" ? "Светлая тема" : "Тёмная тема"}</button>
+            <button className="fill desk-action worker-start" type="button" onClick={onLogout}>Выйти</button>
           </>
         ) : null}
       </div>
@@ -117,48 +70,6 @@ export function WorkerPhone({
         <button className={tab === "task" ? "is-on" : ""} type="button" onClick={() => setTab("task")}><Icon d={paths.list} /><span>Задание</span></button>
         <button className={tab === "profile" ? "is-on" : ""} type="button" onClick={() => setTab("profile")}><Icon d={paths.user} /><span>Профиль</span></button>
       </nav>
-      {volumeOpen && current ? (
-        <form className="dialog-back" onSubmit={(event) => { event.preventDefault(); onSubmit(current.id, quantity); setVolumeOpen(false); }}>
-          <div className="dialog">
-            <h2>Сколько сделано</h2>
-            <label className="field"><span>Объём, {current.unit}</span><input value={quantity} onChange={(event) => setQuantity(event.target.value)} inputMode="decimal" /></label>
-            <button className="fill wide" type="submit">Сдать работу</button>
-            <button className="ghost" type="button" onClick={() => setVolumeOpen(false)}>Закрыть</button>
-          </div>
-        </form>
-      ) : null}
-      {stopOpen && current ? (
-        <form className="dialog-back" onSubmit={(event) => {
-          event.preventDefault();
-          const form = event.currentTarget;
-          const cause = (form.elements.namedItem("cause") as HTMLInputElement).value.trim();
-          const minutes = Number((form.elements.namedItem("minutes") as HTMLInputElement).value);
-          if (!cause || !Number.isInteger(minutes) || minutes <= 0) return;
-          update((item) => ({
-            ...item,
-            downtime: [{ id: crypto.randomUUID(), taskId: current.id, day: todayKey(), minutes, cause }, ...item.downtime],
-          }));
-          setStopOpen(false);
-        }}>
-          <div className="dialog">
-            <h2>Простой</h2>
-            <label className="field"><span>Минуты</span><input name="minutes" inputMode="numeric" /></label>
-            <label className="field"><span>Причина</span><input name="cause" /></label>
-            <button className="fill wide" type="submit">Записать</button>
-            <button className="ghost" type="button" onClick={() => setStopOpen(false)}>Закрыть</button>
-          </div>
-        </form>
-      ) : null}
-      {problemOpen ? (
-        <form className="dialog-back" onSubmit={(event) => { event.preventDefault(); setProblem((event.currentTarget.elements.namedItem("problem") as HTMLTextAreaElement).value); setProblemOpen(false); }}>
-          <div className="dialog">
-            <h2>Проблема</h2>
-            <textarea className="note" name="problem" placeholder="Что мешает работе" defaultValue={problem} />
-            <button className="fill wide" type="submit">Сохранить на телефоне</button>
-            <button className="ghost" type="button" onClick={() => setProblemOpen(false)}>Закрыть</button>
-          </div>
-        </form>
-      ) : null}
     </div>
   );
 }

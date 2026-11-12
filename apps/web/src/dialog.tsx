@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { amount } from "./model";
 
 export function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
@@ -38,7 +39,8 @@ export function Dialog({ title, onClose, children }: { title: string; onClose: (
     };
   }, []);
 
-  return (
+  const host = typeof document === "undefined" ? null : document.querySelector(".phone");
+  const tree = (
     <div className="dialog-back" onClick={() => close.current()}>
       <div
         className="dialog"
@@ -53,6 +55,7 @@ export function Dialog({ title, onClose, children }: { title: string; onClose: (
       </div>
     </div>
   );
+  return host ? createPortal(tree, host) : tree;
 }
 
 export function AcceptForm({ submitted, unit, onSubmit }: { submitted: string; unit: string; onSubmit: (quantity: string) => void }) {

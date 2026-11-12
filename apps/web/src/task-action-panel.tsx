@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Session } from "./api";
 import { Dialog } from "./dialog";
 import { Flash } from "./flash";
+import { NoteMark } from "./note-mark";
 import { staffRequest } from "./staff-form";
 import { ApiError, v1 } from "./v1";
 import {
@@ -19,8 +20,10 @@ export function TaskActionPanel({ session, projectId, task, onDone }: { session:
   const [pulse, setPulse] = useState(0);
   if (!actions.length) return null;
   return <section className="panel" aria-label="Публикация">
-    <h2>Публикация</h2>
-    <p className="quiet">Колонка на доске сменится только после ответа сервера. Причина перехода в ответе карточки недоступна.</p>
+    <div className="panel-head">
+      <h2>Публикация</h2>
+      <NoteMark label="Про публикацию"><p>Колонка на доске сменится только после ответа сервера. Причина в карточке не хранится.</p></NoteMark>
+    </div>
     <div className="template-bar">
       {actions.map((action) => <button className={action === "publish" || action === "submit" ? "fill desk-action" : "ghost desk-action"} key={action} type="button" onClick={() => setChoice(action)}>{taskActionLabel(action)}</button>)}
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Session } from "./api";
 import { Dialog } from "./dialog";
 import { Flash } from "./flash";
+import { NoteMark } from "./note-mark";
 import { DeskSelect } from "./kit";
 import { ApiError, v1 } from "./v1";
 import {
@@ -49,15 +50,18 @@ export function FrontCheckPanel({ session, projectId, taskId, taskVersion, statu
   }, [session.token, session.tenantId, projectId, taskId, taskVersion, pass]);
   const items = template?.items ?? [];
   return <section className="panel" aria-label="Готовность фронта">
-    <div className="documents-heading">
+    <div className="panel-head">
       <h2>Готовность фронта</h2>
-      {canWrite && template ? <button className="ghost desk-action" type="button" onClick={() => setOpen(true)}>Проверить фронт</button> : null}
+      <div className="panel-head-tools">
+        {canWrite && template ? <button className="ghost desk-action" type="button" onClick={() => setOpen(true)}>Проверить фронт</button> : null}
+        <NoteMark label="Про готовность"><p>Готовность читается с сервера. Проверка записывается отдельно, если она доступна этой роли.</p></NoteMark>
+      </div>
     </div>
     {template === undefined && !error ? <p className="quiet" role="status">Читаем готовность…</p> : null}
     {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={() => setPass((value) => value + 1)}>Повторить чтение</button></p> : null}
     {template === null ? <p className="quiet">Чек-листа на объекте нет. Руководитель задаёт его в настройках.</p> : null}
     {readiness ? <>
-      <p className="quiet">{readiness.ready ? "Сервер подтвердил готовность." : "Сервер не подтвердил готовность."}</p>
+      <p className="task-state">{readiness.ready ? "Подтверждена" : "Не подтверждена"}</p>
       {readiness.reasons.length ? <ul className="check-reasons">{readiness.reasons.map((reason) => <li key={reason}>{frontReason(reason, items)}</li>)}</ul> : null}
       {readiness.warnings.length ? <ul className="check-reasons">{readiness.warnings.map((reason) => <li key={reason}>{frontReason(reason, items)}</li>)}</ul> : null}
     </> : null}

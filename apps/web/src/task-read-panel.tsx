@@ -1,22 +1,26 @@
 import { useEffect, useState } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import type { Session } from "./api";
 import { Flash } from "./flash";
 import { DeskBadge, DeskEmpty } from "./kit";
 import { NoteMark } from "./note-mark";
 import { FrontCheckPanel } from "./front-check-panel";
+import { ShiftPanel } from "./shift-panel";
 import { TaskActionPanel } from "./task-action-panel";
 import { TaskDraftDialog } from "./task-draft-form";
 import { canWriteTaskDraft } from "./task-draft";
-import { ApiError, v1, v1Items } from "./v1";
+import { ApiError, v1, v1Items, v1Collection } from "./v1";
+import { VolumeDesk } from "./volume-panel";
+import { canWriteVolume, reportListPath, volumeLines, type VolumeReport } from "./volume";
 import { boardColumn, shownTaskStatus, taskArea, taskError, taskListPath, taskStatusText, type BoardColumn, type ServerTask } from "./task-read";
 
 type Page = { items: ServerTask[]; total: number; limit: number; offset: number };
 type BoardView = "board" | "list";
 const columns: { id: BoardColumn; title: string; empty: string }[] = [
-  { id: "assigned", title: "Назначено", empty: "Черновики и опубликованные задания этого дня." },
-  { id: "shift", title: "На смене", empty: "Сервер ещё не отметил смену." },
-  { id: "submitted", title: "Сдано", empty: "Сданного объёма на этот день нет." },
-  { id: "accepted", title: "Принято", empty: "Принятой работы на этот день нет." },
+  { id: "assigned", title: "Назначено", empty: "Пока пусто." },
+  { id: "shift", title: "На смене", empty: "Сервер смену здесь не отметил." },
+  { id: "submitted", title: "Сдано", empty: "Сданного объёма нет." },
+  { id: "accepted", title: "Принято", empty: "Принятой работы нет." },
 ];
 
 export function TaskRead({ session, projectId, day, notice = "", compact = false, openTaskId = "", openToken = 0 }: { session: Session; projectId: string; day: string; notice?: string; compact?: boolean; openTaskId?: string; openToken?: number }) {
@@ -32,8 +36,13 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
   const [editing, setEditing] = useState<ServerTask | null>(null);
   const [saved, setSaved] = useState("");
   const [savedPulse, setSavedPulse] = useState(0);
+  const [reported, setReported] = useState<Record<string, { reportId: string; submittedQuantity: string }[]> | null>(null);
+  const [volumeNote, setVolumeNote] = useState("");
+  const [stamp, setStamp] = useState("");
   const canWrite = canWriteTaskDraft(session.role);
   const ready = Boolean(projectId && day && !notice);
+  const scope = `${projectId}:${day}:${offset}`;
+  const reduce = useReducedMotion();
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === "visible") setPass((value) => value + 1); };
     window.addEventListener("focus", refresh);
@@ -41,14 +50,14 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
   }, []);
   useEffect(() => { setOffset(0); setOpenId(openTaskId || null); }, [projectId, day, openTaskId, openToken]);
   useEffect(() => {
-    if (!ready) { setLoading(false); setPage(null); return; }
+    if (!ready) { setLoading(false); setPage(null); setStamp(""); return; }
     let live = true;
-    setLoading(true);
+    if (stamp !== scope) setLoading(true);
     void (async () => {
       try {
         const rows = await v1<Page>(session, taskListPath(projectId, day, offset));
         if (!live) return;
-        setPage(rows); setError("");
+        setPage(rows); setError(""); setStamp(scope);
         if (offset && offset >= rows.total) setOffset(Math.max(0, Math.floor((rows.total - 1) / 25) * 25));
         const [people, zones, types] = await Promise.all([
           readNames(session, `/employees?projectId=${projectId}&limit=100`, "fullName"),
@@ -57,44 +66,79 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
         ]);
         if (!live) return;
         setNames({ ...people, ...zones, ...types });
+        try {
+          const reports = await v1Collection<VolumeReport>(session, reportListPath(projectId));
+          if (!live) return;
+          const lines = volumeLines(reports.items, reports.total);
+          setReported(lines);
+          setVolumeNote(lines ? "" : "Отчёты объёма прочитаны не полностью.");
+        } catch {
+          if (!live) return;
+          setReported(null);
+          setVolumeNote("Отчёты объёма прочитать не удалось.");
+        }
       } catch (reason) {
         if (!live) return;
-        setPage(null); setError(taskError(reason instanceof ApiError ? reason.status : null));
+        if (stamp !== scope) { setPage(null); setReported(null); setVolumeNote(""); }
+        setError(taskError(reason instanceof ApiError ? reason.status : null));
       } finally { if (live) setLoading(false); }
     })();
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, day, offset, pass, ready]);
   const body = !ready ? <div className="page"><DeskEmpty title="Объект и день не подтверждены" description={notice || "Доска читается только после выбора объекта и рабочего дня."} /></div>
-    : openId ? <div className="page"><TaskDetail session={session} projectId={projectId} taskId={openId} names={names} canEdit={canWrite} onEdit={setEditing} onBack={() => { setOpenId(null); setPass((value) => value + 1); }} onChanged={() => setPass((value) => value + 1)} /></div>
-    : <TaskBoard view={view} onView={setView} canWrite={canWrite} onCreate={() => setCreating(true)} page={page} loading={loading} error={error} offset={offset} names={names} onOpen={setOpenId} onRetry={() => setPass((value) => value + 1)} onOffset={setOffset} />;
+    : openId ? <div className="page"><TaskDetail compact={compact} session={session} projectId={projectId} taskId={openId} names={names} canEdit={canWrite} onEdit={setEditing} onBack={() => { setOpenId(null); setPass((value) => value + 1); }} onChanged={() => setPass((value) => value + 1)} onNoted={(message) => { setSaved(message); setSavedPulse((value) => value + 1); }} /></div>
+    : <TaskBoard compact={compact} view={view} onView={setView} canWrite={canWrite} onCreate={() => setCreating(true)} page={stamp === scope ? page : null} loading={loading || stamp !== scope} error={error} offset={offset} names={names} reported={reported} volumeNote={volumeNote} onOpen={setOpenId} onRetry={() => setPass((value) => value + 1)} onOffset={setOffset} />;
   const savedDraft = (row: ServerTask) => {
     setCreating(false); setEditing(null);
     setSaved(row.workDate === day ? `Сервер записал черновик «${row.title}».` : `Сервер записал черновик на ${row.workDate.split("-").reverse().join(".")}. На доске этого дня его нет.`);
     setSavedPulse((value) => value + 1);
     setPass((value) => value + 1);
   };
-  return <div className={compact ? "task-read" : "kanban-wrap"}>
-    {body}
+  return <div className={compact ? "task-read task-phone" : "kanban-wrap"}>
+    {compact ? <motion.div className="worker-stack" key={`${projectId}:${day}`} initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}>{body}</motion.div> : body}
     <Flash message={saved} pulse={savedPulse} />
     {creating || editing ? <TaskDraftDialog session={session} projectId={projectId} day={day} task={editing} onClose={() => { setCreating(false); setEditing(null); }} onSaved={savedDraft} /> : null}
   </div>;
 }
 
-function TaskBoard({ view, onView, canWrite, onCreate, page, loading, error, offset, names, onOpen, onRetry, onOffset }: { view: BoardView; onView: (view: BoardView) => void; canWrite: boolean; onCreate: () => void; page: Page | null; loading: boolean; error: string; offset: number; names: Record<string, string>; onOpen: (id: string) => void; onRetry: () => void; onOffset: (offset: number) => void }) {
+function TaskBoard({ compact, view, onView, canWrite, onCreate, page, loading, error, offset, names, reported, volumeNote, onOpen, onRetry, onOffset }: { compact: boolean; view: BoardView; onView: (view: BoardView) => void; canWrite: boolean; onCreate: () => void; page: Page | null; loading: boolean; error: string; offset: number; names: Record<string, string>; reported: Record<string, { reportId: string; submittedQuantity: string }[]> | null; volumeNote: string; onOpen: (id: string) => void; onRetry: () => void; onOffset: (offset: number) => void }) {
   const items = page?.items ?? [];
-  return <>
-    <div className="tasks-head">
-      <div className="documents-title"><h1>Задания</h1><NoteMark label="Как устроена доска"><p>Колонка берётся из статуса сервера. Перетаскивание карточку не переносит. Смена, сдача объёма и приёмка появятся на этих же карточках, когда их подтвердит сервер.</p></NoteMark></div>
-      <div className="rowline">
-        {canWrite ? <button className="ghost desk-action" type="button" onClick={onCreate}>Создать задание</button> : null}
-        <div className="roles" role="group" aria-label="Вид заданий">
-          <button type="button" className={view === "board" ? "is-on" : ""} onClick={() => onView("board")}>Доска</button>
-          <button type="button" className={view === "list" ? "is-on" : ""} onClick={() => onView("list")}>Список</button>
-        </div>
+  const head = <div className="tasks-head">
+    <div className="documents-title"><h1>Задания</h1><NoteMark label="Как устроена доска"><p>Колонка берётся из статуса сервера. Перетаскивание карточку не переносит. Сообщённый объём сам колонку «Сдано» не включает и приёмкой не считается.</p></NoteMark></div>
+    {compact ? null : <div className="rowline">
+      {canWrite ? <button className="ghost desk-action" type="button" onClick={onCreate}>Создать задание</button> : null}
+      <div className="roles" role="group" aria-label="Вид заданий">
+        <button type="button" className={view === "board" ? "is-on" : ""} onClick={() => onView("board")}>Доска</button>
+        <button type="button" className={view === "list" ? "is-on" : ""} onClick={() => onView("list")}>Список</button>
       </div>
-    </div>
+    </div>}
+  </div>;
+  if (compact) {
+    const groups = columns.map((column) => ({ column, cards: items.filter((task) => boardColumn(shownTaskStatus(task)) === column.id) })).filter((group) => group.cards.length);
+    return <>
+      {head}
+      {loading && !page ? <p className="quiet worker-hold" role="status">Читаем задания…</p> : null}
+      {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={onRetry}>Повторить чтение</button></p> : null}
+      {volumeNote ? <p className="quiet">{volumeNote}</p> : null}
+      {page && !error && items.length === 0 ? <p className="quiet">На этот день заданий нет.</p> : null}
+      {page && !error ? groups.map(({ column, cards }) => <section className="task-group" key={column.id} aria-label={column.title}>
+        <h2>{column.title}</h2>
+        {cards.map((task) => {
+          const status = shownTaskStatus(task);
+          return <article className="job" key={task.id} role="button" tabIndex={0} aria-label={task.title} onClick={() => onOpen(task.id)} onKeyDown={(event) => { if (event.key === "Enter") onOpen(task.id); }}>
+            <div className="rowline"><h3>{task.title}</h3><DeskBadge tone={status === "published" ? "accent" : status === "cancelled" || status === "needs_fix" ? "warn" : "neutral"}>{taskStatusText(status)}</DeskBadge></div>
+            <div className="quiet">{task.plannedQuantity} {task.unit}</div>
+            {reported?.[task.id]?.map((row) => <div className="quiet" key={row.reportId}>{row.submittedQuantity} {task.unit} · не принято</div>)}
+          </article>;
+        })}
+      </section>) : null}
+    </>;
+  }
+  return <>
+    {head}
     {loading && !page ? <p className="quiet task-hold" role="status">Читаем задания…</p> : null}
     {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={onRetry}>Повторить чтение</button></p> : null}
+    {volumeNote ? <p className="quiet">{volumeNote}</p> : null}
     {page && !error && view === "board" ? <div className="kanban">{columns.map((column) => {
       const cards = items.filter((task) => boardColumn(shownTaskStatus(task)) === column.id);
       return <section className="column" key={column.id} aria-label={column.title}>
@@ -103,9 +147,12 @@ function TaskBoard({ view, onView, canWrite, onCreate, page, loading, error, off
           {cards.length === 0 ? <p className="empty">{column.empty}</p> : null}
           {cards.map((task) => {
             const status = shownTaskStatus(task);
+            const person = names[task.assigneeEmployeeId];
             return <article className="card is-read" key={task.id} role="button" tabIndex={0} aria-label={task.title} onClick={() => onOpen(task.id)} onKeyDown={(event) => { if (event.key === "Enter") onOpen(task.id); }}>
-              <div className="meta">{names[task.assigneeEmployeeId] ?? "исполнитель не прочитан"} · {task.plannedQuantity} {task.unit}</div>
+              <div className="card-person"><span className="card-avatar" aria-hidden="true">{person ? initials(person) : "—"}</span><span>{person || "исполнитель не прочитан"}</span></div>
               <p className="title">{task.title}</p>
+              <div className="meta">{task.plannedQuantity} {task.unit}</div>
+              {reported?.[task.id]?.map((row) => <div className="quiet" key={row.reportId}>{row.submittedQuantity} {task.unit} · не принято</div>)}
               <DeskBadge tone={status === "published" ? "accent" : status === "cancelled" || status === "needs_fix" ? "warn" : "neutral"}>{taskStatusText(status)}</DeskBadge>
             </article>;
           })}
@@ -118,7 +165,7 @@ function TaskBoard({ view, onView, canWrite, onCreate, page, loading, error, off
         const status = shownTaskStatus(task);
         const column = columns.find((item) => item.id === boardColumn(status));
         return <tr className="is-link" key={task.id} tabIndex={0} onClick={() => onOpen(task.id)} onKeyDown={(event) => { if (event.key === "Enter") onOpen(task.id); }}>
-          <td><b>{task.title}</b></td>
+          <td><b>{task.title}</b>{reported?.[task.id]?.map((row) => <div className="quiet" key={row.reportId}>Сообщено {row.submittedQuantity} {task.unit}. Не принято.</div>)}</td>
           <td>{names[task.assigneeEmployeeId] ?? "исполнитель не прочитан"}</td>
           <td>{task.plannedQuantity} {task.unit}</td>
           <td>{column?.title}</td>
@@ -130,7 +177,12 @@ function TaskBoard({ view, onView, canWrite, onCreate, page, loading, error, off
   </>;
 }
 
-function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack, onChanged }: { session: Session; projectId: string; taskId: string; names: Record<string, string>; canEdit: boolean; onEdit: (task: ServerTask) => void; onBack: () => void; onChanged: () => void }) {
+function initials(name: string) {
+  return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "—";
+}
+
+function TaskDetail({ compact, session, projectId, taskId, names, canEdit, onEdit, onBack, onChanged, onNoted }: { compact: boolean; session: Session; projectId: string; taskId: string; names: Record<string, string>; canEdit: boolean; onEdit: (task: ServerTask) => void; onBack: () => void; onChanged: () => void; onNoted: (message: string) => void }) {
+  const reduce = useReducedMotion();
   const [task, setTask] = useState<ServerTask | null>(null);
   const [timezone, setTimezone] = useState("");
   const [error, setError] = useState("");
@@ -152,15 +204,32 @@ function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack
   }, [session.token, session.tenantId, projectId, taskId, pass]);
   const status = task ? shownTaskStatus(task) : "";
   const area = task ? taskArea(status) : "plan";
+  const person = task ? names[task.assigneeEmployeeId] ?? "" : "";
+  const place = task ? [task.zoneId ? names[task.zoneId] : "", task.workTypeId ? names[task.workTypeId] : ""].filter(Boolean).join(" · ") : "";
   return <>
     <div className="documents-heading">
       <button className="ghost desk-action" type="button" onClick={onBack}>К списку</button>
     </div>
     {!task && !error ? <p className="quiet task-hold" role="status">Читаем задание…</p> : null}
     {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={() => setPass((value) => value + 1)}>Повторить чтение</button></p> : null}
-    {task ? <>
+    {task && compact ? <article className="job">
+      <div className="rowline"><h2>{task.title}</h2><DeskBadge tone={status === "published" ? "accent" : status === "cancelled" || status === "needs_fix" ? "warn" : "neutral"}>{taskStatusText(status)}</DeskBadge></div>
+      <p className="quiet">{columns.find((item) => item.id === boardColumn(status))?.title} · {names[task.assigneeEmployeeId] ?? "исполнитель не прочитан"}</p>
+      <p>{task.plannedQuantity} {task.unit}</p>
+      {place ? <p className="quiet">{place}</p> : null}
+      <p className="quiet">Смена и объём остаются на вкладке «Смена».</p>
+    </article> : null}
+    {task && !compact ? <motion.div className="task-sheet" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}>
       <div className="passport-head">
-        <div><h1>{task.title}</h1><p className="sub">{task.workDate.split("-").reverse().join(".")} · {names[task.assigneeEmployeeId] ?? "исполнитель не прочитан"}</p></div>
+        <div>
+          <h1>{task.title}</h1>
+          <div className="task-who">
+            <span className="card-avatar task-who-avatar" aria-hidden="true">{person ? initials(person) : "—"}</span>
+            <span className="task-who-name">{person || "исполнитель не прочитан"}</span>
+            <span className="task-dot" aria-hidden="true">·</span>
+            <time className="quiet" dateTime={task.workDate}>{dayText(task.workDate)}</time>
+          </div>
+        </div>
         <div className="rowline">
           {canEdit && task.workflowKind === "managed02b" && status === "draft" ? <button className="ghost desk-action" type="button" onClick={() => onEdit(task)}>Изменить</button> : null}
           <DeskBadge tone={status === "published" ? "accent" : status === "cancelled" || status === "needs_fix" ? "warn" : "neutral"}>{taskStatusText(status)}</DeskBadge>
@@ -169,29 +238,31 @@ function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack
       <div className="documents-top">
         <section className="panel" aria-label="План">
           <h2>План</h2>
-          <dl className="profile-facts">
-            <div><dt>Статус</dt><dd>{taskStatusText(status)}</dd></div>
-            <div><dt>Объём</dt><dd>{task.plannedQuantity} {task.unit}</dd></div>
-            <div><dt>Зона</dt><dd>{task.zoneId ? names[task.zoneId] ?? "название зоны этому входу не отдано" : "не указана"}</dd></div>
-            <div><dt>Вид работ</dt><dd>{task.workTypeId ? names[task.workTypeId] ?? "название вида этому входу не отдано" : "не указан"}</dd></div>
-            <div><dt>Рабочая документация</dt><dd>{task.rdReference || "не указана"}</dd></div>
-            <div><dt>Интервал</dt><dd>{interval(task.plannedStart, task.plannedEnd, timezone)}</dd></div>
+          <p className="task-figure">{task.plannedQuantity} <span>{task.unit}</span></p>
+          <dl className="task-facts">
+            <Fact label="Зона" value={task.zoneId ? names[task.zoneId] ?? "название зоны этому входу не отдано" : "не указана"} />
+            <Fact label="Вид работ" value={task.workTypeId ? names[task.workTypeId] ?? "название вида этому входу не отдано" : "не указан"} />
+            <Fact label="Рабочая документация" value={task.rdReference || "не указана"} />
+            <Fact label="Интервал" value={interval(task.plannedStart, task.plannedEnd, timezone)} wide />
           </dl>
         </section>
         <div className="person-column">
-          <section className="panel" aria-label="Смена">
-            <h2>Смена</h2>
-            <p className="quiet">{area === "shift" ? `Сервер отметил: ${taskStatusText(status)}. Начать или закончить смену с этой карточки нельзя.` : "В ответе задания нет открытой смены. Её начало и конец не выводятся из плана."}</p>
-          </section>
+          {task.workflowKind === "managed02b" ? <>
+          <ShiftPanel session={session} projectId={projectId} employeeId={task.assigneeEmployeeId} day={task.workDate} onChanged={() => { setPass((value) => value + 1); onChanged(); }} />
+          <VolumeDesk refreshToken={pass} session={session} projectId={projectId} employeeId={task.assigneeEmployeeId} day={task.workDate} tasks={[{ id: task.id, title: task.title, unit: task.unit, status: task.status, workflowKind: task.workflowKind }]} writable={canWriteVolume(session.role)} onDone={(message) => { onNoted(message); setPass((value) => value + 1); onChanged(); }} />
+          </> : <section className="panel" aria-label="Исполнение"><h2>Исполнение</h2><p className="quiet">Смена и отчёты для этого задания здесь недоступны.</p></section>}
           <section className="panel" aria-label="Качество">
-            <h2>Качество</h2>
-            <p className="quiet">{area === "quality" ? `Сервер отметил: ${taskStatusText(status)}. Приёмка с этой карточки не записывается.` : "Приёмка с этой карточки не записывается. Сервер не отметил качество отдельным статусом."}</p>
+            <div className="panel-head">
+              <h2>Качество</h2>
+              <NoteMark label="Про качество"><p>Приёмка с этой карточки не записывается.</p></NoteMark>
+            </div>
+            <p className="task-state">{area === "quality" ? taskStatusText(status) : "Не отмечено"}</p>
           </section>
         </div>
       </div>
       {task.workflowKind === "managed02b" ? <TaskActionPanel session={session} projectId={projectId} task={task} onDone={() => { setPass((value) => value + 1); onChanged(); }} /> : null}
-      {session.role !== "worker" && task.workflowKind === "managed02b" ? <FrontCheckPanel session={session} projectId={projectId} taskId={task.id} taskVersion={task.version} status={status} onRecorded={() => setPass((value) => value + 1)} /> : null}
-    </> : null}
+      {task.workflowKind === "managed02b" ? <FrontCheckPanel session={session} projectId={projectId} taskId={task.id} taskVersion={task.version} status={status} onRecorded={() => setPass((value) => value + 1)} /> : null}
+    </motion.div> : null}
   </>;
 }
 
@@ -202,6 +273,17 @@ async function readNames(session: Session, path: string, field: "name" | "fullNa
   } catch {
     return {} as Record<string, string>;
   }
+}
+
+function Fact({ label, value, wide = false }: { label: string; value: string; wide?: boolean }) {
+  return <div className={wide ? "is-wide" : undefined}><dt>{label}</dt><dd className={value.startsWith("не ") ? "is-empty" : undefined}>{value}</dd></div>;
+}
+
+function dayText(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  if (!year || !month || !day) return value;
+  const date = new Date(year, month - 1, day);
+  return `${date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })} ${year}`;
 }
 
 function interval(start: string | null, end: string | null, timezone: string) {

@@ -39,6 +39,11 @@ export async function v1Items<T>(session: Session, path: string): Promise<T[]> {
   }
 }
 
+export async function v1Collection<T>(session: Session, path: string): Promise<{ items: T[]; total: number }> {
+  const items = await v1Items<T>(session, path);
+  return { items, total: items.length };
+}
+
 export function stableId(key: string) {
   const saved = sessionStorage.getItem(key);
   if (saved) return saved;

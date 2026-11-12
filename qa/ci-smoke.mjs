@@ -60,7 +60,17 @@ try{
  await director.getByText(`Сервер записал «${name}».`,{exact:true}).waitFor();
  const fresh=await login('director');await people(fresh);await fresh.getByText(name,{exact:true}).click();
  await fresh.getByRole('heading',{name,exact:true}).waitFor();
- await fresh.reload();await people(fresh);await fresh.getByText(name,{exact:true}).waitFor();
+ const heldClock=[];
+ const clockStarted=fresh.waitForRequest(request=>new URL(request.url()).pathname==='/api/v1/overview');
+ await fresh.route('**/api/v1/overview*',route=>{heldClock.push(route);});
+ await fresh.reload();await clockStarted;
+ await fresh.locator('.nav-item').filter({hasText:/^(Люди|Работники)$/}).click();
+ await delay(45); // Resolve scope while the old page is exiting.
+ for(const route of heldClock)await route.continue();
+ await fresh.unroute('**/api/v1/overview*');
+ await fresh.getByRole('heading',{name:/^(Люди|Работники)$/}).waitFor();
+ await fresh.getByText(name,{exact:true}).waitFor();
+ check('navigation concurrent with initial scope refresh does not leave the old page');
  assert.ok(await fresh.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
  await fresh.screenshot({path:resolve(out,'employees-390.png'),fullPage:true});
  check('R03: UI write survives new login and reload; 390px viewport');
