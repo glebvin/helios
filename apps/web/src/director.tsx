@@ -13,12 +13,12 @@ import { Quality } from "./quality";
 import { Settings } from "./settings";
 import { Mark } from "./mark";
 import { People, type PersonCard } from "./people";
-import { DayFlow } from "./dayflow";
 import { ScopeBar, useCabinetScope } from "./scope-read";
 import { hasV1ProjectScope, projectDesk } from "./scope";
 import { RoleSwitch, accessOf, roleTitle, serverRights, type Section, type View } from "./roles";
 import { minutesLabel, useBook } from "./book";
 import { amount, dayTasks, laneOf, laneTone, personName, progress, statusLabel, todayKey, type Admission, type Lane, type Remark } from "./model";
+import { LiveInbox, LiveToday } from "./today";
 
 const icons: Record<Section, string> = {
   overview: paths.home,
@@ -106,6 +106,9 @@ export function DirectorDesk({
   const [cards, setCards] = useState<PersonCard[]>([]);
   const [remarks, setRemarks] = useState<Remark[]>([]);
   const [openTask, setOpenTask] = useState<{ id: string; token: number } | null>(null);
+  const [sheetTick, setSheetTick] = useState(0);
+  const liveHome = !preview && (session.role === "director" || session.role === "master");
+  const openSheet = () => { setSheetTick((value) => value + 1); onSection("people"); };
   const access = accessOf(view);
   const rights = serverRights(session.role);
   const canCreate = !preview && rights.createTask && access.createTask;
@@ -156,9 +159,20 @@ export function DirectorDesk({
         </header>
         {preview ? <p className="quiet preview-note">Просмотр кабинета: {access.hint} Вход не меняется: {session.name}, {roleTitle(session.role)}. Запись от выбранного вида не выполняется.</p> : null}
         <PageShift pageKey={page} refreshKey={scope.projectId}>
-          {page === "overview" ? (
-            <>
-            {preview ? null : <DayFlow session={session} />}
+          {page === "overview" ? (liveHome ? (
+            <LiveToday
+              title={access.overviewTitle}
+              session={session}
+              projectId={templateProjectId}
+              projectName={project}
+              day={taskDay}
+              notice={scope.notice}
+              openLabel={access.sections.some((item) => item.id === "mine") ? "Открыть дела" : "К заданиям"}
+              onOpen={() => onSection(access.sections.some((item) => item.id === "mine") ? "mine" : "tasks")}
+              onOpenTasks={() => onSection("tasks")}
+              onOpenSheet={openSheet}
+            />
+          ) : (
             <Overview
               title={access.overviewTitle}
               project={project}
@@ -177,9 +191,10 @@ export function DirectorDesk({
               openLabel={access.sections.some((item) => item.id === "mine") ? "Открыть дела" : "К приёмке"}
               onOpen={() => onSection(access.sections.some((item) => item.id === "mine") ? "mine" : "quality")}
             />
-            </>
-          ) : null}
-          {page === "mine" ? (
+          )) : null}
+          {page === "mine" ? (liveHome ? (
+            <LiveInbox session={session} projectId={templateProjectId} projectName={project} day={taskDay} notice={scope.notice} onOpenTasks={() => onSection("tasks")} onOpenSheet={openSheet} />
+          ) : (
             <Inbox
               data={data}
               remarks={remarks}
@@ -193,7 +208,7 @@ export function DirectorDesk({
               onOpenQuality={() => onSection("quality")}
               onOpenDocuments={() => onSection("documents")}
             />
-          ) : null}
+          )) : null}
           {page === "objects" ? <Objects lead={hasV1ProjectScope(session.role) ? <ProjectCatalogs session={session} projectId={templateProjectId} writable={!preview && session.role === "director"} /> : null} data={data} canEdit={canPlace} normsNote={access.normsNote} onSavePlace={onSavePlace} onTasks={() => onSection("tasks")} /> : null}
           {page === "people" ? (
             <People
@@ -212,6 +227,8 @@ export function DirectorDesk({
               onAdmit={(employeeId, until) => setAdmissions((list) => [...list.filter((item) => item.employeeId !== employeeId), { employeeId, until }])}
               cards={cards}
               onCard={(card) => setCards((list) => [...list.filter((item) => item.employeeId !== card.employeeId), card])}
+              openSheet={sheetTick}
+              sheetDay={taskDay}
             />
           ) : null}
           {page === "tasks" ? (hasV1ProjectScope(session.role) ? <TaskRead key={`${session.tenantId}:${templateProjectId}:${taskDay}`} session={session} projectId={templateProjectId} day={taskDay} notice={scope.notice} openTaskId={openTask?.id ?? ""} openToken={openTask?.token ?? 0} /> : <WorkBoard

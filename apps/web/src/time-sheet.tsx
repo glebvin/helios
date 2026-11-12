@@ -8,7 +8,7 @@ import { ApiError, moscowDay, v1 } from "./v1";
 import { durationLabel } from "./worker-day";
 
 type Totals = { presenceMs: string; idleMs: string; workMs: string; breakMs: string; downtimeMs: string };
-type TimeStatus = "unapproved" | "current" | "stale" | "revoked";
+export type TimeStatus = "unapproved" | "current" | "stale" | "revoked";
 type TimeDaySummary = {
   employeeId: string;
   employeeName: string;
@@ -37,11 +37,17 @@ type TimeDay = {
 
 const limit = 50;
 
-export function TimeSheet({ session, projectId, canDecide = false }: { session: Session; projectId: string; canDecide?: boolean }) {
+export function TimeSheet({ session, projectId, canDecide = false, day = "" }: { session: Session; projectId: string; canDecide?: boolean; day?: string }) {
   const reduce = useReducedMotion();
   const today = moscowDay();
-  const [from, setFrom] = useState(today);
-  const [to, setTo] = useState(today);
+  const [from, setFrom] = useState(day || today);
+  const [to, setTo] = useState(day || today);
+  const touched = useRef(false);
+  useEffect(() => {
+    if (!day || touched.current) return;
+    setFrom(day);
+    setTo(day);
+  }, [day]);
   const [offset, setOffset] = useState(0);
   const [pass, setPass] = useState(0);
   const [page, setPage] = useState<TimeDayList | null>(null);
@@ -77,8 +83,8 @@ export function TimeSheet({ session, projectId, canDecide = false }: { session: 
   if (!projectId) return <DeskEmpty title="Объект не выбран" description="Табель читается после выбора объекта." />;
   return <>
     <div className="object-tools">
-      <label className="time-range">С <input type="date" aria-label="Начало периода" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
-      <label className="time-range">по <input type="date" aria-label="Конец периода" value={to} onChange={(event) => setTo(event.target.value)} /></label>
+      <label className="time-range">С <input type="date" aria-label="Начало периода" value={from} onChange={(event) => { touched.current = true; setFrom(event.target.value); }} /></label>
+      <label className="time-range">по <input type="date" aria-label="Конец периода" value={to} onChange={(event) => { touched.current = true; setTo(event.target.value); }} /></label>
       <NoteMark label="Как читать табель"><p>В списке только записанные дни. Нет строки — день не записан. Это не подтверждённое отсутствие.</p></NoteMark>
       <button className="ghost desk-action" type="button" disabled={Boolean(problem) || exporting} onClick={() => void downloadExcel()}>{exporting ? "Готовим файл…" : "Скачать Excel"}</button>
       <NoteMark label="Про файл"><p>Файл приходит, только если каждый записанный день периода утверждён и совпадает с источником. Иначе сервер присылает список этих дней, а не файл без них.</p></NoteMark>
@@ -307,7 +313,7 @@ function rangeProblem(from: string, to: string) {
   return "";
 }
 
-function timeStatusText(status: TimeStatus) {
+export function timeStatusText(status: TimeStatus) {
   if (status === "current") return "Совпадает";
   if (status === "stale") return "Источник новее";
   if (status === "revoked") return "Отозвано";
