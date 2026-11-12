@@ -1,0 +1,127 @@
+import { useEffect, useRef, useState } from "react";
+import type { Session } from "./api";
+import { ApiError, v1 } from "./v1";
+import { DeskBadge, DeskSelect } from "./kit";
+import { staffRequest } from "./staff-form";
+import type { AdmissionTemplate } from "./admission-template";
+import { answersComplete, blankAnswers, checkBody, checkError, checkReason, type AdmissionCheck, type CheckAnswers, type CheckPage } from "./admission-check";
+
+const describe = (reason: unknown) => checkError(reason instanceof ApiError ? reason.status : null, reason instanceof ApiError ? reason.message : "");
+async function currentTemplate(session: Session, projectId: string) {
+  const project = await v1<{ name: string }>(session, `/projects/${projectId}`);
+  try { return { projectName: project.name, template: await v1<AdmissionTemplate>(session, `/projects/${projectId}/admission-template`) }; }
+  catch (reason) { if (reason instanceof ApiError && reason.status === 404) return { projectName: project.name, template: null }; throw reason; }
+}
+export function AdmissionChecksPanel({ session, employeeId, projectId, archived }: { session: Session; employeeId: string; projectId: string; archived: boolean }) {
+  const [template, setTemplate] = useState<AdmissionTemplate | null>(null);
+  const [projectName, setProjectName] = useState("");
+  const [page, setPage] = useState<CheckPage | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [pass, setPass] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [blocked, setBlocked] = useState(false);
+  const [editing, setEditing] = useState<AdmissionTemplate | null>(null);
+  const [written, setWritten] = useState<AdmissionCheck | null>(null);
+  const path = `/employees/${employeeId}/admission-checks`;
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") setPass(value => value + 1); };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
+  useEffect(() => {
+    if (!projectId) { setLoading(false); return; }
+    let live = true; setLoading(true);
+    void (async () => {
+      try {
+        const context = await currentTemplate(session, projectId);
+        const rows = await v1<CheckPage>(session, `${path}?projectId=${projectId}&limit=10&offset=${offset}`);
+        if (!live) return;
+        setTemplate(context.template); setProjectName(context.projectName); setPage(rows); setError(""); setBlocked(false);
+        if (offset && offset >= rows.total) setOffset(Math.max(0, Math.floor((rows.total - 1) / 10) * 10));
+      } catch (reason) {
+        if (!live) return;
+        setError(describe(reason)); setPage(null); setTemplate(null);
+        if (reason instanceof ApiError && [401, 403, 404].includes(reason.status)) { setBlocked(true); setEditing(null); setWritten(null); setProjectName(""); }
+      } finally { if (live) setLoading(false); }
+    })();
+    return () => { live = false; };
+  }, [session.token, session.tenantId, projectId, path, offset, pass]);
+  return <section className="panel admission-checks" aria-label="Проверки допуска">
+    <h2>Проверки допуска</h2>
+    {!projectId ? <p className="quiet">Выберите объект в шапке для проверки допуска сотрудника.</p> : <>
+      {projectName ? <p className="quiet">Объект: {projectName}</p> : null}
+      <p className="quiet">Результат каждой попытки определяет сервер. Пройденная попытка фиксирует проверку на момент записи; актуальный допуск и назначение на объект проверяются отдельно.</p>
+      {loading ? <p className="quiet" role="status">Читаем проверки допуска…</p> : null}
+      {error ? <p role="alert">{error} <button className="ghost" type="button" onClick={() => setPass(value => value + 1)}>Повторить чтение проверок</button></p> : null}
+      {!loading && !error ? template ? <p className="quiet">Текущий шаблон: {template.title}, версия {template.version}.</p> : <p className="quiet">Шаблон допуска не создан. Руководитель задаёт его в «Настройках» этого объекта.</p> : null}
+      {archived ? <p className="quiet">Для архивного сотрудника доступна история; новые проверки не записываются.</p> : null}
+      {session.role === "master" ? <p className="quiet">Прораб читает результаты. Попытку записывает руководитель проекта.</p> : null}
+      {session.role === "director" && !archived && !blocked ? editing ? <CheckForm session={session} path={path} projectId={projectId} initial={editing} latest={template} onCancel={() => setEditing(null)} onSaved={row => { setWritten(row); setEditing(null); setOffset(0); setPass(value => value + 1); }} /> : template && !error ? <button className="ghost" type="button" disabled={loading} onClick={() => { setEditing(template); setWritten(null); }}>Новая проверка</button> : null : null}
+      {written ? <p className="quiet" role="status">{`Сервер записал попытку №${written.sequence}: ${written.passed ? "проверка пройдена" : "проверка не пройдена"}.`}</p> : null}
+      {written && !page?.items.some(item => item.id === written.id) ? <CheckResult row={written} template={template} /> : null}
+      {!loading && !error && page?.total === 0 ? <p className="quiet">Попыток проверки на этом объекте пока нет.</p> : null}
+      <div className="check-history">{page?.items.map(row => <CheckResult key={row.id} row={row} template={template} />)}</div>
+      {page && page.total > 10 ? <div className="template-bar"><button className="ghost" disabled={loading || offset === 0} onClick={() => setOffset(Math.max(0, offset - 10))}>Предыдущие проверки</button><span className="quiet">{offset + 1}–{offset + page.items.length} из {page.total}</span><button className="ghost" disabled={loading || offset + page.items.length >= page.total} onClick={() => setOffset(offset + 10)}>Более ранние проверки</button></div> : null}
+    </>}
+  </section>;
+}
+function CheckResult({ row, template }: { row: AdmissionCheck; template: AdmissionTemplate | null }) {
+  const stale = !!template && (row.templateVersion !== template.version || row.templateCode !== template.code);
+  return <article className="check-result">
+    <div className="template-bar"><b>Попытка №{row.sequence}</b><DeskBadge tone={!row.passed || stale ? "warn" : "neutral"}>{row.passed ? "Пройдена на момент записи" : "Не пройдена"}</DeskBadge></div>
+    <p className="quiet">{new Date(row.checkedAt).toLocaleString("ru-RU")} · шаблон версии {row.templateVersion}.</p>
+    {stale ? <p className="check-stale">Шаблон изменён. Эта попытка относится к прежней версии; нужна новая проверка.</p> : !template ? <p className="quiet">Актуальность шаблона не подтверждена.</p> : null}
+    {row.reasons.length ? <ul>{row.reasons.map(reason => <li key={reason}>{checkReason(reason, row.templateSnapshot)}</li>)}</ul> : null}
+    {row.warnings.length ? <ul className="quiet">{row.warnings.map(reason => <li key={reason}>{checkReason(reason, row.templateSnapshot)}</li>)}</ul> : null}
+    <details><summary>Ответы и требования на момент проверки</summary><ul>{row.templateSnapshot.items.map(item => <li key={item.id}>{item.label}: {row.answers.find(answer => answer.itemId === item.id)?.value ? "да" : "нет"}</li>)}</ul><p className="quiet">Квалификации: {row.templateSnapshot.requiredQualificationCodes.join(", ") || "не требовались"}.</p></details>
+  </article>;
+}
+function CheckForm({ session, path, projectId, initial, latest, onCancel, onSaved }: { session: Session; path: string; projectId: string; initial: AdmissionTemplate; latest: AdmissionTemplate | null; onCancel: () => void; onSaved: (row: AdmissionCheck) => void }) {
+  const [source, setSource] = useState(initial);
+  const [answers, setAnswers] = useState<CheckAnswers>(() => blankAnswers(initial));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [stored, setStored] = useState(true);
+  const lock = useRef(false), request = useRef({ id: "", key: "" });
+  const pendingKey = `helios.admission-check:${session.tenantId}:${session.userId}:${projectId}:${path}`;
+  const changed = !!latest && (source.version !== latest.version || source.code !== latest.code);
+  async function submit() {
+    if (lock.current || changed || !answersComplete(source, answers)) return;
+    const key = JSON.stringify(checkBody(projectId, source, answers, ""));
+    if (!request.current.id) {
+      try { const previous = JSON.parse(sessionStorage.getItem(pendingKey) ?? "null"); if (typeof previous?.id === "string" && typeof previous?.key === "string") request.current = previous; } catch { /* This form can still retry in memory. */ }
+    }
+    request.current = staffRequest(request.current, key, () => crypto.randomUUID());
+    try { sessionStorage.setItem(pendingKey, JSON.stringify(request.current)); setStored(true); } catch { setStored(false); }
+    lock.current = true; setBusy(true); setError("");
+    try {
+      const row = await v1<AdmissionCheck>(session, path, checkBody(projectId, source, answers, request.current.id));
+      try { sessionStorage.removeItem(pendingKey); } catch { /* Server confirmation is authoritative. */ }
+      onSaved(row);
+    } catch (reason) { setError(describe(reason)); }
+    finally { lock.current = false; setBusy(false); }
+  }
+  async function reload() {
+    if (lock.current) return;
+    lock.current = true; setBusy(true);
+    try {
+      const context = await currentTemplate(session, projectId);
+      if (!context.template) throw new ApiError(404, "not_found");
+      setSource(context.template); setAnswers(blankAnswers(context.template)); request.current = { id: "", key: "" }; setError("");
+    } catch (reason) { setError(describe(reason)); }
+    finally { lock.current = false; setBusy(false); }
+  }
+  return <form aria-label="Новая проверка допуска" onSubmit={event => { event.preventDefault(); void submit(); }}>
+    <fieldset className="employee-fields" disabled={busy}>
+      <p className="quiet">{source.title} · версия {source.version}. Ответьте на каждый пункт. Заполнение формы ещё не означает пройденную проверку.</p>
+      {source.items.map((item, index) => <div className="check-point" key={item.id}><p>{item.label}</p><p className="quiet">{item.critical ? "Критичный пункт: ответ «нет» блокирует проверку." : "Ответ «нет» будет предупреждением."}</p><DeskSelect label={`Ответ на пункт ${index + 1}`} value={answers[item.id] === null ? "" : answers[item.id] ? "yes" : "no"} options={[{ value: "", label: "Выберите ответ" }, { value: "yes", label: "Да" }, { value: "no", label: "Нет" }]} onChange={value => setAnswers(current => ({ ...current, [item.id]: value === "" ? null : value === "yes" }))} /></div>)}
+      <p className="quiet">Требуемые квалификации: {source.requiredQualificationCodes.join(", ") || "не заданы"}. Их состояние проверит сервер.</p>
+    </fieldset>
+    {changed ? <p role="alert">Шаблон изменён. Прочитайте текущую версию; ответы нужно заполнить заново.</p> : null}
+    {error ? <p role="alert">{error}</p> : null}
+    {changed || error ? <button className="ghost" type="button" disabled={busy} onClick={() => void reload()}>Прочитать текущий шаблон</button> : null}
+    {!stored && error ? <p className="quiet">Номер попытки не сохранён браузером. Повторите в этой форме, не закрывая её.</p> : null}
+    <div className="template-bar"><button className="ghost" type="button" disabled={busy} onClick={onCancel}>Отменить проверку</button><button className="fill" type="submit" disabled={busy || changed || !answersComplete(source, answers)}>{busy ? "Записываем попытку…" : "Записать проверку"}</button></div>
+  </form>;
+}

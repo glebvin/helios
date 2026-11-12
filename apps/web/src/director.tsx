@@ -194,6 +194,7 @@ export function DirectorDesk({
           {page === "objects" ? <Objects data={data} canEdit={canPlace} normsNote={access.normsNote} onSavePlace={onSavePlace} onTasks={() => onSection("tasks")} /> : null}
           {page === "people" ? (
             <People
+              projectId={templateProjectId}
               key={view}
               session={session}
               data={data}
