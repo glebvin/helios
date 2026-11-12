@@ -4,6 +4,7 @@ import { Flash } from "./flash";
 import { DeskBadge, DeskEmpty } from "./kit";
 import { NoteMark } from "./note-mark";
 import { FrontCheckPanel } from "./front-check-panel";
+import { TaskActionPanel } from "./task-action-panel";
 import { TaskDraftDialog } from "./task-draft-form";
 import { canWriteTaskDraft } from "./task-draft";
 import { ApiError, v1 } from "./v1";
@@ -59,7 +60,7 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, day, offset, pass, ready]);
   const body = !ready ? <div className="page"><DeskEmpty title="Объект и день не подтверждены" description={notice || "Доска читается только после выбора объекта и рабочего дня."} /></div>
-    : openId ? <div className="page"><TaskDetail session={session} projectId={projectId} taskId={openId} names={names} canEdit={canWrite} onEdit={setEditing} onBack={() => setOpenId(null)} /></div>
+    : openId ? <div className="page"><TaskDetail session={session} projectId={projectId} taskId={openId} names={names} canEdit={canWrite} onEdit={setEditing} onBack={() => setOpenId(null)} onChanged={() => setPass((value) => value + 1)} /></div>
     : <TaskBoard view={view} onView={setView} canWrite={canWrite} onCreate={() => setCreating(true)} page={page} loading={loading} error={error} offset={offset} names={names} onOpen={setOpenId} onRetry={() => setPass((value) => value + 1)} onOffset={setOffset} />;
   const savedDraft = (row: ServerTask) => {
     setCreating(false); setEditing(null);
@@ -124,7 +125,7 @@ function TaskBoard({ view, onView, canWrite, onCreate, page, loading, error, off
   </>;
 }
 
-function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack }: { session: Session; projectId: string; taskId: string; names: Record<string, string>; canEdit: boolean; onEdit: (task: ServerTask) => void; onBack: () => void }) {
+function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack, onChanged }: { session: Session; projectId: string; taskId: string; names: Record<string, string>; canEdit: boolean; onEdit: (task: ServerTask) => void; onBack: () => void; onChanged: () => void }) {
   const [task, setTask] = useState<ServerTask | null>(null);
   const [error, setError] = useState("");
   const [pass, setPass] = useState(0);
@@ -179,6 +180,7 @@ function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack
           </section>
         </div>
       </div>
+      <TaskActionPanel session={session} projectId={projectId} task={task} onDone={() => { setPass((value) => value + 1); onChanged(); }} />
       <FrontCheckPanel session={session} projectId={projectId} taskId={task.id} taskVersion={task.version} status={status} onRecorded={() => setPass((value) => value + 1)} />
     </> : null}
   </>;
