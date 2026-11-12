@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import type { Session } from "./api";
 import { ApiError, v1 } from "./v1";
 import { Dialog } from "./dialog";
@@ -71,16 +71,17 @@ export function AdmissionChecksPanel({ session, employeeId, projectId, archived 
 }
 function CheckResult({ row, template }: { row: AdmissionCheck; template: AdmissionTemplate | null }) {
   const [open, setOpen] = useState(false);
+  const reduce = useReducedMotion();
   const stale = !!template && (row.templateVersion !== template.version || row.templateCode !== template.code);
   return <article className={open ? "check-result is-open" : "check-result"}>
     <div className="check-summary">
       <button type="button" className="check-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
         <span className="check-identity"><b>Попытка №{row.sequence}</b><time dateTime={row.checkedAt}>{new Date(row.checkedAt).toLocaleString("ru-RU")}</time></span>
-        <span className="check-state">{stale ? <span className="check-stale">Прежний шаблон</span> : null}<DeskBadge tone={!row.passed || stale ? "warn" : "done"}>{row.passed ? "Пройдена" : "Не пройдена"}</DeskBadge><motion.span className="check-chevron" aria-hidden="true" animate={{ rotate: open ? 180 : 0 }} transition={{ type: "spring", bounce: 0, duration: 0.28 }}>⌄</motion.span></span>
+        <span className="check-state">{stale ? <span className="check-stale">Прежний шаблон</span> : null}<DeskBadge tone={!row.passed || stale ? "warn" : "done"}>{row.passed ? "Пройдена" : "Не пройдена"}</DeskBadge><motion.span className="check-chevron" aria-hidden="true" animate={{ rotate: open ? 180 : 0 }} transition={{ type: "spring", bounce: 0, duration: reduce ? 0 : 0.28 }}>⌄</motion.span></span>
       </button>
       <NoteMark label={`Сведения попытки №${row.sequence}`}><p>{row.templateSnapshot.title} · шаблон версии {row.templateVersion} · дата проверки {row.civilDate}.</p><p>Требуемые квалификации: {row.templateSnapshot.requiredQualificationCodes.join(", ") || "не требовались"}.</p>{row.qualificationEvidence.length ? <p>{row.qualificationEvidence.map(item => `${item.code} · версия ${item.version} · ${item.validUntil ? `по ${item.validUntil.split("-").reverse().join(".")}` : "без срока"}`).join("; ")}</p> : null}{!template ? <p>Актуальность шаблона не подтверждена.</p> : null}</NoteMark>
     </div>
-    <motion.div className="check-fold" initial={false} animate={{ height: open ? "auto" : 0, opacity: open ? 1 : 0 }} transition={{ type: "spring", bounce: 0, duration: 0.32 }} inert={open ? undefined : true}>
+    <motion.div className="check-fold" initial={false} animate={{ height: open ? "auto" : 0, opacity: open ? 1 : 0 }} transition={{ type: "spring", bounce: 0, duration: reduce ? 0 : 0.24 }} inert={open ? undefined : true}>
       <div className="check-detail">
         {stale ? <p className="check-stale">Шаблон изменён. Эта попытка относится к прежней версии; нужна новая проверка.</p> : null}
         {row.reasons.length ? <ul className="check-reasons">{row.reasons.map(reason => <li key={reason}>{checkReason(reason, row.templateSnapshot)}</li>)}</ul> : null}
