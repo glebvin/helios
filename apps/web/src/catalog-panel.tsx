@@ -18,8 +18,8 @@ export function ProjectCatalogs({ session, projectId, writable }: { session: Ses
   if (!projectId) return <DeskEmpty title="Объект не выбран" description="Выберите объект в шапке. Зоны и виды работ читаются только у него." />;
   return (
     <div className="documents-top">
-      <CatalogPanel session={session} projectId={projectId} kind="zones" writable={writable} />
-      <CatalogPanel session={session} projectId={projectId} kind="work-types" writable={writable} />
+      <CatalogPanel key={`${session.tenantId}:${projectId}:zones`} session={session} projectId={projectId} kind="zones" writable={writable} />
+      <CatalogPanel key={`${session.tenantId}:${projectId}:work-types`} session={session} projectId={projectId} kind="work-types" writable={writable} />
     </div>
   );
 }

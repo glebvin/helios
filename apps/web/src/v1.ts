@@ -25,6 +25,20 @@ export async function v1<T>(session: Session, path: string, body?: unknown, meth
   return parsed;
 }
 
+export async function v1Items<T>(session: Session, path: string): Promise<T[]> {
+  const [pathname, search = ""] = path.split("?");
+  const query = new URLSearchParams(search);
+  query.set("limit", "100");
+  const items: T[] = [];
+  while (true) {
+    query.set("offset", String(items.length));
+    const page = await v1<{ items: T[]; total: number }>(session, `${pathname}?${query}`);
+    items.push(...page.items);
+    if (items.length >= page.total) return items;
+    if (!page.items.length) throw new ApiError(502, "incomplete_page");
+  }
+}
+
 export function stableId(key: string) {
   const saved = sessionStorage.getItem(key);
   if (saved) return saved;

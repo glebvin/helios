@@ -2,7 +2,7 @@
 
 GitHub: [R12 · задача #12](https://github.com/glebvin/helios/issues/12).
 
-Статус: **review**. Прораб отправляет, руководитель публикует или возвращает. Колонка меняется только после ответа сервера. [PR66](https://github.com/glebvin/helios/pull/66). Merge и выкладка не выполнены.
+Статус: **verified**. Техническая проверка пакета R08–R12 завершена. [Отчёт](../../qa/release-tasks-2026-11-12.md); факт объединения и публикации — в GitHub Releases.
 
 - Группа: Задания.
 - Роли: rp, master, worker.

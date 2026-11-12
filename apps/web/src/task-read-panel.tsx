@@ -7,7 +7,7 @@ import { FrontCheckPanel } from "./front-check-panel";
 import { TaskActionPanel } from "./task-action-panel";
 import { TaskDraftDialog } from "./task-draft-form";
 import { canWriteTaskDraft } from "./task-draft";
-import { ApiError, v1 } from "./v1";
+import { ApiError, v1, v1Items } from "./v1";
 import { boardColumn, shownTaskStatus, taskArea, taskError, taskListPath, taskStatusText, type BoardColumn, type ServerTask } from "./task-read";
 
 type Page = { items: ServerTask[]; total: number; limit: number; offset: number };
@@ -27,13 +27,18 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [view, setView] = useState<BoardView>("board");
+  const [view, setView] = useState<BoardView>(compact ? "list" : "board");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ServerTask | null>(null);
   const [saved, setSaved] = useState("");
   const [savedPulse, setSavedPulse] = useState(0);
   const canWrite = canWriteTaskDraft(session.role);
   const ready = Boolean(projectId && day && !notice);
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") setPass((value) => value + 1); };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
   useEffect(() => { setOffset(0); setOpenId(openTaskId || null); }, [projectId, day, openTaskId, openToken]);
   useEffect(() => {
     if (!ready) { setLoading(false); setPage(null); return; }
@@ -47,8 +52,8 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
         if (offset && offset >= rows.total) setOffset(Math.max(0, Math.floor((rows.total - 1) / 25) * 25));
         const [people, zones, types] = await Promise.all([
           readNames(session, `/employees?projectId=${projectId}&limit=100`, "fullName"),
-          readNames(session, `/projects/${projectId}/zones?limit=100`, "name"),
-          readNames(session, `/projects/${projectId}/work-types?limit=100`, "name"),
+          session.role === "worker" ? Promise.resolve({}) : readNames(session, `/projects/${projectId}/zones?limit=100`, "name"),
+          session.role === "worker" ? Promise.resolve({}) : readNames(session, `/projects/${projectId}/work-types?limit=100`, "name"),
         ]);
         if (!live) return;
         setNames({ ...people, ...zones, ...types });
@@ -60,7 +65,7 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, day, offset, pass, ready]);
   const body = !ready ? <div className="page"><DeskEmpty title="Объект и день не подтверждены" description={notice || "Доска читается только после выбора объекта и рабочего дня."} /></div>
-    : openId ? <div className="page"><TaskDetail session={session} projectId={projectId} taskId={openId} names={names} canEdit={canWrite} onEdit={setEditing} onBack={() => setOpenId(null)} onChanged={() => setPass((value) => value + 1)} /></div>
+    : openId ? <div className="page"><TaskDetail session={session} projectId={projectId} taskId={openId} names={names} canEdit={canWrite} onEdit={setEditing} onBack={() => { setOpenId(null); setPass((value) => value + 1); }} onChanged={() => setPass((value) => value + 1)} /></div>
     : <TaskBoard view={view} onView={setView} canWrite={canWrite} onCreate={() => setCreating(true)} page={page} loading={loading} error={error} offset={offset} names={names} onOpen={setOpenId} onRetry={() => setPass((value) => value + 1)} onOffset={setOffset} />;
   const savedDraft = (row: ServerTask) => {
     setCreating(false); setEditing(null);
@@ -127,14 +132,18 @@ function TaskBoard({ view, onView, canWrite, onCreate, page, loading, error, off
 
 function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack, onChanged }: { session: Session; projectId: string; taskId: string; names: Record<string, string>; canEdit: boolean; onEdit: (task: ServerTask) => void; onBack: () => void; onChanged: () => void }) {
   const [task, setTask] = useState<ServerTask | null>(null);
+  const [timezone, setTimezone] = useState("");
   const [error, setError] = useState("");
   const [pass, setPass] = useState(0);
   useEffect(() => {
     let live = true;
     void (async () => {
       try {
-        const row = await v1<ServerTask>(session, `/projects/${projectId}/tasks/${taskId}`);
-        if (live) { setTask(row); setError(""); }
+        const [row, clock] = await Promise.all([
+          v1<ServerTask>(session, `/projects/${projectId}/tasks/${taskId}`),
+          v1<{ timezone: string }>(session, "/overview"),
+        ]);
+        if (live) { setTask(row); setTimezone(clock.timezone); setError(""); }
       } catch (reason) {
         if (live) { setTask(null); setError(taskError(reason instanceof ApiError ? reason.status : null)); }
       }
@@ -153,7 +162,7 @@ function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack
       <div className="passport-head">
         <div><h1>{task.title}</h1><p className="sub">{task.workDate.split("-").reverse().join(".")} · {names[task.assigneeEmployeeId] ?? "исполнитель не прочитан"}</p></div>
         <div className="rowline">
-          {canEdit && status === "draft" ? <button className="ghost desk-action" type="button" onClick={() => onEdit(task)}>Изменить</button> : null}
+          {canEdit && task.workflowKind === "managed02b" && status === "draft" ? <button className="ghost desk-action" type="button" onClick={() => onEdit(task)}>Изменить</button> : null}
           <DeskBadge tone={status === "published" ? "accent" : status === "cancelled" || status === "needs_fix" ? "warn" : "neutral"}>{taskStatusText(status)}</DeskBadge>
         </div>
       </div>
@@ -166,7 +175,7 @@ function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack
             <div><dt>Зона</dt><dd>{task.zoneId ? names[task.zoneId] ?? "название зоны этому входу не отдано" : "не указана"}</dd></div>
             <div><dt>Вид работ</dt><dd>{task.workTypeId ? names[task.workTypeId] ?? "название вида этому входу не отдано" : "не указан"}</dd></div>
             <div><dt>Рабочая документация</dt><dd>{task.rdReference || "не указана"}</dd></div>
-            <div><dt>Интервал</dt><dd>{interval(task.plannedStart, task.plannedEnd)}</dd></div>
+            <div><dt>Интервал</dt><dd>{interval(task.plannedStart, task.plannedEnd, timezone)}</dd></div>
           </dl>
         </section>
         <div className="person-column">
@@ -180,29 +189,29 @@ function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack
           </section>
         </div>
       </div>
-      <TaskActionPanel session={session} projectId={projectId} task={task} onDone={() => { setPass((value) => value + 1); onChanged(); }} />
-      <FrontCheckPanel session={session} projectId={projectId} taskId={task.id} taskVersion={task.version} status={status} onRecorded={() => setPass((value) => value + 1)} />
+      {task.workflowKind === "managed02b" ? <TaskActionPanel session={session} projectId={projectId} task={task} onDone={() => { setPass((value) => value + 1); onChanged(); }} /> : null}
+      {session.role !== "worker" && task.workflowKind === "managed02b" ? <FrontCheckPanel session={session} projectId={projectId} taskId={task.id} taskVersion={task.version} status={status} onRecorded={() => setPass((value) => value + 1)} /> : null}
     </> : null}
   </>;
 }
 
 async function readNames(session: Session, path: string, field: "name" | "fullName") {
   try {
-    const page = await v1<{ items: ({ id: string } & Record<string, string | null>)[] }>(session, path);
-    return Object.fromEntries(page.items.map((item) => [item.id, item[field] || ""]));
+    const items = await v1Items<{ id: string } & Record<string, string | null>>(session, path);
+    return Object.fromEntries(items.map((item) => [item.id, item[field] || ""]));
   } catch {
     return {} as Record<string, string>;
   }
 }
 
-function interval(start: string | null, end: string | null) {
+function interval(start: string | null, end: string | null, timezone: string) {
   if (!start && !end) return "не указан";
-  return `${clock(start)} — ${clock(end)}`;
+  return `${clock(start, timezone)} — ${clock(end, timezone)}`;
 }
 
-function clock(value: string | null) {
+function clock(value: string | null, timeZone: string) {
   if (!value) return "не указано";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleString("ru-RU", { timeZone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }

@@ -102,7 +102,7 @@ export function WorkerPhone({
           </>
         ) : null}
         {tab === "shift" && !current ? <><h1>Моя смена</h1><p className="quiet">{scope.notice || "На сегодня заданий нет. Их ставит прораб."}</p></> : null}
-        {tab === "task" ? <TaskRead compact session={session} projectId={scope.projectId} day={scope.day} notice={scope.notice} /> : null}
+        {tab === "task" ? <TaskRead key={`${session.tenantId}:${scope.projectId}:${scope.day}`} compact session={session} projectId={scope.projectId} day={scope.day} notice={scope.notice} /> : null}
         {tab === "profile" ? (
           <>
             <h1>Профиль</h1>
