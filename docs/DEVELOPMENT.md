@@ -30,7 +30,7 @@ GitHub Actions создаёт одноразовый PostgreSQL 17 на этом
 
 ## Что покрывает CI
 
-- Ссылки входных документов и зависимости 27 карточек.
+- Ссылки входных документов, связи с ТЗ и зависимости 51 карточки.
 - TypeScript API/web/domain/offline.
 - Production Vite build и domain-тесты.
 - Frontend-тесты `apps/web/src/*.test.ts` через встроенный Node test runner.
