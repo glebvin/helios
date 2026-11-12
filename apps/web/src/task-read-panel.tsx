@@ -3,6 +3,7 @@ import type { Session } from "./api";
 import { Flash } from "./flash";
 import { DeskBadge, DeskEmpty } from "./kit";
 import { NoteMark } from "./note-mark";
+import { FrontCheckPanel } from "./front-check-panel";
 import { TaskDraftDialog } from "./task-draft-form";
 import { canWriteTaskDraft } from "./task-draft";
 import { ApiError, v1 } from "./v1";
@@ -178,6 +179,7 @@ function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack
           </section>
         </div>
       </div>
+      <FrontCheckPanel session={session} projectId={projectId} taskId={task.id} taskVersion={task.version} status={status} onRecorded={() => setPass((value) => value + 1)} />
     </> : null}
   </>;
 }
