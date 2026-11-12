@@ -1,23 +1,27 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { Session } from "./api";
 import { DeskSelect } from "./kit";
+import { Flash } from "./flash";
 import { canWriteStaff, staffBody, staffDraft, staffRequest, staffWriteError, type StaffOrg } from "./staff-form";
 import type { ServerEmployee } from "./staff-list";
 import { ApiError, v1 } from "./v1";
 
 export function EmployeeForm({
-  session, organizations, employee, onSaved,
+  session, organizations, employee, onSaved, onRead = onSaved, toast = true, extra = null,
 }: {
   session: Session;
   organizations: StaffOrg[];
   employee: ServerEmployee | null;
   onSaved: (row: ServerEmployee) => void;
+  onRead?: (row: ServerEmployee) => void;
+  toast?: boolean;
+  extra?: ReactNode;
 }) {
   const [source, setSource] = useState(employee);
   const [draft, setDraft] = useState(() => staffDraft(employee, organizations));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState("");
+  const [saved, setSaved] = useState(""), [savedPulse, setSavedPulse] = useState(0);
   const request = useRef({ id: "", key: "" });
   const busy = useRef(false);
   const [retryStored, setRetryStored] = useState(true);
@@ -57,7 +61,8 @@ export function EmployeeForm({
       const row = await v1<ServerEmployee>(session, source ? `/employees/${source.id}` : "/employees", body, source ? "PUT" : "POST");
       if (source) { setSource(row); setDraft(staffDraft(row, organizations)); }
       else { try { sessionStorage.removeItem(pendingKey); } catch { /* Confirmed response is authoritative. */ } }
-      setSaved(`Сервер записал «${row.fullName}».`);
+      const text = `Сервер записал «${row.fullName}».`;
+      if (toast) { setSaved(text); setSavedPulse(value => value + 1); }
       onSaved(row);
     } catch (reason) {
       const status = reason instanceof ApiError ? reason.status : null;
@@ -74,7 +79,7 @@ export function EmployeeForm({
     busy.current = true; setSaving(true);
     try {
       const row = await v1<ServerEmployee>(session, `/employees/${employee.id}`);
-      setSource(row); setDraft(staffDraft(row, organizations)); setError(""); setSaved(""); onSaved(row);
+      setSource(row); setDraft(staffDraft(row, organizations)); setError(""); setSaved(""); onRead(row);
     } catch (reason) { setError(staffWriteError(reason instanceof ApiError ? reason.status : null)); }
     finally { busy.current = false; setSaving(false); }
   }
@@ -94,10 +99,11 @@ export function EmployeeForm({
       {archived ? <p className="quiet">Архивную карточку сервер не принимает к правке.</p> : null}
       </fieldset>
       {error ? <p role="alert">{error}</p> : null}
-      {error && employee ? <button className="ghost" type="button" disabled={saving} onClick={() => void readCard()}>Прочитать карточку</button> : null}
+      {error && employee ? <button className="ghost desk-action" type="button" disabled={saving} onClick={() => void readCard()}>Прочитать карточку</button> : null}
       {error && !retryStored ? <p className="quiet">Браузер не сохранил номер попытки. Повторите в этой форме, не закрывая её.</p> : null}
-      {saved ? <p className="quiet">{saved}</p> : null}
-      <button className="fill" type="submit" disabled={saving || archived || !ready}>{saving ? "Записываем на сервере…" : employee ? "Сохранить на сервере" : "Создать на сервере"}</button>
+      {extra}
+      {toast ? <Flash message={saved} pulse={savedPulse} /> : null}
+      <button className="fill desk-action" type="submit" disabled={saving || archived || !ready}>{saving ? "Записываем…" : employee ? "Сохранить" : "Создать"}</button>
     </form>
   );
 }

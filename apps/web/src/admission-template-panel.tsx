@@ -3,6 +3,8 @@ import type { Session } from "./api";
 import { ApiError, v1 } from "./v1";
 import { staffRequest } from "./staff-form";
 import { DeskBadge } from "./kit";
+import { Flash } from "./flash";
+import { NoteMark } from "./note-mark";
 import { templateBody, templateDraft, templateError, templateValidation, type AdmissionTemplate, type TemplateDraft } from "./admission-template";
 
 const describe = (reason: unknown) => templateError(reason instanceof ApiError ? reason.status : null, reason instanceof ApiError ? reason.message : "");
@@ -20,7 +22,7 @@ export function AdmissionTemplatePanel({ session, projectId }: { session: Sessio
   const [pass, setPass] = useState(0);
   const [editing, setEditing] = useState(false);
   const [blocked, setBlocked] = useState(false);
-  const [saved, setSaved] = useState("");
+  const [saved, setSaved] = useState(""), [savedPulse, setSavedPulse] = useState(0);
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === "visible") setPass(value => value + 1); };
     window.addEventListener("focus", refresh);
@@ -38,21 +40,33 @@ export function AdmissionTemplatePanel({ session, projectId }: { session: Sessio
     }).finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, pass]);
-  return <section className="panel admission-template" aria-label="Шаблон допуска">
-    <div className="template-bar"><h2>Шаблон допуска</h2>{row ? <DeskBadge>{`Версия ${row.version}`}</DeskBadge> : null}</div>
-    {projectName ? <p className="quiet">Объект: {projectName}</p> : null}
+  return <section className={loading && row === undefined ? "panel admission-template is-reading" : "panel admission-template"} aria-label="Шаблон допуска">
+    <div className="documents-heading">
+      <div className="documents-title">
+        <h2>Шаблон допуска</h2>
+        <NoteMark label="Как устроен шаблон допуска">
+          {projectName ? <p>Объект: {projectName}.</p> : null}
+          <p>Пункт отвечает «да» или «нет». Критичный ответ «нет» блокирует проверку, некритичный остаётся предупреждением.</p>
+          <p>Новая версия потребует заново проверить допуск сотрудников по её требованиям.</p>
+          {row ? <p>Требуемые квалификации: {row.requiredQualificationCodes.length ? row.requiredQualificationCodes.join(", ") : "не заданы"}.</p> : null}
+          {session.role === "master" ? <p>Прораб читает шаблон. Изменения сохраняет руководитель проекта.</p> : null}
+        </NoteMark>
+      </div>
+      <div className="access-actions">
+        {row ? <DeskBadge>{`Версия ${row.version}`}</DeskBadge> : null}
+        {session.role === "director" && !blocked && row !== undefined && !editing && !error ? <button className="ghost desk-action" type="button" disabled={loading} onClick={() => { setEditing(true); setSaved(""); }}>{row ? "Изменить шаблон" : "Создать шаблон"}</button> : null}
+      </div>
+    </div>
     {!projectId ? <p className="quiet">Выберите объект в шапке, чтобы открыть его шаблон допуска.</p> : <>
-      {loading ? <p className="quiet" role="status">Читаем шаблон…</p> : null}
-      {error ? <p role="alert">{error} {row ? "Показана последняя прочитанная версия." : ""} <button className="ghost" type="button" onClick={() => setPass(value => value + 1)}>Повторить чтение шаблона</button></p> : null}
-      {!editing && row ? <>
-        <h3>{row.title}</h3><p className="quiet">Код: {row.code}</p>
-        <ol className="template-items">{row.items.map(item => <li key={item.id}><span>{item.label}</span><span className="quiet">Да / нет · {item.critical ? "Критичный" : "Некритичный"}</span></li>)}</ol>
-        <p className="quiet">Требуемые квалификации: {row.requiredQualificationCodes.length ? row.requiredQualificationCodes.join(", ") : "не заданы"}.</p>
-      </> : null}
+      {loading && row === undefined ? <p className="quiet" role="status">Читаем шаблон…</p> : null}
+      {error ? <p role="alert">{error} {row ? "Показана последняя прочитанная версия." : ""} <button className="ghost desk-action" type="button" onClick={() => setPass(value => value + 1)}>Повторить чтение</button></p> : null}
+      {!editing && row ? <div className="qualification-list">
+        <article className="qualification-row"><div><b>{row.title}</b><span className="quiet">Код {row.code}</span></div></article>
+        {row.items.map(item => <article className="qualification-row" key={item.id}><div><b>{item.label}</b><span className="quiet">Да / нет</span></div><DeskBadge tone={item.critical ? "warn" : "neutral"}>{item.critical ? "Критичный" : "Некритичный"}</DeskBadge></article>)}
+      </div> : null}
       {!loading && !error && row === null && !editing ? <p className="quiet">На этом объекте шаблон допуска ещё не создан.</p> : null}
-      {saved ? <p className="quiet" role="status">{saved}</p> : null}
-      {session.role === "director" && !blocked && row !== undefined ? editing ? <TemplateForm session={session} projectId={projectId} initial={row} onCancel={() => setEditing(false)} onSaved={next => { setRow(next); setEditing(false); setSaved(`Сервер записал версию ${next.version}.`); setPass(value => value + 1); }} /> : !error ? <button className="ghost" type="button" disabled={loading} onClick={() => { setEditing(true); setSaved(""); }}>{row ? "Изменить шаблон" : "Создать шаблон"}</button> : null : null}
-      {session.role === "master" ? <p className="quiet">Прораб читает шаблон. Изменения сохраняет руководитель проекта.</p> : null}
+      <Flash message={saved} pulse={savedPulse} />
+      {session.role === "director" && !blocked && row !== undefined && editing ? <TemplateForm session={session} projectId={projectId} initial={row} onCancel={() => setEditing(false)} onSaved={next => { setRow(next); setEditing(false); setSaved(`Сервер записал версию ${next.version}.`); setSavedPulse(value => value + 1); setPass(value => value + 1); }} /> : null}
     </>}
   </section>;
 }
@@ -98,15 +112,15 @@ function TemplateForm({ session, projectId, initial, onCancel, onSaved }: { sess
       <label className="field"><span>Название шаблона</span><input required maxLength={200} value={draft.title} onChange={event => change({ title: event.target.value })} /></label>
       <div className="template-items">{draft.items.map((item, index) => <div className="template-point" key={item.id}>
         <label className="field"><span>Пункт {index + 1}</span><input required maxLength={500} value={item.label} onChange={event => change({ items: draft.items.map(row => row.id === item.id ? { ...row, label: event.target.value } : row) })} /></label>
-        <div className="template-bar"><label className="template-check"><input type="checkbox" aria-label={`Критичный пункт ${index + 1}`} checked={item.critical} onChange={event => change({ items: draft.items.map(row => row.id === item.id ? { ...row, critical: event.target.checked } : row) })} />Критичный: ответ «нет» блокирует допуск</label><button className="ghost" type="button" aria-label={`Удалить пункт ${index + 1}`} disabled={draft.items.length === 1} onClick={() => change({ items: draft.items.filter(row => row.id !== item.id) })}>Удалить</button></div>
+        <div className="template-bar"><label className="template-check"><input type="checkbox" aria-label={`Критичный пункт ${index + 1}`} checked={item.critical} onChange={event => change({ items: draft.items.map(row => row.id === item.id ? { ...row, critical: event.target.checked } : row) })} />Критичный: ответ «нет» блокирует допуск</label><button className="ghost desk-action" type="button" aria-label={`Удалить пункт ${index + 1}`} disabled={draft.items.length === 1} onClick={() => change({ items: draft.items.filter(row => row.id !== item.id) })}>Удалить</button></div>
       </div>)}</div>
-      <button className="ghost" type="button" disabled={draft.items.length >= 100} onClick={() => change({ items: [...draft.items, { id: crypto.randomUUID(), label: "", critical: false }] })}>Добавить пункт</button>
+      <button className="ghost desk-action" type="button" disabled={draft.items.length >= 100} onClick={() => change({ items: [...draft.items, { id: crypto.randomUUID(), label: "", critical: false }] })}>Добавить пункт</button>
       <label className="field"><span>Требуемые коды квалификаций</span><textarea aria-label="Требуемые коды квалификаций" rows={3} value={draft.codes} onChange={event => change({ codes: event.target.value })} /></label>
       <p className="quiet">Один код на строку, как в квалификациях сотрудника. Пустой список означает отсутствие требований к квалификациям. Некритичный ответ «нет» будет предупреждением.</p>
     </fieldset>
     {error ? <p role="alert">{error}</p> : null}
-    {error ? <button className="ghost" type="button" disabled={busy} onClick={() => void reload()}>Прочитать актуальный шаблон</button> : null}
+    {error ? <button className="ghost desk-action" type="button" disabled={busy} onClick={() => void reload()}>Прочитать шаблон</button> : null}
     {error && !stored ? <p className="quiet">Номер попытки не сохранён браузером. Повторите в этой форме, не закрывая её.</p> : null}
-    <div className="template-bar"><button className="ghost" type="button" disabled={busy} onClick={onCancel}>Отмена</button><button className="fill" type="submit" disabled={busy || !!unchanged}>{busy ? "Записываем…" : "Сохранить шаблон"}</button></div>
+    <div className="template-bar"><button className="ghost desk-action" type="button" disabled={busy} onClick={onCancel}>Отмена</button><button className="fill desk-action" type="submit" disabled={busy || !!unchanged}>{busy ? "Записываем…" : "Сохранить шаблон"}</button></div>
   </form>;
 }
