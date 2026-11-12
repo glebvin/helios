@@ -686,6 +686,8 @@ h1, h2, h3, p { margin: 0; }
   touch-action: none;
   user-select: none;
 }
+.kanban .card.is-read { cursor: pointer; touch-action: auto; user-select: text; }
+.kanban .card .badge { margin-top: 8px; }
 .kanban .card.is-dragging { z-index: 40; }
 .kanban .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .kanban .card.is-selected { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -1050,6 +1052,9 @@ h1, h2, h3, p { margin: 0; }
 .qualification-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .qualification-list { display: grid; margin-top: 8px; animation: rise-in .32s cubic-bezier(.23, 1, .32, 1); }
 .catalog-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.task-hold { min-height: 168px; }
+.task-read { display: grid; gap: 16px; }
+.task-read h1 { font-size: 28px; letter-spacing: -0.04em; font-weight: 500; }
 .check-line { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13px; }
 .check-line input { width: 16px; height: 16px; margin: 0; flex: none; }
 .qualification-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-height: 52px; padding: 6px 0; min-width: 0; }

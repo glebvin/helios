@@ -20,7 +20,7 @@ GitHub: [R10 · задача #10](https://github.com/glebvin/helios/issues/10).
 
 ## Ограниченная задача
 
-Сопоставить форму с zoneId, workTypeId, assigneeEmployeeId, responsibleUserId, периодом и точным объёмом. Заменить retired /api/tasks.
+Сопоставить форму с zoneId, workTypeId, assigneeEmployeeId, responsibleUserId, периодом и точным объёмом. Заменить retired /api/tasks. Доску и список не заменять: сохранённый черновик появляется в колонке «Назначено» только после ответа сервера.
 
 ## Контракт перед реализацией
 
