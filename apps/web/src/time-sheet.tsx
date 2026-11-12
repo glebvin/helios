@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import type { Session } from "./api";
 import { DeskBadge, DeskEmpty, DeskTimeline } from "./kit";
+import { Flash } from "./flash";
 import { NoteMark } from "./note-mark";
 import { ApiError, moscowDay, v1 } from "./v1";
 import { durationLabel } from "./worker-day";
@@ -24,11 +25,19 @@ type TimeDaySummary = {
 type TimeDayList = { items: TimeDaySummary[]; total: number; limit: number; offset: number; nextOffset: number | null; truncated: boolean };
 type TimeRevision = { version: number; state: "approved" | "revoked"; reason: string; recordedAt: string; sourceTotals: Totals; confirmedTotals: Totals };
 type TimeHistory = { items: TimeRevision[]; total: number; limit: number; offset: number };
-type TimeDay = { employeeId: string; day: string; status: TimeStatus; source: { totals: Totals; hasOpenIntervals: boolean; suspicious: boolean }; latest: { state: "approved" | "revoked"; reason: string; confirmedTotals: Totals; overridden: boolean } | null };
+type TimeDay = {
+  employeeId: string;
+  day: string;
+  status: TimeStatus;
+  sourceHash: string;
+  approvalVersion: number;
+  source: { totals: Totals; hasOpenIntervals: boolean; suspicious: boolean };
+  latest: { state: "approved" | "revoked"; reason: string; confirmedTotals: Totals; overridden: boolean } | null;
+};
 
 const limit = 50;
 
-export function TimeSheet({ session, projectId }: { session: Session; projectId: string }) {
+export function TimeSheet({ session, projectId, canDecide = false }: { session: Session; projectId: string; canDecide?: boolean }) {
   const reduce = useReducedMotion();
   const today = moscowDay();
   const [from, setFrom] = useState(today);
@@ -39,6 +48,8 @@ export function TimeSheet({ session, projectId }: { session: Session; projectId:
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [picked, setPicked] = useState("");
+  const [saved, setSaved] = useState("");
+  const [pulse, setPulse] = useState(0);
   const problem = rangeProblem(from, to);
   const scope = `${projectId}:${from}:${to}:${offset}`;
   useEffect(() => { setOffset(0); setPicked(""); }, [projectId, from, to]);
@@ -86,7 +97,7 @@ export function TimeSheet({ session, projectId }: { session: Session; projectId:
           </tbody>
         </table>
       </div>
-      {selected ? <TimeDayRead session={session} projectId={projectId} row={selected} /> : <p className="quiet">Выберите день, чтобы прочитать историю.</p>}
+      {selected ? <TimeDayRead key={rowKey(selected)} session={session} projectId={projectId} row={selected} canDecide={canDecide} onSaved={(message) => { setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : <p className="quiet">Выберите день, чтобы прочитать историю.</p>}
     </motion.div> : null}
     {!problem && page && page.total > page.items.length ? <div className="qualification-bar">
       <button className="ghost desk-action" type="button" disabled={loading || offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Назад</button>
@@ -94,14 +105,20 @@ export function TimeSheet({ session, projectId }: { session: Session; projectId:
       <button className="ghost desk-action" type="button" disabled={loading || offset + rows.length >= page.total} onClick={() => setOffset(offset + limit)}>Далее</button>
     </div> : null}
     {!problem && page?.truncated ? <p className="quiet">Сервер остановил чтение, пока дни ещё остались. Сузьте период.</p> : null}
+    <Flash message={saved} pulse={pulse} />
   </>;
 }
 
-function TimeDayRead({ session, projectId, row }: { session: Session; projectId: string; row: TimeDaySummary }) {
+function TimeDayRead({ session, projectId, row, canDecide, onSaved }: { session: Session; projectId: string; row: TimeDaySummary; canDecide: boolean; onSaved: (message: string) => void }) {
   const [pass, setPass] = useState(0);
   const [day, setDay] = useState<TimeDay | null>(null);
   const [history, setHistory] = useState<TimeHistory | null>(null);
   const [error, setError] = useState("");
+  const [reason, setReason] = useState("");
+  const [ack, setAck] = useState(false);
+  const [decisionError, setDecisionError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const lock = useRef(false);
   useEffect(() => {
     let live = true;
     setDay(null);
@@ -124,6 +141,32 @@ function TimeDayRead({ session, projectId, row }: { session: Session; projectId:
     })();
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, row.employeeId, row.day, pass]);
+  const ready = Boolean(day && /^[0-9a-f]{64}$/.test(day.sourceHash) && Number.isInteger(day.approvalVersion));
+  const suspicious = Boolean(day?.source.suspicious);
+  const canApprove = ready && day?.status !== "current";
+  const canRevoke = ready && day?.latest?.state === "approved";
+  async function decide(action: "approve" | "revoke") {
+    if (!day || lock.current) return;
+    const text = reason.trim();
+    if (!text) { setDecisionError("Напишите причину."); return; }
+    if (action === "approve" && suspicious && !ack) { setDecisionError("Сервер просит подтвердить пометку источника."); return; }
+    lock.current = true;
+    setBusy(true);
+    setDecisionError("");
+    try {
+      const message = await postDecision(session, projectId, row.employeeId, row.day, action, {
+        expectedApprovalVersion: day.approvalVersion,
+        reason: text,
+        ...(action === "approve" ? { sourceHash: day.sourceHash, acknowledgeSuspicious: suspicious && ack } : {}),
+      });
+      if (message) { onSaved(message); setPass((value) => value + 1); }
+    } catch (reason) {
+      setDecisionError(decisionProblem(reason));
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
   const source = day?.source.totals ?? row.sourceTotals;
   const confirmed = day?.latest?.confirmedTotals ?? row.confirmedTotals;
   const events = [...(history?.items ?? [])].reverse().map((item) => ({
@@ -151,6 +194,19 @@ function TimeDayRead({ session, projectId, row }: { session: Session; projectId:
     {history && events.length === 0 ? <p className="quiet">Утверждений этого дня нет.</p> : null}
     {events.length > 0 ? <DeskTimeline events={events} /> : null}
     {history && history.total > history.items.length ? <p className="quiet">Показаны первые {history.items.length} из {history.total}.</p> : null}
+    {canDecide && day ? <div className="time-decide">
+      <div className="panel-head">
+        <h2>Решение</h2>
+        <NoteMark label="Про решение"><p>Повтор той же кнопки отправляет тот же запрос и не создаёт новую ревизию. Если версия или источник уже другие, сервер отказывает и сам решение не принимает.</p></NoteMark>
+      </div>
+      <label className="field"><span>Причина</span><input aria-label="Причина решения" maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} /></label>
+      {suspicious ? <label className="task-now"><input type="checkbox" checked={ack} onChange={(event) => setAck(event.target.checked)} /> Источник помечен, я это вижу</label> : null}
+      {decisionError ? <p role="alert">{decisionError}</p> : null}
+      <div className="template-bar">
+        {canRevoke ? <button className="ghost desk-action" type="button" disabled={busy} onClick={() => void decide("revoke")}>Отозвать</button> : null}
+        {canApprove ? <button className="fill desk-action" type="button" disabled={busy} onClick={() => void decide("approve")}>Утвердить</button> : null}
+      </div>
+    </div> : null}
   </section>;
 }
 
@@ -174,6 +230,46 @@ function timeStatusText(status: TimeStatus) {
 
 function shown(ms: string) {
   return durationLabel(ms) || "—";
+}
+
+const decisionFlights = new Map<string, Promise<string | null>>();
+
+function postDecision(session: Session, projectId: string, employeeId: string, day: string, action: "approve" | "revoke", body: { expectedApprovalVersion: number; reason: string; sourceHash?: string; acknowledgeSuspicious?: boolean }) {
+  const signature = JSON.stringify({ action, ...body });
+  const storageKey = `helios.time:${session.tenantId}:${session.userId}:${projectId}:${employeeId}:${day}:${action}`;
+  const flightKey = `${storageKey}:${signature}`;
+  const flying = decisionFlights.get(flightKey);
+  if (flying) return flying;
+  const run = (async () => {
+    let requestId = "";
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? "null") as { requestId?: string; signature?: string } | null;
+      if (saved?.signature === signature && saved.requestId) requestId = saved.requestId;
+    } catch { requestId = ""; }
+    if (!requestId) requestId = crypto.randomUUID();
+    sessionStorage.setItem(storageKey, JSON.stringify({ requestId, signature }));
+    const path = `/projects/${projectId}/time/employees/${employeeId}/days/${day}/${action === "approve" ? "approvals" : "revoke"}`;
+    await v1(session, path, { ...body, requestId });
+    return action === "approve" ? "Сервер утвердил часы." : "Сервер отозвал утверждение.";
+  })();
+  decisionFlights.set(flightKey, run);
+  return run.finally(() => { if (decisionFlights.get(flightKey) === run) decisionFlights.delete(flightKey); });
+}
+
+function decisionProblem(reason: unknown) {
+  const code = reason instanceof ApiError ? reason.message : "";
+  const status = reason instanceof ApiError ? reason.status : 0;
+  if (status === 403) return "Этому входу запись часов не разрешена.";
+  if (code === "stale_approval_version") return "Версия этого дня уже другая. Решение не повторяю.";
+  if (code === "stale_source" || code === "time_source_inconsistent") return "Источник дня уже другой. Решение не повторяю.";
+  if (code === "approval_required") return "Утверждённой записи для отзыва нет.";
+  if (code === "idempotency_payload_mismatch") return "Тот же запрос уже ушёл с другим текстом.";
+  if (code === "open_intervals") return "На сервере есть открытый интервал.";
+  if (code === "future_day") return "Этот день ещё не наступил.";
+  if (code === "recorded_time_required") return "Записанного времени нет.";
+  if (code === "suspicious_acknowledgment_required") return "Сервер просит подтвердить пометку источника.";
+  if (status === 409) return "Сервер отказал и сам решение не принял.";
+  return "Сервер не записал решение.";
 }
 
 function timeError(reason: unknown) {
