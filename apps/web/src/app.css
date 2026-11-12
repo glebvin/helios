@@ -1135,3 +1135,6 @@ h1, h2, h3, p { margin: 0; }
 }
 .documents-top .access-actions .template-bar { justify-content: flex-end; gap: 8px; margin: 0; }
 .documents-top .qualification-row b { font-size: 14px; font-weight: 500; }
+
+.access-actions:has(.access-feedback) { flex-wrap: wrap; }
+.access-feedback { flex-basis: 100%; font-size: 13px; line-height: 1.5; }
