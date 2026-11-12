@@ -74,12 +74,14 @@ export function DirectorDesk({
   onExpire: () => void;
 }) {
   const scope = useCabinetScope(session, onExpire, sourceData.projects);
-  const templateContext = useRef({ token: session.token, tenantId: session.tenantId, id: "" });
-  if (templateContext.current.token !== session.token || templateContext.current.tenantId !== session.tenantId) templateContext.current = { token: session.token, tenantId: session.tenantId, id: "" };
-  // A failed background clock/scope read must not discard an open template draft.
+  const templateContext = useRef({ token: session.token, tenantId: session.tenantId, id: "", day: "" });
+  if (templateContext.current.token !== session.token || templateContext.current.tenantId !== session.tenantId) templateContext.current = { token: session.token, tenantId: session.tenantId, id: "", day: "" };
+  // A failed background scope read must not discard an open template or task draft.
   if (scope.projectId) templateContext.current.id = scope.projectId;
   else if (!scope.error && scope.projects.length > 0) templateContext.current.id = "";
   const templateProjectId = scope.projectId || templateContext.current.id;
+  if (scope.day) templateContext.current.day = scope.day;
+  const taskDay = scope.day || templateContext.current.day;
   const data = projectDesk(sourceData, scope.notice ? "" : scope.projectId);
   const tasks = dayTasks(data);
   const dayTasksOnServer = scope.notice ? [] : data.tasks.filter((task) => String(task.work_date).slice(0, 10) === scope.day);
@@ -213,7 +215,7 @@ export function DirectorDesk({
               onCard={(card) => setCards((list) => [...list.filter((item) => item.employeeId !== card.employeeId), card])}
             />
           ) : null}
-          {page === "tasks" ? (hasV1ProjectScope(session.role) ? <TaskRead key={`${session.tenantId}:${templateProjectId}:${scope.day}`} session={session} projectId={templateProjectId} day={scope.day} notice={scope.notice} openTaskId={openTask?.id ?? ""} openToken={openTask?.token ?? 0} /> : <WorkBoard
+          {page === "tasks" ? (hasV1ProjectScope(session.role) ? <TaskRead key={`${session.tenantId}:${templateProjectId}:${taskDay}`} session={session} projectId={templateProjectId} day={taskDay} notice={scope.notice} openTaskId={openTask?.id ?? ""} openToken={openTask?.token ?? 0} /> : <WorkBoard
               data={data}
               tasks={tasks}
               canAccept={canAccept}
