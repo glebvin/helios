@@ -26,7 +26,7 @@ GitHub: [R25 · задача #25](https://github.com/glebvin/helios/issues/25).
 
 API/модуль: `sw.js; manifest.webmanifest; actor-scoped read snapshots`. Сокращённые пути в карточке — ориентир; точные поля, префиксы, методы и роли сверить в `apps/api/openapi.json` и контроллерах.
 
-Начать чтение с `apps/web/src/public/sw.js, App.tsx` (для packages/qa/public путь от корня). Это ориентир, не разрешение переписывать все файлы. Пробел API записать отдельно; серверные проверки ради формы не обходить.
+Начать чтение с `apps/web/public/sw.js, apps/web/src/App.tsx` (для packages/qa/public путь от корня). Это ориентир, не разрешение переписывать все файлы. Пробел API записать отдельно; серверные проверки ради формы не обходить.
 
 ## Готово, когда
 
