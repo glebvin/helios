@@ -2,7 +2,7 @@
 
 GitHub: [R02 · задача #2](https://github.com/glebvin/helios/issues/2).
 
-Статус: **технически проверено**. [Отчёт](../../qa/r02-review-2026-11-11.md). Актуальное объединение и выпуск — в [PR #29](https://github.com/glebvin/helios/pull/29) и [Releases](https://github.com/glebvin/helios/releases). Не создавать повторную реализацию.
+Статус: **объединено в main**, PR#29. Технические проверки выполнены; версия сервера определяется release.json и GitHub Releases.
 
 - Группа: Люди.
 - Роли: rp, master.

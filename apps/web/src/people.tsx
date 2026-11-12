@@ -1,14 +1,18 @@
-import { AnimatePresence, motion } from "motion/react";
-import { useRef, useState, type ReactNode } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { cloneElement, isValidElement, useRef, useState, type ReactElement, type ReactNode } from "react";
 import {InvitationDialog,InvitationList} from "./invitations";
 import { searchStaff, staffNotice, type ServerEmployee } from "./staff-list";
 import { useStaffCard, useStaffList } from "./staff-read";
 import { hasV1ProjectScope } from "./scope";
 import type { Desk, Session } from "./api";
 import { Dialog } from "./dialog";
+import { ProjectAccessPanel } from "./project-access-panel";
+import { AdmissionChecksPanel } from "./admission-check-panel";
+import { QualificationsPanel } from "./qualifications-panel";
 import { EmployeeForm } from "./employee-form";
 import { canWriteStaff } from "./staff-form";
 import { minutesLabel, useBook, type Book } from "./book";
+import { Flash } from "./flash";
 import { DeskBadge, DeskCrumbs, DeskEmpty, DeskSelect, DeskTimeline, FluidTabs, SmoothButton, StatGrid } from "./kit";
 import { amount, clock, laneOf, laneTone, permitState, personName, statusLabel, todayKey, type Admission } from "./model";
 import type { PeopleTab } from "./roles";
@@ -32,9 +36,10 @@ const peopleTabLabels: { id: Tab; label: string }[] = [
 ];
 
 export function People({
-  session, data, onOpenTask, inviteWorker = false, inviteForeman = false, peopleTabs = ["people"], admitStep = "none", dayStep = "none", canExport = false, admissions = [], onAdmit, cards = [], onCard,
+  session, projectId = "", data, onOpenTask, inviteWorker = false, inviteForeman = false, peopleTabs = ["people"], admitStep = "none", dayStep = "none", canExport = false, admissions = [], onAdmit, cards = [], onCard,
 }: {
   session: Session;
+  projectId?: string;
   data: Desk;
   onOpenTask: (taskId: string) => void;
   inviteWorker?: boolean;
@@ -71,6 +76,7 @@ export function People({
   if (personId) {
     return (
       <ServerProfile
+        projectId={projectId}
         loading={opened.loading}
         error={opened.error}
         employee={opened.employee}
@@ -236,8 +242,9 @@ function Timesheet({ data, dayStep, onOpen }: { data: Desk; dayStep: "prepare" |
 }
 
 function ServerProfile({
-  loading, error, employee, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, session, onReload,
+  projectId, loading, error, employee, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, session, onReload,
 }: {
+  projectId: string;
   loading: boolean;
   error: string;
   employee: ServerEmployee | null;
@@ -268,7 +275,12 @@ function ServerProfile({
     {error ? <p className="quiet" role="alert">{error} Показана последняя прочитанная версия.</p> : null}
     <Profile
       person={{ id: shown.id, full_name: shown.fullName, phone: shown.phone ?? "", user_id: shown.userId, document_number: data.employees.find((row) => row.id === shown.id)?.document_number ?? null, role: shown.status === "archived" ? "archived" : null }}
-      editor={canWriteStaff(session.role) ? <EmployeeForm session={session} organizations={data.organizations} employee={shown} onSaved={(row) => { setWritten(row); onReload(); }} /> : null}
+      projectAccess={<ProjectAccessPanel key={`${session.token}:${session.tenantId}:${shown.id}:${projectId}:${shown.userId}`} session={session} employeeId={shown.id} userId={shown.userId} projectId={projectId} archived={shown.status === "archived"} />}
+      admissionChecks={<AdmissionChecksPanel key={`${session.token}:${session.tenantId}:${shown.id}:${projectId}`} session={session} employeeId={shown.id} projectId={projectId} archived={shown.status === "archived"} />}
+      qualifications={<QualificationsPanel key={`${session.token}:${shown.id}`} session={session} employeeId={shown.id} archived={shown.status === "archived"} />}
+      organization={data.organizations.find((item) => item.id === shown.organizationId)?.name}
+      workStatus={shown.status}
+      editor={canWriteStaff(session.role) ? <EmployeeForm session={session} organizations={data.organizations} employee={shown} toast={false} onSaved={(row) => { setWritten(row); onReload(); }} /> : null}
       data={data}
       until={until}
       card={card}
@@ -284,7 +296,7 @@ function ServerProfile({
 }
 
 function Profile({
-  person, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, editor = null,
+  person, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, editor = null, qualifications = null, admissionChecks = null, projectAccess = null, organization, workStatus,
 }: {
   person: Desk["employees"][number];
   data: Desk;
@@ -297,7 +309,13 @@ function Profile({
   onAdmit: (until: string) => void;
   onCard: (card: PersonCard) => void;
   editor?: ReactNode;
+  qualifications?: ReactNode;
+  admissionChecks?: ReactNode;
+  projectAccess?: ReactNode;
+  organization?: string;
+  workStatus?: "active" | "archived";
 }) {
+  const reduce = useReducedMotion();
   const [tab, setTab] = useState<ProfileTab>("overview");
   const [photoError, setPhotoError] = useState("");
   const photoInput = useRef<HTMLInputElement>(null);
@@ -331,7 +349,7 @@ function Profile({
         <div className="who">
           <div className="portrait">
             {card.photoUrl ? <img src={card.photoUrl} alt="" /> : <i aria-hidden="true">{initials(person.full_name)}</i>}
-            <button className="ghost" type="button" onClick={() => photoInput.current?.click()}>{card.photoUrl ? "Заменить фото" : "Добавить фото"}</button>
+            <button className="ghost desk-action" type="button" onClick={() => photoInput.current?.click()}>{card.photoUrl ? "Заменить фото" : "Добавить фото"}</button>
             <input ref={photoInput} type="file" accept="image/*" hidden onChange={(event) => { setPhoto(event.target.files?.[0]); event.target.value = ""; }} />
           </div>
           <div>
@@ -346,13 +364,15 @@ function Profile({
         </div>
         <div className="person-badges">
           <DeskBadge tone={open ? "accent" : "neutral"}>{open ? "На смене" : "Не на смене"}</DeskBadge>
-          <DeskBadge tone={permitWords(until).tone}>{permitWords(until).label}</DeskBadge>
+          {admissionChecks ? <DeskBadge>Проверки — в документах</DeskBadge> : <DeskBadge tone={permitWords(until).tone}>{permitWords(until).label}</DeskBadge>}
         </div>
       </div>
       <FluidTabs name="person-tabs" label="Карточка сотрудника" value={tab} onChange={(id) => setTab(id as ProfileTab)} tabs={tabs.map(([id, label]) => ({ id, label }))} />
+      <AnimatePresence mode="wait" initial={false}>
+      <motion.div key={tab} className="person-pane" initial={reduce ? false : { opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={reduce ? undefined : { opacity: 0 }} transition={reduce ? { duration: 0 } : { type: "spring", bounce: 0, duration: 0.26 }}>
       {tab === "overview" ? (
-        <>
           <div className="person-card">
+            <div className="person-column">
             <section className="panel">
               <h2>Сегодня</h2>
               <div className="day-facts">
@@ -368,14 +388,14 @@ function Profile({
                     <b>{todayTask.title}</b>
                     <span className="quiet">{labelDay(todayTask.work_date.slice(0, 10))} · {amount(todayTask.planned_quantity)} {todayTask.unit} · {statusLabel(laneOf(todayTask.id, data))}</span>
                   </div>
-                  <button className="ghost" type="button" onClick={() => onOpenTask(todayTask.id)}>Открыть задание</button>
+                  <button className="ghost desk-action" type="button" onClick={() => onOpenTask(todayTask.id)}>Открыть задание</button>
                 </div>
               ) : <p className="quiet person-note">На сегодня задания нет.</p>}
             </section>
-            <Questionnaire person={person} card={card} onCard={onCard} editor={editor} />
+            <History data={data} personId={person.id} />
+            </div>
+            <Questionnaire person={person} card={card} onCard={onCard} editor={editor} organization={organization} workStatus={workStatus} />
           </div>
-          <History data={data} personId={person.id} />
-        </>
       ) : null}
       {tab === "shifts" ? (
         <>
@@ -407,31 +427,65 @@ function Profile({
       ) : null}
       {tab === "documents" ? (
         <>
-          <Permits person={person} until={until} scans={card.files.length} admitStep={admitStep} onAdmit={onAdmit} />
+          {qualifications || projectAccess ? <div className="documents-top">{qualifications}{projectAccess}</div> : null}
+          {admissionChecks ?? <Permits person={person} until={until} scans={card.files.length} admitStep={admitStep} onAdmit={onAdmit} />}
           <PersonFiles card={card} onCard={onCard} />
         </>
       ) : null}
       {tab === "history" ? <History data={data} personId={person.id} /> : null}
+      </motion.div>
+      </AnimatePresence>
     </section>
   );
 }
 
-function Questionnaire({ person, card, onCard, editor = null }: { person: Desk["employees"][number]; card: PersonCard; onCard: (card: PersonCard) => void; editor?: ReactNode }) {
+function Questionnaire({ person, card, onCard, editor = null, organization, workStatus }: { person: Desk["employees"][number]; card: PersonCard; onCard: (card: PersonCard) => void; editor?: ReactNode; organization?: string; workStatus?: "active" | "archived" }) {
+  const [editing, setEditing] = useState(false);
+  const [toast, setToast] = useState("");
+  const [pulse, setPulse] = useState(0);
+  const form = editing && isValidElement(editor)
+    ? cloneElement(editor as ReactElement<{ onSaved?: (row: ServerEmployee) => void; onRead?: (row: ServerEmployee) => void; toast?: boolean; extra?: ReactNode }>, {
+        toast: false,
+        extra: (
+          <div className="anketa">
+            <label className="field"><span>Дата рождения</span><input type="date" value={card.born} onChange={(event) => onCard({ ...card, born: event.target.value })} /></label>
+            <label className="field"><span>Специальность</span><input value={card.trade} onChange={(event) => onCard({ ...card, trade: event.target.value })} /></label>
+            <label className="field"><span>Заметка</span><input value={card.note} onChange={(event) => onCard({ ...card, note: event.target.value })} /></label>
+          </div>
+        ),
+        onRead: (row: ServerEmployee) => {
+          (editor as ReactElement<{ onSaved?: (row: ServerEmployee) => void }>).props.onSaved?.(row);
+        },
+        onSaved: (row: ServerEmployee) => {
+          (editor as ReactElement<{ onSaved?: (row: ServerEmployee) => void }>).props.onSaved?.(row);
+          setEditing(false);
+          setToast(`Сервер записал «${row.fullName}».`);
+          setPulse(value => value + 1);
+        },
+      })
+    : null;
+  const born = card.born ? card.born.split("-").reverse().join(".") : "не указана";
   return (
-    <section className="panel">
-      <h2>Анкета</h2>
-      {editor}
-      <dl className="kv">
-        <div><dt>Имя</dt><dd>{person.full_name}</dd></div>
-        <div><dt>Телефон</dt><dd>{person.phone || "—"}</dd></div>
-        <div><dt>Документ</dt><dd>{person.document_number?.trim() || "не указан"}</dd></div>
-      </dl>
-      <div className="anketa">
-        <label className="field"><span>Дата рождения</span><input type="date" value={card.born} onChange={(event) => onCard({ ...card, born: event.target.value })} /></label>
-        <label className="field"><span>Специальность</span><input value={card.trade} onChange={(event) => onCard({ ...card, trade: event.target.value })} /></label>
-        <label className="field"><span>Заметка</span><input value={card.note} onChange={(event) => onCard({ ...card, note: event.target.value })} /></label>
+    <section className="panel anketa-card">
+      <div className="documents-heading">
+        <h2>Анкета</h2>
+        {editor ? <button className="ghost desk-action" type="button" onClick={() => setEditing(value => !value)}>{editing ? "Отмена" : "Изменить"}</button> : null}
       </div>
-      <p className="quiet person-note">Имя и телефон взяты из карточки на сервере. Дата рождения, специальность и заметка на сервере не хранятся.</p>
+      {form}
+      {editing ? null : (
+        <dl className="profile-facts">
+          <div><dt>Имя</dt><dd>{person.full_name}</dd></div>
+          <div><dt>Телефон</dt><dd>{person.phone || "—"}</dd></div>
+          <div><dt>Документ</dt><dd>{person.document_number?.trim() || "не указан"}</dd></div>
+          {organization !== undefined ? <div><dt>Организация</dt><dd>{organization || "—"}</dd></div> : null}
+          {workStatus ? <div><dt>Состояние</dt><dd>{workStatus === "archived" ? "В архиве" : "Работает"}</dd></div> : null}
+          <div><dt>Дата рождения</dt><dd>{born}</dd></div>
+          <div><dt>Специальность</dt><dd>{card.trade.trim() || "не указана"}</dd></div>
+          <div><dt>Заметка</dt><dd>{card.note.trim() || "нет"}</dd></div>
+        </dl>
+      )}
+      <p className="quiet person-note">Имя, телефон, организация и состояние пишутся на сервер. Дата рождения, специальность и заметка остаются в этом браузере.</p>
+      <Flash message={toast} pulse={pulse} />
     </section>
   );
 }
@@ -518,7 +572,7 @@ function FileDrop({ onFiles }: { onFiles: (files: File[]) => void }) {
       }}
     >
       <p>Перетащите файлы сюда</p>
-      <button className="ghost" type="button" onClick={() => input.current?.click()}>Выбрать файлы</button>
+      <button className="ghost desk-action" type="button" onClick={() => input.current?.click()}>Выбрать файлы</button>
       <input ref={input} type="file" multiple hidden onChange={(event) => { onFiles([...(event.target.files ?? [])]); event.target.value = ""; }} />
     </div>
   );
@@ -568,7 +622,7 @@ function History({ data, personId }: { data: Desk; personId: string }) {
         <h2>История</h2>
         <div className="panel-tools">
           <DeskSelect label="Период" value={days} options={[{ value: "7", label: "За 7 дней" }, { value: "30", label: "За 30 дней" }, { value: "0", label: "Всё время" }]} onChange={setDays} />
-          <SmoothButton tone="ghost" onClick={() => save("istoriya.txt", rows.map((row) => `${labelDay(row.at.slice(0, 10))}\t${row.title}\t${row.detail}`))}>Экспорт</SmoothButton>
+          <button className="ghost desk-action" type="button" onClick={() => save("istoriya.txt", rows.map((row) => `${labelDay(row.at.slice(0, 10))}\t${row.title}\t${row.detail}`))}>Экспорт</button>
         </div>
       </div>
       {rows.length === 0 ? <DeskEmpty title="За этот срок событий нет" description="Смены, назначения и сданный объём появятся здесь." /> : (
