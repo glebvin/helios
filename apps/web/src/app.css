@@ -381,6 +381,9 @@ h1, h2, h3, p { margin: 0; }
 .time-decide .template-bar { justify-content: flex-start; gap: 8px; }
 .time-gaps { margin: 8px 0 0; padding-left: 18px; }
 .time-gaps li { margin: 4px 0; }
+.time-sheet-grid { min-width: 640px; }
+.time-sheet-grid th, .time-sheet-grid td:not(:first-child) { white-space: nowrap; }
+.time-sheet-grid th:first-child { min-width: 150px; }
 .object-search {
   flex: 1;
   min-width: 220px;

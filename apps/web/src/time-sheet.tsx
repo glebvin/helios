@@ -4,8 +4,9 @@ import type { Session } from "./api";
 import { DeskBadge, DeskEmpty, DeskTimeline } from "./kit";
 import { Flash } from "./flash";
 import { NoteMark } from "./note-mark";
-import { ApiError, moscowDay, v1 } from "./v1";
+import { ApiError, moscowDay, v1, v1Collection } from "./v1";
 import { durationLabel } from "./worker-day";
+import { timeDecisionId } from "./time-command";
 
 type Totals = { presenceMs: string; idleMs: string; workMs: string; breakMs: string; downtimeMs: string };
 type TimeStatus = "unapproved" | "current" | "stale" | "revoked";
@@ -44,9 +45,7 @@ export function TimeSheet({ session, projectId, canDecide = false }: { session: 
   const [to, setTo] = useState(today);
   const [offset, setOffset] = useState(0);
   const [pass, setPass] = useState(0);
-  const [page, setPage] = useState<TimeDayList | null>(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [reading, setReading] = useState<{ scope: string; page: TimeDayList | null; error: string } | null>(null);
   const [picked, setPicked] = useState("");
   const [saved, setSaved] = useState("");
   const [pulse, setPulse] = useState(0);
@@ -55,21 +54,29 @@ export function TimeSheet({ session, projectId, canDecide = false }: { session: 
   const [exportError, setExportError] = useState("");
   const problem = rangeProblem(from, to);
   const scope = `${projectId}:${from}:${to}:${offset}`;
+  const readScope = JSON.stringify([session.token, session.tenantId, scope, pass]);
+  const page = reading?.scope === readScope ? reading.page : null;
+  const error = reading?.scope === readScope ? reading.error : "";
+  const loading = Boolean(projectId && !problem && reading?.scope !== readScope);
+  const exportScope = JSON.stringify([session.token, session.tenantId, projectId, from, to]);
+  const exportContext = useRef(exportScope);
+  exportContext.current = exportScope;
+  useEffect(() => {
+    exportContext.current = exportScope;
+    return () => { exportContext.current = ""; };
+  }, [exportScope]);
   useEffect(() => { setOffset(0); setPicked(""); setGaps([]); setExportError(""); }, [projectId, from, to]);
   useEffect(() => {
-    if (!projectId || problem) { setLoading(false); return; }
+    if (!projectId || problem) return;
     let live = true;
-    setLoading(true);
     const query = new URLSearchParams({ from, to, limit: String(limit), offset: String(offset) });
     void v1<TimeDayList>(session, `/projects/${projectId}/time/days?${query}`).then((rows) => {
       if (!live) return;
-      setPage(rows);
-      setError("");
+      setReading({ scope: readScope, page: rows, error: "" });
     }, (reason: unknown) => {
       if (!live) return;
-      setPage(null);
-      setError(timeError(reason));
-    }).finally(() => { if (live) setLoading(false); });
+      setReading({ scope: readScope, page: null, error: timeError(reason) });
+    });
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, from, to, offset, pass, problem]);
   const rows = page && !problem ? page.items : [];
@@ -97,7 +104,7 @@ export function TimeSheet({ session, projectId, canDecide = false }: { session: 
     {!problem && !error && page && rows.length === 0 ? <DeskEmpty title="Записанных дней нет" description="В этом периоде сервер не отдал ни одного дня. Пустой список не означает, что людей не было." /> : null}
     {!problem && rows.length > 0 ? <motion.div key={scope} className="sheet-split" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}>
       <div className="sheet-wrap">
-        <table className="sheet">
+        <table className="sheet time-sheet-grid">
           <thead><tr><th>Сотрудник</th><th>День</th><th>Присутствие</th><th>Работа</th><th>Статус</th></tr></thead>
           <tbody>
             {rows.map((row) => <tr className={selected && rowKey(selected) === rowKey(row) ? "is-link is-on" : "is-link"} key={rowKey(row)} tabIndex={0} onClick={() => setPicked(rowKey(row))} onKeyDown={(event) => { if (event.key === "Enter") setPicked(rowKey(row)); }}>
@@ -110,7 +117,9 @@ export function TimeSheet({ session, projectId, canDecide = false }: { session: 
           </tbody>
         </table>
       </div>
-      {selected ? <TimeDayRead key={rowKey(selected)} session={session} projectId={projectId} row={selected} canDecide={canDecide} onSaved={(message) => { setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : <p className="quiet">Выберите день, чтобы прочитать историю.</p>}
+      {selected ? <TimeDayRead key={rowKey(selected)} session={session} projectId={projectId} row={selected} canDecide={canDecide} onRead={(day) => {
+        setReading((current) => current?.scope === readScope && current.page ? { ...current, page: { ...current.page, items: current.page.items.map((item) => rowKey(item) === rowKey(selected) ? { ...item, status: day.status, sourceTotals: day.source.totals, hasOpenIntervals: day.source.hasOpenIntervals, suspicious: day.source.suspicious, confirmedTotals: day.latest?.confirmedTotals ?? null, overridden: day.latest?.overridden ?? false } : item) } } : current);
+      }} onSaved={(message) => { if (exportContext.current !== exportScope) return; setGaps([]); setExportError(""); setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : <p className="quiet">Выберите день, чтобы прочитать историю.</p>}
     </motion.div> : null}
     {!problem && page && page.total > page.items.length ? <div className="qualification-bar">
       <button className="ghost desk-action" type="button" disabled={loading || offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Назад</button>
@@ -130,8 +139,10 @@ export function TimeSheet({ session, projectId, canDecide = false }: { session: 
       const response = await fetch(`/api/v1/projects/${projectId}/time/export.xlsx?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
         headers: { authorization: `Bearer ${session.token}`, "x-tenant-id": session.tenantId },
       });
+      if (exportContext.current !== exportScope) return;
       if (!response.ok) {
         const text = await response.text();
+        if (exportContext.current !== exportScope) return;
         let code = "";
         try { code = text ? (JSON.parse(text) as { error?: string }).error ?? "" : ""; } catch { code = ""; }
         const listed = exportGaps(code);
@@ -139,6 +150,7 @@ export function TimeSheet({ session, projectId, canDecide = false }: { session: 
         throw new ApiError(response.status, code || `http_${response.status}`);
       }
       const blob = await response.blob();
+      if (exportContext.current !== exportScope) return;
       if (!blob.size) throw new ApiError(502, "empty");
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -150,14 +162,14 @@ export function TimeSheet({ session, projectId, canDecide = false }: { session: 
       setSaved("Сервер отдал Excel.");
       setPulse((value) => value + 1);
     } catch (reason) {
-      setExportError(exportProblem(reason));
+      if (exportContext.current === exportScope) setExportError(exportProblem(reason));
     } finally {
       setExporting(false);
     }
   }
 }
 
-function TimeDayRead({ session, projectId, row, canDecide, onSaved }: { session: Session; projectId: string; row: TimeDaySummary; canDecide: boolean; onSaved: (message: string) => void }) {
+function TimeDayRead({ session, projectId, row, canDecide, onRead, onSaved }: { session: Session; projectId: string; row: TimeDaySummary; canDecide: boolean; onRead: (day: TimeDay) => void; onSaved: (message: string) => void }) {
   const [pass, setPass] = useState(0);
   const [day, setDay] = useState<TimeDay | null>(null);
   const [history, setHistory] = useState<TimeHistory | null>(null);
@@ -176,11 +188,12 @@ function TimeDayRead({ session, projectId, row, canDecide, onSaved }: { session:
       try {
         const [one, past] = await Promise.all([
           v1<TimeDay>(session, path),
-          v1<TimeHistory>(session, `${path}/history`),
+          v1Collection<TimeRevision>(session, `${path}/history`),
         ]);
         if (!live) return;
         setDay(one);
-        setHistory(past);
+        onRead(one);
+        setHistory({ ...past, limit: past.items.length, offset: 0 });
         setError("");
       } catch (reason) {
         if (!live) return;
@@ -217,6 +230,7 @@ function TimeDayRead({ session, projectId, row, canDecide, onSaved }: { session:
   }
   const source = day?.source.totals ?? row.sourceTotals;
   const confirmed = day?.latest?.confirmedTotals ?? row.confirmedTotals;
+  const status = day?.status ?? row.status;
   const events = [...(history?.items ?? [])].reverse().map((item) => ({
     id: `${row.employeeId}:${row.day}:${item.version}`,
     title: item.state === "approved" ? `Утверждено, версия ${item.version}` : `Отозвано, версия ${item.version}`,
@@ -234,7 +248,7 @@ function TimeDayRead({ session, projectId, row, canDecide, onSaved }: { session:
       <div><dt>Ожидание</dt><dd>{shown(source.idleMs)}</dd></div>
       <div><dt>Перерыв</dt><dd>{shown(source.breakMs)}</dd></div>
       <div><dt>Простой</dt><dd>{shown(source.downtimeMs)}</dd></div>
-      <div><dt>Подтверждено</dt><dd className={confirmed ? undefined : "is-empty"}>{confirmed ? `${shown(confirmed.presenceMs)} присутствия, ${shown(confirmed.workMs)} работы` : "не утверждено"}</dd></div>
+      <div><dt>{status === "revoked" ? "Утверждение отозвано" : status === "stale" ? "Прежнее утверждение" : "Подтверждено"}</dt><dd className={confirmed ? undefined : "is-empty"}>{confirmed ? `${shown(confirmed.presenceMs)} присутствия, ${shown(confirmed.workMs)} работы` : "не утверждено"}</dd></div>
     </dl>
     {row.hasOpenIntervals || day?.source.hasOpenIntervals ? <p className="quiet">На сервере есть открытый интервал.</p> : null}
     {row.overridden || day?.latest?.overridden ? <p className="quiet">Подтверждённая сумма отличается от источника.</p> : null}
@@ -249,7 +263,7 @@ function TimeDayRead({ session, projectId, row, canDecide, onSaved }: { session:
       </div>
       <label className="field"><span>Причина</span><input aria-label="Причина решения" maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} /></label>
       {suspicious ? <label className="task-now"><input type="checkbox" checked={ack} onChange={(event) => setAck(event.target.checked)} /> Источник помечен, я это вижу</label> : null}
-      {decisionError ? <p role="alert">{decisionError}</p> : null}
+      {decisionError ? <p role="alert">{decisionError} <button className="ghost desk-action" type="button" disabled={busy} onClick={() => { setDecisionError(""); setAck(false); setPass((value) => value + 1); }}>Обновить день</button></p> : null}
       <div className="template-bar">
         {canRevoke ? <button className="ghost desk-action" type="button" disabled={busy} onClick={() => void decide("revoke")}>Отозвать</button> : null}
         {canApprove ? <button className="fill desk-action" type="button" disabled={busy} onClick={() => void decide("approve")}>Утвердить</button> : null}
@@ -327,13 +341,7 @@ function postDecision(session: Session, projectId: string, employeeId: string, d
   const flying = decisionFlights.get(flightKey);
   if (flying) return flying;
   const run = (async () => {
-    let requestId = "";
-    try {
-      const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? "null") as { requestId?: string; signature?: string } | null;
-      if (saved?.signature === signature && saved.requestId) requestId = saved.requestId;
-    } catch { requestId = ""; }
-    if (!requestId) requestId = crypto.randomUUID();
-    sessionStorage.setItem(storageKey, JSON.stringify({ requestId, signature }));
+    const requestId = timeDecisionId(storageKey, signature);
     const path = `/projects/${projectId}/time/employees/${employeeId}/days/${day}/${action === "approve" ? "approvals" : "revoke"}`;
     await v1(session, path, { ...body, requestId });
     return action === "approve" ? "Сервер утвердил часы." : "Сервер отозвал утверждение.";
@@ -355,7 +363,7 @@ function decisionProblem(reason: unknown) {
   if (code === "recorded_time_required") return "Записанного времени нет.";
   if (code === "suspicious_acknowledgment_required") return "Сервер просит подтвердить пометку источника.";
   if (status === 409) return "Сервер отказал и сам решение не принял.";
-  return "Сервер не записал решение.";
+  return "Подтверждение решения не получено. Повторите запрос без изменения причины или обновите день.";
 }
 
 function timeError(reason: unknown) {

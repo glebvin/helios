@@ -171,7 +171,7 @@ export function People({
           </div>
         )
       ) : null}
-      {tab === "sheet" ? <TimeSheet session={session} projectId={projectId} canDecide={canDecideHours} /> : null}
+      {tab === "sheet" ? <TimeSheet key={`${session.tenantId}:${session.userId}:${projectId}`} session={session} projectId={projectId} canDecide={canDecideHours} /> : null}
     </section>
   );
 }
