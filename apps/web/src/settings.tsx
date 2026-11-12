@@ -1,4 +1,5 @@
 import { AdmissionTemplatePanel } from "./admission-template-panel";
+import { FrontTemplatePanel } from "./front-template-panel";
 import type { Desk, Session } from "./api";
 import { DeskBadge, DeskEmpty } from "./kit";
 import { NoteMark } from "./note-mark";
@@ -30,7 +31,10 @@ export function Settings({
         <p className="sub">{slim ? viewHint : "Шаблон допуска этого объекта и входы сотрудников."}</p>
       </div>
       <div className="settings-layout">
-          {canTemplate ? <AdmissionTemplatePanel key={`${session.token}:${session.tenantId}:${projectId}`} session={session} projectId={projectId} /> : null}
+          {canTemplate ? <div className="person-column">
+            <AdmissionTemplatePanel key={`${session.token}:${session.tenantId}:${projectId}`} session={session} projectId={projectId} />
+            <FrontTemplatePanel key={`front:${session.token}:${session.tenantId}:${projectId}`} session={session} projectId={projectId} writable={session.role === "director"} />
+          </div> : null}
           {slim ? null : (
             <aside className="panel profile-card" aria-label="Профиль">
               <div className="documents-heading"><h2>Профиль</h2></div>
