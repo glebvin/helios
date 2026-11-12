@@ -375,6 +375,8 @@ h1, h2, h3, p { margin: 0; }
 }
 .attention-row small { display: block; color: var(--muted); font-size: 12px; }
 .object-tools { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.time-range { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+.time-range input { height: 32px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); padding: 0 10px; color: var(--ink); font: inherit; font-size: 13px; }
 .object-search {
   flex: 1;
   min-width: 220px;

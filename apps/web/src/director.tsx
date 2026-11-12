@@ -116,7 +116,6 @@ export function DirectorDesk({
   const canRecordSupply = !preview && access.recordSupply;
   const canDraftAct = !preview && access.draftAct;
   const canPrepareAdmit = !preview && access.prepareAdmit;
-  const canPrepareDay = !preview && access.prepareDay;
   const canCloseDay = !preview && access.closeDay;
   const canResubmit = !preview && access.resubmit;
   const canEditCheck = !preview && access.editCheck;
@@ -207,7 +206,6 @@ export function DirectorDesk({
               inviteForeman={canInviteForeman}
               peopleTabs={access.peopleTabs}
               admitStep={canPrepareAdmit ? "prepare" : "none"}
-              dayStep={canPrepareDay ? "prepare" : canCloseDay ? "close" : "none"}
               canExport={access.exportPeople}
               admissions={admissions}
               onAdmit={(employeeId, until) => setAdmissions((list) => [...list.filter((item) => item.employeeId !== employeeId), { employeeId, until }])}

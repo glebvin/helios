@@ -212,7 +212,7 @@ const desk: Access[] = [
     prepareAdmit: true,
     prepareDay: true,
     editPlace: true,
-    peopleTabs: ["people"],
+    peopleTabs: ["people", "sheet"],
     qualityTabs: quality.map((item) => item.id),
     shell: "foreman",
     overviewTitle: "Сегодня",
@@ -226,7 +226,9 @@ const desk: Access[] = [
     sections: [
       { id: "quality", label: "Приёмка" },
       { id: "documents", label: "Акты" },
+      { id: "people", label: "Табель" },
     ],
+    peopleTabs: ["sheet"],
     writeCheck: false,
     qualityTabs: ["check"],
     qualityFirst: "check",
