@@ -363,7 +363,7 @@ function decisionProblem(reason: unknown) {
   if (code === "recorded_time_required") return "Записанного времени нет.";
   if (code === "suspicious_acknowledgment_required") return "Сервер просит подтвердить пометку источника.";
   if (status === 409) return "Сервер отказал и сам решение не принял.";
-  return "Сервер не записал решение.";
+  return "Подтверждение решения не получено. Повторите запрос без изменения причины или обновите день.";
 }
 
 function timeError(reason: unknown) {
