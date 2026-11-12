@@ -19,6 +19,7 @@ import { RoleSwitch, accessOf, roleTitle, serverRights, type Section, type View 
 import { minutesLabel, useBook } from "./book";
 import { amount, dayTasks, laneOf, laneTone, personName, progress, statusLabel, todayKey, type Admission, type Lane, type Remark } from "./model";
 import { LiveInbox, LiveToday } from "./today";
+import { PtoFacts, PtoFiles } from "./facts";
 
 const icons: Record<Section, string> = {
   overview: paths.home,
@@ -108,6 +109,7 @@ export function DirectorDesk({
   const [openTask, setOpenTask] = useState<{ id: string; token: number } | null>(null);
   const [sheetTick, setSheetTick] = useState(0);
   const liveHome = !preview && (session.role === "director" || session.role === "master");
+  const livePto = !preview && session.role === "pto";
   const openSheet = () => { setSheetTick((value) => value + 1); onSection("people"); };
   const access = accessOf(view);
   const rights = serverRights(session.role);
@@ -247,7 +249,9 @@ export function DirectorDesk({
               onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
             />) : null}
           {page === "materials" ? <Materials canEdit={canRecordSupply} /> : null}
-          {page === "quality" ? (
+          {page === "quality" ? (livePto ? (
+            <PtoFacts session={session} projectId={templateProjectId} projectName={project} day={taskDay} notice={scope.notice} onOpenSheet={openSheet} />
+          ) : (
             <Quality
               key={view}
               data={data}
@@ -264,8 +268,10 @@ export function DirectorDesk({
               onRemark={(item) => setRemarks((list) => [item, ...list])}
               onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
             />
-          ) : null}
-          {page === "documents" ? <Documents data={data} canConfirm={false} canDraft={canDraftAct} checklistNote={access.checklistNote} /> : null}
+          )) : null}
+          {page === "documents" ? (livePto ? (
+            <PtoFiles session={session} projectId={templateProjectId} projectName={project} day={taskDay} notice={scope.notice} />
+          ) : <Documents data={data} canConfirm={false} canDraft={canDraftAct} checklistNote={access.checklistNote} />) : null}
           {page === "settings" ? <Settings session={session} projectId={templateProjectId} data={data} onLogout={onLogout} viewLabel={roleTitle(session.role)} viewHint={preview ? access.hint : "Этот вход видит только свои серверные действия."} showAccess={!preview && access.showAccess} slim={access.settingsSlim || preview} /> : null}
         </PageShift>
       </div>
