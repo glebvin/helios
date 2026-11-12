@@ -194,6 +194,7 @@ const desk: Access[] = [
       { id: "quality", label: "Приёмка" },
       { id: "materials", label: "Материалы" },
       { id: "documents", label: "Акты" },
+      { id: "objects", label: "Объект" },
       { id: "settings", label: "Настройки" },
     ],
     createTask: true,
