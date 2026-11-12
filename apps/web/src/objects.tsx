@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { Desk } from "./api";
 import { Icon, paths } from "./icons";
 import { DeskBadge, DeskCrumbs, DeskEmpty, FluidTabs, LiquidGauge, SmoothButton } from "./kit";
@@ -8,13 +8,13 @@ import { laneOf, personName } from "./model";
 type Slice = "active" | "archive";
 type Place = { address: string; latitude: number; longitude: number };
 
-export function Objects({ data, canEdit, normsNote = false, onSavePlace, onTasks }: { data: Desk; canEdit: boolean; normsNote?: boolean; onSavePlace: (projectId: string, place: Place) => Promise<void>; onTasks: () => void }) {
+export function Objects({ data, canEdit, normsNote = false, onSavePlace, onTasks, lead = null }: { data: Desk; canEdit: boolean; normsNote?: boolean; onSavePlace: (projectId: string, place: Place) => Promise<void>; onTasks: () => void; lead?: ReactNode }) {
   const [query, setQuery] = useState("");
   const [slice, setSlice] = useState<Slice>("active");
   const [openId, setOpenId] = useState<string | null>(null);
   const open = data.projects.find((project) => project.id === openId) ?? null;
 
-  if (open) return <Passport project={open} data={data} canEdit={canEdit} normsNote={normsNote} onSavePlace={onSavePlace} onBack={() => setOpenId(null)} onTasks={onTasks} />;
+  if (open) return <Passport lead={lead} project={open} data={data} canEdit={canEdit} normsNote={normsNote} onSavePlace={onSavePlace} onBack={() => setOpenId(null)} onTasks={onTasks} />;
 
   const needle = query.trim().toLowerCase();
   const active = data.projects.filter((project) => project.name.toLowerCase().includes(needle));
@@ -26,6 +26,7 @@ export function Objects({ data, canEdit, normsNote = false, onSavePlace, onTasks
         <h1>Объекты</h1>
         <p className="sub">Площадки кабинета. Карточка открывает паспорт объекта.</p>
       </div>
+      {lead}
       <div className="object-tools">
         <input
           className="object-search"
@@ -66,7 +67,7 @@ export function Objects({ data, canEdit, normsNote = false, onSavePlace, onTasks
   );
 }
 
-function Passport({ project, data, canEdit, normsNote, onSavePlace, onBack, onTasks }: { project: Desk["projects"][number]; data: Desk; canEdit: boolean; normsNote: boolean; onSavePlace: (projectId: string, place: Place) => Promise<void>; onBack: () => void; onTasks: () => void }) {
+function Passport({ lead, project, data, canEdit, normsNote, onSavePlace, onBack, onTasks }: { lead: ReactNode; project: Desk["projects"][number]; data: Desk; canEdit: boolean; normsNote: boolean; onSavePlace: (projectId: string, place: Place) => Promise<void>; onBack: () => void; onTasks: () => void }) {
   const saved = pointOf(project.latitude, project.longitude);
   const [view, setView] = useState<"map" | "sheet">("map");
   const [address, setAddress] = useState(project.address);
@@ -98,6 +99,7 @@ function Passport({ project, data, canEdit, normsNote, onSavePlace, onBack, onTa
 
   return (
     <section className="page">
+      {lead}
       <DeskCrumbs items={[{ label: "Объекты", onClick: onBack }, { label: project.name }]} />
       <div className="passport-head">
         <div>

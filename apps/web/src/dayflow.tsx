@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { USER_MASTER } from "@helios/domain";
 import type { Session } from "./api";
+import { activeForNewTask } from "./catalog";
 import { ApiError, moscowDay, stableId, v1 } from "./v1";
 
 type Page<T> = { items: T[]; total: number };
@@ -131,8 +132,8 @@ async function ensureAssignment(session: Session, projectId: string, employeeId:
 }
 
 async function ensureNamed(session: Session, projectId: string, kind: "zones" | "work-types", name: string, body: Record<string, unknown>, key: string) {
-  const list = await v1<Page<{ id: string; name: string }>>(session, `/projects/${projectId}/${kind}?limit=100`);
-  const found = list.items.find((item) => item.name === name);
+  const list = await v1<Page<{ id: string; name: string; status: "active" | "archived" }>>(session, `/projects/${projectId}/${kind}?limit=100`);
+  const found = activeForNewTask(list.items).find((item) => item.name === name);
   if (found) return found;
   return v1<{ id: string }>(session, `/projects/${projectId}/${kind}`, { requestId: stableId(key), ...body });
 }

@@ -6,6 +6,7 @@ import { Icon, paths } from "./icons";
 import { DeskBadge, DeskEmpty, DeskProgress, PageShift, ProfileMenu, StatGrid, ThemeButton } from "./kit";
 import { Documents } from "./documents";
 import { Materials } from "./materials";
+import { ProjectCatalogs } from "./catalog-panel";
 import { Objects } from "./objects";
 import { Quality } from "./quality";
 import { Settings } from "./settings";
@@ -191,7 +192,7 @@ export function DirectorDesk({
               onOpenDocuments={() => onSection("documents")}
             />
           ) : null}
-          {page === "objects" ? <Objects data={data} canEdit={canPlace} normsNote={access.normsNote} onSavePlace={onSavePlace} onTasks={() => onSection("tasks")} /> : null}
+          {page === "objects" ? <Objects lead={<ProjectCatalogs session={session} projectId={templateProjectId} writable={!preview && session.role === "director"} />} data={data} canEdit={canPlace} normsNote={access.normsNote} onSavePlace={onSavePlace} onTasks={() => onSection("tasks")} /> : null}
           {page === "people" ? (
             <People
               projectId={templateProjectId}

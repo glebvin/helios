@@ -867,6 +867,7 @@ h1, h2, h3, p { margin: 0; }
   scrollbar-gutter: stable;
   scrollbar-color: var(--line) transparent;
 }
+.dialog form > .desk-action { justify-self: start; width: fit-content; }
 .dialog form::-webkit-scrollbar { width: 8px; }
 .dialog form::-webkit-scrollbar-thumb { background: var(--line); border-radius: 8px; }
 
@@ -1048,6 +1049,9 @@ h1, h2, h3, p { margin: 0; }
 .qualifications h2 { padding: 0; }
 .qualification-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .qualification-list { display: grid; margin-top: 8px; animation: rise-in .32s cubic-bezier(.23, 1, .32, 1); }
+.catalog-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.check-line { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13px; }
+.check-line input { width: 16px; height: 16px; margin: 0; flex: none; }
 .qualification-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-height: 52px; padding: 6px 0; min-width: 0; }
 .qualification-row > div { display: grid; gap: 5px; flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
 
