@@ -363,8 +363,6 @@ export function ProfileMenu({ name, role, onLogout }: { name: string; role: stri
 
 export function PageShift({ pageKey, children }: { pageKey: string; children: ReactNode }) {
   const reduce = useReducedMotion();
-  return () => play.stop();
-  }, [refreshKey, reduce]);
   return (
     <div className="workspace-stage">
       <AnimatePresence mode="wait" initial={false}>
