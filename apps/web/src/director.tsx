@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Desk, NewTask, Session } from "./api";
 import { WorkBoard } from "./board";
 import { Inbox } from "./inbox";
@@ -72,6 +72,12 @@ export function DirectorDesk({
   onExpire: () => void;
 }) {
   const scope = useCabinetScope(session, onExpire, sourceData.projects);
+  const templateContext = useRef({ token: session.token, tenantId: session.tenantId, id: "" });
+  if (templateContext.current.token !== session.token || templateContext.current.tenantId !== session.tenantId) templateContext.current = { token: session.token, tenantId: session.tenantId, id: "" };
+  // A failed background clock/scope read must not discard an open template draft.
+  if (scope.projectId) templateContext.current.id = scope.projectId;
+  else if (!scope.error && scope.projects.length > 0) templateContext.current.id = "";
+  const templateProjectId = scope.projectId || templateContext.current.id;
   const data = projectDesk(sourceData, scope.notice ? "" : scope.projectId);
   const tasks = dayTasks(data);
   const dayTasksOnServer = scope.notice ? [] : data.tasks.filter((task) => String(task.work_date).slice(0, 10) === scope.day);
@@ -241,7 +247,7 @@ export function DirectorDesk({
             />
           ) : null}
           {page === "documents" ? <Documents data={data} canConfirm={false} canDraft={canDraftAct} checklistNote={access.checklistNote} /> : null}
-          {page === "settings" ? <Settings session={session} data={data} theme={theme} onTheme={onTheme} onLogout={onLogout} viewLabel={roleTitle(session.role)} viewHint={preview ? access.hint : "Этот вход видит только свои серверные действия."} showAccess={!preview && access.showAccess} slim={access.settingsSlim || preview} /> : null}
+          {page === "settings" ? <Settings session={session} projectId={templateProjectId} data={data} theme={theme} onTheme={onTheme} onLogout={onLogout} viewLabel={roleTitle(session.role)} viewHint={preview ? access.hint : "Этот вход видит только свои серверные действия."} showAccess={!preview && access.showAccess} slim={access.settingsSlim || preview} /> : null}
         </PageShift>
       </div>
     </div>

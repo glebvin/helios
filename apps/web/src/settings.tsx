@@ -1,7 +1,9 @@
+import { AdmissionTemplatePanel } from "./admission-template-panel";
 import type { Desk, Session } from "./api";
 import { DeskBadge, DeskEmpty, SmoothButton } from "./kit";
 export function Settings({
   session,
+  projectId,
   data,
   theme,
   onTheme,
@@ -12,6 +14,7 @@ export function Settings({
   slim,
 }: {
   session: Session;
+  projectId: string;
   data: Desk;
   theme: string;
   onTheme: () => void;
@@ -42,6 +45,7 @@ export function Settings({
               </dl>
             </section>
           )}
+          {!slim && ["director", "master"].includes(session.role) ? <AdmissionTemplatePanel key={`${session.token}:${session.tenantId}:${projectId}`} session={session} projectId={projectId} /> : null}
           <section className="panel">
             <h2>Тема</h2>
             <p className="quiet person-note">Сейчас {dark ? "тёмная" : "светлая"}. Кнопка в шапке переключает то же значение.</p>

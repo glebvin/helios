@@ -1009,3 +1009,18 @@ h1, h2, h3, p { margin: 0; }
 .invite-list .panel-tools { flex-wrap: wrap; }
 .login form a, .login > div a { display: block; margin-top: 20px; }
 .login > div { width: min(100%, 440px); padding: 24px; }
+
+.admission-template { padding: 20px; min-width: 0; }
+.admission-template h2 { padding: 0; }
+.admission-template > p, .admission-template > h3, .admission-template > button, .admission-template form { margin-top: 12px; }
+.template-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.template-items { display: grid; gap: 12px; padding: 0; margin: 16px 0; list-style-position: inside; }
+.template-items > li, .template-point { padding: 12px 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; min-width: 0; }
+.template-items > li > span { display: block; }
+.template-check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.template-check input { width: 16px; height: 16px; flex: none; accent-color: var(--accent); }
+.admission-template textarea { width: 100%; min-width: 0; resize: vertical; }
+
+.admission-template button { min-height: 40px; border-radius: 12px; }
+.admission-template textarea { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 10px 12px; }
+.template-items > li > span:first-child { display: inline; }
