@@ -50,9 +50,12 @@ export function TimeSheet({ session, projectId, canDecide = false }: { session: 
   const [picked, setPicked] = useState("");
   const [saved, setSaved] = useState("");
   const [pulse, setPulse] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [gaps, setGaps] = useState<ExportGap[]>([]);
+  const [exportError, setExportError] = useState("");
   const problem = rangeProblem(from, to);
   const scope = `${projectId}:${from}:${to}:${offset}`;
-  useEffect(() => { setOffset(0); setPicked(""); }, [projectId, from, to]);
+  useEffect(() => { setOffset(0); setPicked(""); setGaps([]); setExportError(""); }, [projectId, from, to]);
   useEffect(() => {
     if (!projectId || problem) { setLoading(false); return; }
     let live = true;
@@ -77,8 +80,18 @@ export function TimeSheet({ session, projectId, canDecide = false }: { session: 
       <label className="time-range">С <input type="date" aria-label="Начало периода" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
       <label className="time-range">по <input type="date" aria-label="Конец периода" value={to} onChange={(event) => setTo(event.target.value)} /></label>
       <NoteMark label="Как читать табель"><p>В списке только записанные дни. Нет строки — день не записан. Это не подтверждённое отсутствие.</p></NoteMark>
+      <button className="ghost desk-action" type="button" disabled={Boolean(problem) || exporting} onClick={() => void downloadExcel()}>{exporting ? "Готовим файл…" : "Скачать Excel"}</button>
+      <NoteMark label="Про файл"><p>Файл приходит, только если каждый записанный день периода утверждён и совпадает с источником. Иначе сервер присылает список этих дней, а не файл без них.</p></NoteMark>
     </div>
     {problem ? <p role="alert">{problem}</p> : null}
+    {exportError ? <p role="alert">{exportError}</p> : null}
+    {gaps.length > 0 ? <div role="alert">
+      <p>Файл не скачан. Эти дни не подтверждены актуальным снимком.</p>
+      <ul className="time-gaps">
+        {gaps.map((gap) => <li key={`${gap.employeeId}:${gap.day}`}>{gapName(rows, gap)}, {labelDay(gap.day)}, {gapStatus(gap.status)}</li>)}
+      </ul>
+      {gaps.length === 20 ? <p className="quiet">Сервер остановил список на 20 днях.</p> : null}
+    </div> : null}
     {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={() => setPass((value) => value + 1)}>Повторить чтение</button></p> : null}
     {!problem && loading && !page ? <p className="quiet task-hold" role="status">Читаем табель…</p> : null}
     {!problem && !error && page && rows.length === 0 ? <DeskEmpty title="Записанных дней нет" description="В этом периоде сервер не отдал ни одного дня. Пустой список не означает, что людей не было." /> : null}
@@ -107,6 +120,41 @@ export function TimeSheet({ session, projectId, canDecide = false }: { session: 
     {!problem && page?.truncated ? <p className="quiet">Сервер остановил чтение, пока дни ещё остались. Сузьте период.</p> : null}
     <Flash message={saved} pulse={pulse} />
   </>;
+
+  async function downloadExcel() {
+    if (problem || exporting) return;
+    setExporting(true);
+    setGaps([]);
+    setExportError("");
+    try {
+      const response = await fetch(`/api/v1/projects/${projectId}/time/export.xlsx?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`, {
+        headers: { authorization: `Bearer ${session.token}`, "x-tenant-id": session.tenantId },
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        let code = "";
+        try { code = text ? (JSON.parse(text) as { error?: string }).error ?? "" : ""; } catch { code = ""; }
+        const listed = exportGaps(code);
+        if (response.status === 409 && listed) { setGaps(listed); return; }
+        throw new ApiError(response.status, code || `http_${response.status}`);
+      }
+      const blob = await response.blob();
+      if (!blob.size) throw new ApiError(502, "empty");
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const named = /filename="([^"]+)"/.exec(response.headers.get("content-disposition") ?? "");
+      link.href = url;
+      link.download = named?.[1] || `time-${from}-${to}.xlsx`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setSaved("Сервер отдал Excel.");
+      setPulse((value) => value + 1);
+    } catch (reason) {
+      setExportError(exportProblem(reason));
+    } finally {
+      setExporting(false);
+    }
+  }
 }
 
 function TimeDayRead({ session, projectId, row, canDecide, onSaved }: { session: Session; projectId: string; row: TimeDaySummary; canDecide: boolean; onSaved: (message: string) => void }) {
@@ -208,6 +256,44 @@ function TimeDayRead({ session, projectId, row, canDecide, onSaved }: { session:
       </div>
     </div> : null}
   </section>;
+}
+
+type ExportGap = { employeeId: string; day: string; status: string };
+
+function exportGaps(message: string): ExportGap[] | null {
+  const prefix = "time_export_incomplete:";
+  if (!message.startsWith(prefix)) return null;
+  try {
+    const parsed = JSON.parse(message.slice(prefix.length)) as unknown;
+    if (!Array.isArray(parsed)) return null;
+    return parsed.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const row = item as { employeeId?: unknown; day?: unknown; status?: unknown };
+      if (typeof row.employeeId !== "string" || typeof row.day !== "string" || typeof row.status !== "string") return [];
+      return [{ employeeId: row.employeeId, day: row.day, status: row.status }];
+    });
+  } catch {
+    return null;
+  }
+}
+
+function gapName(rows: TimeDaySummary[], gap: ExportGap) {
+  return rows.find((row) => row.employeeId === gap.employeeId)?.employeeName ?? "Сотрудник вне этой страницы";
+}
+
+function gapStatus(status: string) {
+  if (status === "current" || status === "stale" || status === "revoked" || status === "unapproved") return timeStatusText(status);
+  return status;
+}
+
+function exportProblem(reason: unknown) {
+  const status = reason instanceof ApiError ? reason.status : 0;
+  const code = reason instanceof ApiError ? reason.message : "";
+  if (status === 403) return "Этому входу файл не разрешён.";
+  if (status === 400) return "Период сервер не принял.";
+  if (code === "time_export_row_limit") return "Сервер остановил выгрузку: записанных дней слишком много.";
+  if (status === 409) return "Файл не скачан: сервер отказал.";
+  return "Файл скачать не удалось.";
 }
 
 function rowKey(row: TimeDaySummary) {
