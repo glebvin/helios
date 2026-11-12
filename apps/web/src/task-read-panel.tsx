@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import type { Session } from "./api";
+import { Flash } from "./flash";
 import { DeskBadge, DeskEmpty } from "./kit";
 import { NoteMark } from "./note-mark";
+import { TaskDraftDialog } from "./task-draft-form";
+import { canWriteTaskDraft } from "./task-draft";
 import { ApiError, v1 } from "./v1";
 import { boardColumn, shownTaskStatus, taskArea, taskError, taskListPath, taskStatusText, type BoardColumn, type ServerTask } from "./task-read";
 
@@ -23,6 +26,11 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
   const [view, setView] = useState<BoardView>("board");
+  const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<ServerTask | null>(null);
+  const [saved, setSaved] = useState("");
+  const [savedPulse, setSavedPulse] = useState(0);
+  const canWrite = canWriteTaskDraft(session.role);
   const ready = Boolean(projectId && day && !notice);
   useEffect(() => { setOffset(0); setOpenId(openTaskId || null); }, [projectId, day, openTaskId, openToken]);
   useEffect(() => {
@@ -50,19 +58,32 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, day, offset, pass, ready]);
   const body = !ready ? <div className="page"><DeskEmpty title="Объект и день не подтверждены" description={notice || "Доска читается только после выбора объекта и рабочего дня."} /></div>
-    : openId ? <div className="page"><TaskDetail session={session} projectId={projectId} taskId={openId} names={names} onBack={() => setOpenId(null)} /></div>
-    : <TaskBoard view={view} onView={setView} page={page} loading={loading} error={error} offset={offset} names={names} onOpen={setOpenId} onRetry={() => setPass((value) => value + 1)} onOffset={setOffset} />;
-  return <div className={compact ? "task-read" : "kanban-wrap"}>{body}</div>;
+    : openId ? <div className="page"><TaskDetail session={session} projectId={projectId} taskId={openId} names={names} canEdit={canWrite} onEdit={setEditing} onBack={() => setOpenId(null)} /></div>
+    : <TaskBoard view={view} onView={setView} canWrite={canWrite} onCreate={() => setCreating(true)} page={page} loading={loading} error={error} offset={offset} names={names} onOpen={setOpenId} onRetry={() => setPass((value) => value + 1)} onOffset={setOffset} />;
+  const savedDraft = (row: ServerTask) => {
+    setCreating(false); setEditing(null);
+    setSaved(row.workDate === day ? `Сервер записал черновик «${row.title}».` : `Сервер записал черновик на ${row.workDate.split("-").reverse().join(".")}. На доске этого дня его нет.`);
+    setSavedPulse((value) => value + 1);
+    setPass((value) => value + 1);
+  };
+  return <div className={compact ? "task-read" : "kanban-wrap"}>
+    {body}
+    <Flash message={saved} pulse={savedPulse} />
+    {creating || editing ? <TaskDraftDialog session={session} projectId={projectId} day={day} task={editing} onClose={() => { setCreating(false); setEditing(null); }} onSaved={savedDraft} /> : null}
+  </div>;
 }
 
-function TaskBoard({ view, onView, page, loading, error, offset, names, onOpen, onRetry, onOffset }: { view: BoardView; onView: (view: BoardView) => void; page: Page | null; loading: boolean; error: string; offset: number; names: Record<string, string>; onOpen: (id: string) => void; onRetry: () => void; onOffset: (offset: number) => void }) {
+function TaskBoard({ view, onView, canWrite, onCreate, page, loading, error, offset, names, onOpen, onRetry, onOffset }: { view: BoardView; onView: (view: BoardView) => void; canWrite: boolean; onCreate: () => void; page: Page | null; loading: boolean; error: string; offset: number; names: Record<string, string>; onOpen: (id: string) => void; onRetry: () => void; onOffset: (offset: number) => void }) {
   const items = page?.items ?? [];
   return <>
     <div className="tasks-head">
       <div className="documents-title"><h1>Задания</h1><NoteMark label="Как устроена доска"><p>Колонка берётся из статуса сервера. Перетаскивание карточку не переносит. Смена, сдача объёма и приёмка появятся на этих же карточках, когда их подтвердит сервер.</p></NoteMark></div>
-      <div className="roles" role="group" aria-label="Вид заданий">
-        <button type="button" className={view === "board" ? "is-on" : ""} onClick={() => onView("board")}>Доска</button>
-        <button type="button" className={view === "list" ? "is-on" : ""} onClick={() => onView("list")}>Список</button>
+      <div className="rowline">
+        {canWrite ? <button className="ghost desk-action" type="button" onClick={onCreate}>Создать задание</button> : null}
+        <div className="roles" role="group" aria-label="Вид заданий">
+          <button type="button" className={view === "board" ? "is-on" : ""} onClick={() => onView("board")}>Доска</button>
+          <button type="button" className={view === "list" ? "is-on" : ""} onClick={() => onView("list")}>Список</button>
+        </div>
       </div>
     </div>
     {loading && !page ? <p className="quiet task-hold" role="status">Читаем задания…</p> : null}
@@ -102,7 +123,7 @@ function TaskBoard({ view, onView, page, loading, error, offset, names, onOpen, 
   </>;
 }
 
-function TaskDetail({ session, projectId, taskId, names, onBack }: { session: Session; projectId: string; taskId: string; names: Record<string, string>; onBack: () => void }) {
+function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack }: { session: Session; projectId: string; taskId: string; names: Record<string, string>; canEdit: boolean; onEdit: (task: ServerTask) => void; onBack: () => void }) {
   const [task, setTask] = useState<ServerTask | null>(null);
   const [error, setError] = useState("");
   const [pass, setPass] = useState(0);
@@ -129,7 +150,10 @@ function TaskDetail({ session, projectId, taskId, names, onBack }: { session: Se
     {task ? <>
       <div className="passport-head">
         <div><h1>{task.title}</h1><p className="sub">{task.workDate.split("-").reverse().join(".")} · {names[task.assigneeEmployeeId] ?? "исполнитель не прочитан"}</p></div>
-        <DeskBadge tone={status === "published" ? "accent" : status === "cancelled" || status === "needs_fix" ? "warn" : "neutral"}>{taskStatusText(status)}</DeskBadge>
+        <div className="rowline">
+          {canEdit && status === "draft" ? <button className="ghost desk-action" type="button" onClick={() => onEdit(task)}>Изменить</button> : null}
+          <DeskBadge tone={status === "published" ? "accent" : status === "cancelled" || status === "needs_fix" ? "warn" : "neutral"}>{taskStatusText(status)}</DeskBadge>
+        </div>
       </div>
       <div className="documents-top">
         <section className="panel" aria-label="План">
