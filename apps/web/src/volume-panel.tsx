@@ -4,14 +4,14 @@ import { Dialog } from "./dialog";
 import { EvidenceFiles } from "./evidence-panel";
 import { NoteMark } from "./note-mark";
 import { segmentListPath } from "./segment";
-import { ApiError, v1 } from "./v1";
+import { ApiError, v1, v1Collection } from "./v1";
 import { dayReadPath, type DayReading } from "./worker-day";
 import { positiveWork, reportListPath, reportsForTask, volumeBatchError, volumeEventBody, volumeNeedsReason, volumeOccurredAt, volumeProblem, volumeQuantity, volumeShift, type ClosedShift, type VolumeBatchRow, type VolumeReport, type VolumeSegment, type VolumeShiftRow } from "./volume";
 
 type Page<T> = { items: T[]; total: number };
 export type VolumeTask = { id: string; title: string; unit: string; status: string; workflowKind: string };
 
-export function VolumeDesk({ session, projectId, employeeId, day, tasks, writable, compact = false, onDone }: {
+export function VolumeDesk({ session, projectId, employeeId, day, tasks, writable, compact = false, refreshToken = 0, onDone }: {
   session: Session;
   projectId: string;
   employeeId: string;
@@ -19,6 +19,7 @@ export function VolumeDesk({ session, projectId, employeeId, day, tasks, writabl
   tasks: VolumeTask[];
   writable: boolean;
   compact?: boolean;
+  refreshToken?: number;
   onDone: (message: string) => void;
 }) {
   const taskKey = tasks.map((task) => `${task.id}:${task.status}:${task.workflowKind}`).join("|");
@@ -41,15 +42,15 @@ export function VolumeDesk({ session, projectId, employeeId, day, tasks, writabl
       try {
         const [clock, shifts, reportPage] = await Promise.all([
           v1<DayReading>(session, dayReadPath(projectId, employeeId, day)),
-          v1<Page<VolumeShiftRow>>(session, `/projects/${projectId}/execution/shifts?${new URLSearchParams({ employeeId, limit: "100", offset: "0" })}`),
-          v1<Page<VolumeReport>>(session, reportListPath(projectId, employeeId)),
+          v1Collection<VolumeShiftRow>(session, `/projects/${projectId}/execution/shifts?${new URLSearchParams({ employeeId, limit: "100", offset: "0" })}`),
+          v1Collection<VolumeReport>(session, reportListPath(projectId, employeeId)),
         ]);
         if (!live) return;
         const found = volumeShift(shifts.items, shifts.total, employeeId, projectId, day, clock.timezone);
         const chosen = found.kind === "one" ? found.shift : null;
         const next: Record<string, "yes" | "no" | "incomplete"> = {};
         if (chosen) {
-          const segments = await v1<Page<VolumeSegment>>(session, segmentListPath(projectId, chosen.id));
+          const segments = await v1Collection<VolumeSegment>(session, segmentListPath(projectId, chosen.id));
           if (!live) return;
           for (const task of taskRef.current) next[task.id] = positiveWork(segments.items, segments.total, chosen.id, employeeId, projectId, task.id);
         }
@@ -72,13 +73,13 @@ export function VolumeDesk({ session, projectId, employeeId, day, tasks, writabl
       }
     })();
     return () => { live = false; };
-  }, [session.token, session.tenantId, projectId, employeeId, day, pass, taskKey]);
+  }, [session.token, session.tenantId, projectId, employeeId, day, pass, taskKey, refreshToken]);
   const open = tasks.find((task) => task.id === taskId) ?? null;
   const body = tasks.map((task) => {
     const found = reportsForTask(reports, reportsReady ? reports.length : reports.length + 1, task.id);
     const rows = found.kind === "ready" ? found.items : [];
     const eligible = task.status === "published" && task.workflowKind === "managed02b";
-    const canSend = Boolean(writable && reportsReady && version !== null && closed && eligible && work[task.id] === "yes" && !rows.some((row) => row.shiftId === closed.id));
+    const canSend = Boolean(ready && !error && writable && reportsReady && version !== null && closed && eligible && work[task.id] === "yes" && !rows.some((row) => row.shiftId === closed.id));
     const quietLine = closed && work[task.id] === "no" && eligible ? "В этой смене нет закрытой работы по заданию." : closed && work[task.id] === "incomplete" ? "Интервалы смены прочитаны не полностью." : "";
     if (compact && ready && !rows.length && !canSend && !quietLine) return null;
     return <div className={compact ? "worker-volume" : undefined} key={task.id}>
@@ -99,7 +100,7 @@ export function VolumeDesk({ session, projectId, employeeId, day, tasks, writabl
     {!compact && ready && shiftText.startsWith("Страница") ? <p className="quiet">{shiftText}</p> : null}
     {!compact && face ? <p className="task-state">{face}</p> : null}
     {body}
-    {open && closed && version !== null ? <VolumeDialog session={session} projectId={projectId} employeeId={employeeId} shift={closed} version={version} task={open} needsReason={volumeNeedsReason(session.role)} onClose={() => setTaskId("")} onDone={(message) => { setTaskId(""); setPass((value) => value + 1); onDone(message); }} /> : null}
+    {ready && writable && open && closed && version !== null ? <VolumeDialog session={session} projectId={projectId} employeeId={employeeId} shift={closed} version={version} task={open} needsReason={volumeNeedsReason(session.role)} onClose={() => setTaskId("")} onDone={(message) => { setTaskId(""); setPass((value) => value + 1); onDone(message); }} /> : null}
   </section>;
 }
 
@@ -127,6 +128,7 @@ function VolumeDialog({ session, projectId, employeeId, shift, version, task, ne
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const alertRef = useRef<HTMLParagraphElement>(null);
+  const attempt = useRef<{ body: ReturnType<typeof volumeEventBody> } | null>(null);
   const pendingKey = `helios.volume:${session.tenantId}:${session.userId}:${shift.id}:${task.id}`;
   const problem = volumeProblem(typeof navigator === "undefined" ? true : navigator.onLine, quantity, reason, needsReason);
   useEffect(() => { if (error) alertRef.current?.focus(); }, [error]);
@@ -135,10 +137,10 @@ function VolumeDialog({ session, projectId, employeeId, shift, version, task, ne
     if (lock.current || problem || !sent) return;
     lock.current = true; setBusy(true); setError("");
     try {
-      let stored: { body: ReturnType<typeof volumeEventBody> } | null = null;
-      try { stored = JSON.parse(sessionStorage.getItem(pendingKey) ?? "null"); } catch { stored = null; }
+      let stored = attempt.current;
+      if (!stored) { try { stored = JSON.parse(sessionStorage.getItem(pendingKey) ?? "null"); } catch { stored = null; } }
       const event = stored?.body.events[0];
-      const same = event?.kind === "submit_volume" && event.expectedVersion === version && event.taskId === task.id && event.submittedQuantity === sent && (event.onBehalfReason ?? "") === (needsReason ? reason.trim() : "");
+      const same = event?.kind === "submit_volume" && (attempt.current !== null || event.expectedVersion === version) && event.taskId === task.id && event.submittedQuantity === sent && (event.onBehalfReason ?? "") === (needsReason ? reason.trim() : "");
       if (!same) {
         const occurredAt = volumeOccurredAt(new Date().toISOString(), shift.endedAt);
         if (!occurredAt) throw new Error("Время конца смены не прочитано.");
@@ -149,15 +151,17 @@ function VolumeDialog({ session, projectId, employeeId, shift, version, task, ne
         }) };
         try { sessionStorage.setItem(pendingKey, JSON.stringify(stored)); } catch { /* The open form still repeats this attempt. */ }
       }
+      attempt.current = stored;
       const result = await v1<{ results?: VolumeBatchRow[] }>(session, "/execution/events", stored!.body);
       const row = result.results?.[0];
       const failure = volumeBatchError(row, 200);
       if (failure) {
-        if (row?.code === "stale_version") { try { sessionStorage.removeItem(pendingKey); } catch { /* The next confirmation reads the fresh version. */ } }
+        if (row?.code === "stale_version") { attempt.current = null; try { sessionStorage.removeItem(pendingKey); } catch { /* The next confirmation reads the fresh version. */ } }
         throw new Error(failure);
       }
       try { sessionStorage.removeItem(pendingKey); } catch { /* The server answer is enough. */ }
       const amount = row?.result?.submittedQuantity;
+      attempt.current = null;
       onDone(row?.outcome === "duplicate" ? `Сервер уже записал объём ${amount}, версия ${row?.result?.version}. Это ещё не приёмка.` : `Сервер записал объём ${amount}, версия ${row?.result?.version}. Это ещё не приёмка.`);
     } catch (failure) {
       setError(failure instanceof ApiError ? "Нет подтверждения сервера. Повторите в этой форме, не закрывая её." : failure instanceof Error ? failure.message : "Нет подтверждения сервера. Повторите в этой форме, не закрывая её.");

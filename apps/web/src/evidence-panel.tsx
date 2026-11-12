@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "./api";
 import { Dialog } from "./dialog";
-import { ApiError, v1 } from "./v1";
+import { ApiError, v1, v1Collection } from "./v1";
 import { canWriteEvidence, evidenceAttachBody, evidenceError, evidenceKind, evidenceListPath, evidenceName, evidenceProblem, evidenceReserveBody, evidenceReuse, evidenceSaved, evidenceStageLabel, evidenceStep, filesForReport, type EvidenceAttempt, type EvidenceFileRow, type EvidenceStep } from "./evidence";
 
 type Page<T> = { items: T[]; total: number };
@@ -23,7 +23,7 @@ export function EvidenceFiles({ session, projectId, employeeId, reportId, onDone
     let live = true;
     void (async () => {
       try {
-        const page = await v1<Page<EvidenceFileRow>>(session, evidenceListPath(projectId, employeeId));
+        const page = await v1Collection<EvidenceFileRow>(session, evidenceListPath(projectId, employeeId));
         if (!live) return;
         const found = filesForReport(page.items, page.total, reportId, projectId, employeeId);
         setFiles(found.kind === "ready" ? found.items : []);
@@ -61,6 +61,7 @@ function EvidenceDialog({ session, projectId, employeeId, reportId, needsReason,
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const alertRef = useRef<HTMLParagraphElement>(null);
+  const pending = useRef<EvidenceAttempt | null>(null);
   const problem = formProblem(file, reason, needsReason);
   useEffect(() => { if (error) alertRef.current?.focus(); }, [error]);
   async function submit() {
@@ -75,12 +76,14 @@ function EvidenceDialog({ session, projectId, employeeId, reportId, needsReason,
       const key = `helios.evidence:${session.tenantId}:${session.userId}:${projectId}:${reportId}:${sha256}`;
       let stored: EvidenceAttempt | null = null;
       try { stored = JSON.parse(sessionStorage.getItem(key) ?? "null"); } catch { stored = null; }
+      if (pending.current?.sha256 === sha256) stored = pending.current;
       const reuse = evidenceReuse(stored, sha256, needsReason ? reason : "");
       if (reuse.kind === "reason") throw new Error("Эти байты уже отправлялись с другой причиной. Новый файл не создаётся.");
       const attempt: EvidenceAttempt = reuse.kind === "same" ? reuse.attempt : {
         requestId: crypto.randomUUID(), fileId: crypto.randomUUID(), attachRequestId: crypto.randomUUID(),
         filename: evidenceName(file.name), contentType: detected, sizeBytes: bytes.byteLength, sha256, onBehalfReason: needsReason ? reason.trim() : "",
       };
+      pending.current = attempt;
       try { sessionStorage.setItem(key, JSON.stringify(attempt)); } catch { /* The open form still repeats this attempt. */ }
       setStage("reserve");
       await v1(session, `/projects/${projectId}/evidence`, evidenceReserveBody(attempt, employeeId));

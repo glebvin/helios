@@ -9,7 +9,7 @@ import { ShiftPanel } from "./shift-panel";
 import { TaskActionPanel } from "./task-action-panel";
 import { TaskDraftDialog } from "./task-draft-form";
 import { canWriteTaskDraft } from "./task-draft";
-import { ApiError, v1 } from "./v1";
+import { ApiError, v1, v1Items, v1Collection } from "./v1";
 import { VolumeDesk } from "./volume-panel";
 import { canWriteVolume, reportListPath, volumeLines, type VolumeReport } from "./volume";
 import { boardColumn, shownTaskStatus, taskArea, taskError, taskListPath, taskStatusText, type BoardColumn, type ServerTask } from "./task-read";
@@ -31,7 +31,7 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [view, setView] = useState<BoardView>("board");
+  const [view, setView] = useState<BoardView>(compact ? "list" : "board");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ServerTask | null>(null);
   const [saved, setSaved] = useState("");
@@ -43,6 +43,11 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
   const ready = Boolean(projectId && day && !notice);
   const scope = `${projectId}:${day}:${offset}`;
   const reduce = useReducedMotion();
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") setPass((value) => value + 1); };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, []);
   useEffect(() => { setOffset(0); setOpenId(openTaskId || null); }, [projectId, day, openTaskId, openToken]);
   useEffect(() => {
     if (!ready) { setLoading(false); setPage(null); setStamp(""); return; }
@@ -56,13 +61,13 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
         if (offset && offset >= rows.total) setOffset(Math.max(0, Math.floor((rows.total - 1) / 25) * 25));
         const [people, zones, types] = await Promise.all([
           readNames(session, `/employees?projectId=${projectId}&limit=100`, "fullName"),
-          readNames(session, `/projects/${projectId}/zones?limit=100`, "name"),
-          readNames(session, `/projects/${projectId}/work-types?limit=100`, "name"),
+          session.role === "worker" ? Promise.resolve({}) : readNames(session, `/projects/${projectId}/zones?limit=100`, "name"),
+          session.role === "worker" ? Promise.resolve({}) : readNames(session, `/projects/${projectId}/work-types?limit=100`, "name"),
         ]);
         if (!live) return;
         setNames({ ...people, ...zones, ...types });
         try {
-          const reports = await v1<{ items: VolumeReport[]; total: number }>(session, reportListPath(projectId));
+          const reports = await v1Collection<VolumeReport>(session, reportListPath(projectId));
           if (!live) return;
           const lines = volumeLines(reports.items, reports.total);
           setReported(lines);
@@ -81,7 +86,7 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, day, offset, pass, ready]);
   const body = !ready ? <div className="page"><DeskEmpty title="Объект и день не подтверждены" description={notice || "Доска читается только после выбора объекта и рабочего дня."} /></div>
-    : openId ? <div className="page"><TaskDetail compact={compact} session={session} projectId={projectId} taskId={openId} names={names} canEdit={canWrite} onEdit={setEditing} onBack={() => setOpenId(null)} onChanged={() => setPass((value) => value + 1)} onNoted={(message) => { setSaved(message); setSavedPulse((value) => value + 1); }} /></div>
+    : openId ? <div className="page"><TaskDetail compact={compact} session={session} projectId={projectId} taskId={openId} names={names} canEdit={canWrite} onEdit={setEditing} onBack={() => { setOpenId(null); setPass((value) => value + 1); }} onChanged={() => setPass((value) => value + 1)} onNoted={(message) => { setSaved(message); setSavedPulse((value) => value + 1); }} /></div>
     : <TaskBoard compact={compact} view={view} onView={setView} canWrite={canWrite} onCreate={() => setCreating(true)} page={stamp === scope ? page : null} loading={loading || stamp !== scope} error={error} offset={offset} names={names} reported={reported} volumeNote={volumeNote} onOpen={setOpenId} onRetry={() => setPass((value) => value + 1)} onOffset={setOffset} />;
   const savedDraft = (row: ServerTask) => {
     setCreating(false); setEditing(null);
@@ -179,14 +184,18 @@ function initials(name: string) {
 function TaskDetail({ compact, session, projectId, taskId, names, canEdit, onEdit, onBack, onChanged, onNoted }: { compact: boolean; session: Session; projectId: string; taskId: string; names: Record<string, string>; canEdit: boolean; onEdit: (task: ServerTask) => void; onBack: () => void; onChanged: () => void; onNoted: (message: string) => void }) {
   const reduce = useReducedMotion();
   const [task, setTask] = useState<ServerTask | null>(null);
+  const [timezone, setTimezone] = useState("");
   const [error, setError] = useState("");
   const [pass, setPass] = useState(0);
   useEffect(() => {
     let live = true;
     void (async () => {
       try {
-        const row = await v1<ServerTask>(session, `/projects/${projectId}/tasks/${taskId}`);
-        if (live) { setTask(row); setError(""); }
+        const [row, clock] = await Promise.all([
+          v1<ServerTask>(session, `/projects/${projectId}/tasks/${taskId}`),
+          v1<{ timezone: string }>(session, "/overview"),
+        ]);
+        if (live) { setTask(row); setTimezone(clock.timezone); setError(""); }
       } catch (reason) {
         if (live) { setTask(null); setError(taskError(reason instanceof ApiError ? reason.status : null)); }
       }
@@ -222,7 +231,7 @@ function TaskDetail({ compact, session, projectId, taskId, names, canEdit, onEdi
           </div>
         </div>
         <div className="rowline">
-          {canEdit && status === "draft" ? <button className="ghost desk-action" type="button" onClick={() => onEdit(task)}>Изменить</button> : null}
+          {canEdit && task.workflowKind === "managed02b" && status === "draft" ? <button className="ghost desk-action" type="button" onClick={() => onEdit(task)}>Изменить</button> : null}
           <DeskBadge tone={status === "published" ? "accent" : status === "cancelled" || status === "needs_fix" ? "warn" : "neutral"}>{taskStatusText(status)}</DeskBadge>
         </div>
       </div>
@@ -234,12 +243,14 @@ function TaskDetail({ compact, session, projectId, taskId, names, canEdit, onEdi
             <Fact label="Зона" value={task.zoneId ? names[task.zoneId] ?? "название зоны этому входу не отдано" : "не указана"} />
             <Fact label="Вид работ" value={task.workTypeId ? names[task.workTypeId] ?? "название вида этому входу не отдано" : "не указан"} />
             <Fact label="Рабочая документация" value={task.rdReference || "не указана"} />
-            <Fact label="Интервал" value={interval(task.plannedStart, task.plannedEnd)} wide />
+            <Fact label="Интервал" value={interval(task.plannedStart, task.plannedEnd, timezone)} wide />
           </dl>
         </section>
         <div className="person-column">
+          {task.workflowKind === "managed02b" ? <>
           <ShiftPanel session={session} projectId={projectId} employeeId={task.assigneeEmployeeId} day={task.workDate} onChanged={() => { setPass((value) => value + 1); onChanged(); }} />
-          <VolumeDesk session={session} projectId={projectId} employeeId={task.assigneeEmployeeId} day={task.workDate} tasks={[{ id: task.id, title: task.title, unit: task.unit, status: task.status, workflowKind: task.workflowKind }]} writable={canWriteVolume(session.role)} onDone={(message) => { onNoted(message); setPass((value) => value + 1); onChanged(); }} />
+          <VolumeDesk refreshToken={pass} session={session} projectId={projectId} employeeId={task.assigneeEmployeeId} day={task.workDate} tasks={[{ id: task.id, title: task.title, unit: task.unit, status: task.status, workflowKind: task.workflowKind }]} writable={canWriteVolume(session.role)} onDone={(message) => { onNoted(message); setPass((value) => value + 1); onChanged(); }} />
+          </> : <section className="panel" aria-label="Исполнение"><h2>Исполнение</h2><p className="quiet">Смена и отчёты для этого задания здесь недоступны.</p></section>}
           <section className="panel" aria-label="Качество">
             <div className="panel-head">
               <h2>Качество</h2>
@@ -249,16 +260,16 @@ function TaskDetail({ compact, session, projectId, taskId, names, canEdit, onEdi
           </section>
         </div>
       </div>
-      <TaskActionPanel session={session} projectId={projectId} task={task} onDone={() => { setPass((value) => value + 1); onChanged(); }} />
-      <FrontCheckPanel session={session} projectId={projectId} taskId={task.id} taskVersion={task.version} status={status} onRecorded={() => setPass((value) => value + 1)} />
+      {task.workflowKind === "managed02b" ? <TaskActionPanel session={session} projectId={projectId} task={task} onDone={() => { setPass((value) => value + 1); onChanged(); }} /> : null}
+      {task.workflowKind === "managed02b" ? <FrontCheckPanel session={session} projectId={projectId} taskId={task.id} taskVersion={task.version} status={status} onRecorded={() => setPass((value) => value + 1)} /> : null}
     </motion.div> : null}
   </>;
 }
 
 async function readNames(session: Session, path: string, field: "name" | "fullName") {
   try {
-    const page = await v1<{ items: ({ id: string } & Record<string, string | null>)[] }>(session, path);
-    return Object.fromEntries(page.items.map((item) => [item.id, item[field] || ""]));
+    const items = await v1Items<{ id: string } & Record<string, string | null>>(session, path);
+    return Object.fromEntries(items.map((item) => [item.id, item[field] || ""]));
   } catch {
     return {} as Record<string, string>;
   }
@@ -275,14 +286,14 @@ function dayText(value: string) {
   return `${date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" })} ${year}`;
 }
 
-function interval(start: string | null, end: string | null) {
+function interval(start: string | null, end: string | null, timezone: string) {
   if (!start && !end) return "не указан";
-  return `${clock(start)} — ${clock(end)}`;
+  return `${clock(start, timezone)} — ${clock(end, timezone)}`;
 }
 
-function clock(value: string | null) {
+function clock(value: string | null, timeZone: string) {
   if (!value) return "не указано";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleString("ru-RU", { timeZone, day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }

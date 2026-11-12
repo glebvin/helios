@@ -5,7 +5,7 @@ import { Flash } from "./flash";
 import { DeskBadge } from "./kit";
 import { NoteMark } from "./note-mark";
 import { taskListPath, taskStatusText, type ServerTask } from "./task-read";
-import { ApiError, v1 } from "./v1";
+import { ApiError, v1, v1Items } from "./v1";
 import { SegmentPanel } from "./segment-panel";
 import { ShiftDialog } from "./shift-panel";
 import { canWriteShift, shiftNeedsReason } from "./shift-command";
@@ -93,7 +93,7 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
 
   const fresh = stamp === scope;
   const retry = <button className="ghost desk-action" type="button" onClick={() => setPass((value) => value + 1)}>Повторить чтение</button>;
-  const canShift = Boolean(fresh && reading && employeeId && Number.isSafeInteger(reading.version) && (shifts?.kind === "one" || shifts?.kind === "none"));
+  const canShift = Boolean(ready && fresh && !gap && !dayError && !shiftError && reading && employeeId && Number.isSafeInteger(reading.version) && (shifts?.kind === "one" || shifts?.kind === "none"));
   return (
     <section className="worker-day" aria-busy={!fresh}>
       <h1>Моя смена</h1>
@@ -105,9 +105,9 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
         {fresh && reading ? <DayFacts reading={reading} shifts={shifts} shiftError={shiftError} retry={retry} /> : null}
         {canShift && shifts?.kind === "one" ? <EndSlide key={slideKey} onEnd={() => setShiftKind("shift_end")} /> : null}
         {canShift && shifts?.kind === "none" ? <button className="fill desk-action worker-start" type="button" onClick={() => setShiftKind("shift_start")}>Начать смену</button> : null}
-        {fresh && reading && employeeId && shifts?.kind === "one" && Number.isSafeInteger(reading.version) ? <SegmentPanel compact session={session} projectId={projectId} employeeId={employeeId} shiftId={shifts.shift.id} version={reading.version} tasks={(tasks ?? []).map((item) => ({ id: item.id, title: item.title }))} writable={canWriteShift(session.role)} onDone={(message) => { setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
+        {canShift && reading && employeeId && shifts?.kind === "one" && Number.isSafeInteger(reading.version) ? <SegmentPanel compact session={session} projectId={projectId} employeeId={employeeId} shiftId={shifts.shift.id} version={reading.version} tasks={(tasks ?? []).filter((item) => item.workflowKind === "managed02b" && item.status === "published").map((item) => ({ id: item.id, title: item.title }))} writable={canWriteShift(session.role)} onDone={(message) => { setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
         <Flash message={saved} pulse={pulse} />
-        {shiftKind && reading && employeeId ? <ShiftDialog session={session} projectId={projectId} employeeId={employeeId} kind={shiftKind} shiftId={shifts?.kind === "one" ? shifts.shift.id : ""} expectedVersion={reading.version} previousEventId={shifts?.kind === "one" ? shifts.shift.startEvent?.requestId ?? "" : ""} needsReason={shiftNeedsReason(session.role)} open={shifts?.kind === "one"} immediate={shiftKind === "shift_end" && !shiftNeedsReason(session.role)} onClose={() => { setShiftKind(null); setSlideKey((value) => value + 1); }} onDone={(message) => { setShiftKind(null); setSlideKey((value) => value + 1); setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
+        {ready && shiftKind && reading && employeeId ? <ShiftDialog session={session} projectId={projectId} employeeId={employeeId} kind={shiftKind} day={day} shiftId={shifts?.kind === "one" ? shifts.shift.id : ""} expectedVersion={reading.version} previousEventId={shifts?.kind === "one" ? shifts.shift.startEvent?.requestId ?? "" : ""} needsReason={shiftNeedsReason(session.role)} open={shifts?.kind === "one"} immediate={shiftKind === "shift_end" && !shiftNeedsReason(session.role)} onClose={() => { setShiftKind(null); setSlideKey((value) => value + 1); }} onDone={(message) => { setShiftKind(null); setSlideKey((value) => value + 1); setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
         {fresh && !gap && taskError ? <p role="alert">{taskError} {retry}</p> : null}
         {fresh && tasks && tasks.length === 0 ? <p className="quiet">На сегодня опубликованных заданий нет. Их ставит прораб.</p> : null}
         {fresh && tasksTruncated ? <p className="quiet">Сервер отдал не все задания этого дня.</p> : null}
@@ -118,7 +118,7 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
               <DeskBadge tone="accent">{taskStatusText(item.status)}</DeskBadge>
             </div>
             <div className="quiet">{item.plannedQuantity} {item.unit}</div>
-            {reading && employeeId ? <VolumeDesk compact session={session} projectId={projectId} employeeId={employeeId} day={day} tasks={[{ id: item.id, title: item.title, unit: item.unit, status: item.status, workflowKind: item.workflowKind }]} writable={canWriteVolume(session.role)} onDone={(message) => { setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
+            {reading && employeeId && item.workflowKind === "managed02b" ? <VolumeDesk compact refreshToken={reading?.version ?? 0} session={session} projectId={projectId} employeeId={employeeId} day={day} tasks={[{ id: item.id, title: item.title, unit: item.unit, status: item.status, workflowKind: item.workflowKind }]} writable={ready && !gap && !dayError && canWriteVolume(session.role)} onDone={(message) => { setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
           </article>
         )) : null}
       </motion.div>
@@ -129,8 +129,9 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
 function DayFacts({ reading, shifts, shiftError, retry }: { reading: DayReading; shifts: ShiftReading | null; shiftError: string; retry: ReactNode }) {
   const presence = durationLabel(reading.presenceMs);
   const open = shifts?.kind === "one";
-  const title = shiftError ? "Смена не прочитана" : shifts?.kind === "many" ? "Несколько открытых смен" : shifts?.kind === "incomplete" ? "Смена не выбрана" : open ? "Смена открыта" : presence && presence !== "0 мин" ? "Смена закрыта" : "Смена не начата";
-  const figure = shiftError || shifts?.kind === "many" || shifts?.kind === "incomplete" ? "" : open ? clockLabel(shifts.shift.startedAt, reading.timezone) : presence && presence !== "0 мин" ? presence : "";
+  const attended = /^\d+$/.test(reading.presenceMs) && BigInt(reading.presenceMs) > 0n;
+  const title = shiftError ? "Смена не прочитана" : shifts?.kind === "many" ? "Несколько открытых смен" : shifts?.kind === "incomplete" ? "Смена не выбрана" : open ? "Смена открыта" : attended ? "Смена закрыта" : "Смена не начата";
+  const figure = shiftError || shifts?.kind === "many" || shifts?.kind === "incomplete" ? "" : open ? clockLabel(shifts.shift.startedAt, reading.timezone) : attended ? presence : "";
   const aside = shiftError ? "" : shifts?.kind === "many" ? "Экран не выбирает одну." : shifts?.kind === "incomplete" ? "Страница смен неполная." : "";
   return (
     <div className="shift-card worker-status">
@@ -153,9 +154,9 @@ function EndSlide({ onEnd }: { onEnd: () => void }) {
   return (
     <div className="end-slide" ref={track}>
       <motion.span className="end-slide-label" style={{ opacity: fade }}>Закончить смену</motion.span>
-      <motion.button type="button" className="end-slide-thumb" aria-label="Сдвиньте, чтобы закончить смену" style={{ x }} drag="x" dragConstraints={track} dragElastic={reduce ? 0 : 0.06} dragMomentum={false} onDragEnd={(_, info) => {
+      <motion.button type="button" className="end-slide-thumb" aria-label="Сдвиньте, чтобы закончить смену" style={{ x }} drag="x" dragConstraints={track} dragElastic={reduce ? 0 : 0.06} dragMomentum={false} dragSnapToOrigin onDragEnd={(_, info) => {
         const travel = Math.max(1, (track.current?.clientWidth ?? 0) - 48);
-        if (info.offset.x > travel * 0.5 || info.velocity.x > 700) onEnd();
+        if (info.offset.x > travel * 0.5) onEnd();
       }}>
         <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4.2 2.4 7.8 6 4.2 9.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
       </motion.button>
@@ -165,7 +166,8 @@ function EndSlide({ onEnd }: { onEnd: () => void }) {
 
 async function readPage<T>(session: Session, path: string): Promise<{ ok?: Page<T>; status: number | null }> {
   try {
-    return { ok: await v1<Page<T>>(session, path), status: 200 };
+    const items = await v1Items<T>(session, path);
+    return { ok: { items, total: items.length }, status: 200 };
   } catch (reason) {
     return { status: reason instanceof ApiError ? reason.status : null };
   }

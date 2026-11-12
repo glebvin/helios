@@ -5,7 +5,7 @@ import { DeskSelect } from "./kit";
 import { NoteMark } from "./note-mark";
 import { shiftNeedsReason } from "./shift-command";
 import { downtimeReasons, openSegment, segmentActionLabel, segmentActions, segmentBatchError, segmentEventBody, segmentLabel, segmentListPath, segmentProblem, type DowntimeReason, type SegmentMode, type SegmentRow } from "./segment";
-import { ApiError, v1 } from "./v1";
+import { ApiError, v1, v1Collection } from "./v1";
 
 type Page<T> = { items: T[]; total: number };
 type TaskChoice = { id: string; title: string };
@@ -30,7 +30,7 @@ export function SegmentPanel({ session, projectId, employeeId, shiftId, version,
     let live = true;
     void (async () => {
       try {
-        const page = await v1<Page<SegmentRow>>(session, segmentListPath(projectId, shiftId));
+        const page = await v1Collection<SegmentRow>(session, segmentListPath(projectId, shiftId));
         if (!live) return;
         const found = openSegment(page.items, page.total, shiftId, employeeId, projectId);
         setCurrent(found.kind === "one" ? found.segment : null);
@@ -43,7 +43,7 @@ export function SegmentPanel({ session, projectId, employeeId, shiftId, version,
       }
     })();
     return () => { live = false; };
-  }, [session.token, session.tenantId, projectId, employeeId, shiftId, pass]);
+  }, [session.token, session.tenantId, projectId, employeeId, shiftId, version, pass]);
   const actions = current ? segmentActions(current.mode) : [];
   const modeName = current ? segmentLabel(current.mode) : "";
   const buttons = writable && current && actions.length ? <div className={actions.length > 1 ? "worker-actions" : "worker-actions is-one"}>
@@ -95,6 +95,7 @@ function SegmentDialog({ session, projectId, employeeId, shiftId, version, mode,
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const alertRef = useRef<HTMLParagraphElement>(null);
+  const attempt = useRef<{ body: ReturnType<typeof segmentEventBody> } | null>(null);
   const pendingKey = `helios.segment:${session.tenantId}:${session.userId}:${shiftId}:${mode}`;
   const problem = segmentProblem({ online: typeof navigator === "undefined" ? true : navigator.onLine, mode, taskId, reason, comment, behalf, needsBehalf });
   useEffect(() => { if (error) alertRef.current?.focus(); }, [error]);
@@ -102,10 +103,10 @@ function SegmentDialog({ session, projectId, employeeId, shiftId, version, mode,
     if (lock.current || problem) return;
     lock.current = true; setBusy(true); setError("");
     try {
-      let stored: { body: ReturnType<typeof segmentEventBody> } | null = null;
-      try { stored = JSON.parse(sessionStorage.getItem(pendingKey) ?? "null"); } catch { stored = null; }
+      let stored = attempt.current;
+      if (!stored) { try { stored = JSON.parse(sessionStorage.getItem(pendingKey) ?? "null"); } catch { stored = null; } }
       const event = stored?.body.events[0];
-      const same = event?.mode === mode && event.expectedVersion === version && (event.taskId ?? "") === taskId && (event.reasonCode ?? "") === reason && (event.comment ?? "") === comment.trim() && (event.onBehalfReason ?? "") === behalf.trim();
+      const same = event?.mode === mode && (attempt.current !== null || event.expectedVersion === version) && (event.taskId ?? "") === (mode === "work" || mode === "downtime" ? taskId : "") && (event.reasonCode ?? "") === (mode === "downtime" ? reason : "") && (event.comment ?? "") === (mode === "downtime" ? comment.trim() : "") && (event.onBehalfReason ?? "") === (needsBehalf ? behalf.trim() : "");
       if (!same) {
         stored = { body: segmentEventBody({
           requestId: crypto.randomUUID(), employeeId, projectId, shiftId, expectedVersion: version, occurredAt: new Date().toISOString(), mode,
@@ -116,14 +117,16 @@ function SegmentDialog({ session, projectId, employeeId, shiftId, version, mode,
         }) };
         try { sessionStorage.setItem(pendingKey, JSON.stringify(stored)); } catch { /* The open form still repeats this attempt. */ }
       }
+      attempt.current = stored;
       const result = await v1<{ results?: { outcome?: string; code?: string; result?: { version?: number } }[] }>(session, "/execution/events", stored!.body);
       const row = result.results?.[0];
       const failure = row?.outcome === "success" || row?.outcome === "duplicate" ? (row.result?.version ? "" : "Сервер не вернул версию интервала.") : segmentBatchError(row?.code ?? "event_rejected", 200);
       if (failure) {
-        if (row?.code === "stale_version") { try { sessionStorage.removeItem(pendingKey); } catch { /* The next confirmation reads the fresh version. */ } }
+        if (row?.code === "stale_version") { attempt.current = null; try { sessionStorage.removeItem(pendingKey); } catch { /* The next confirmation reads the fresh version. */ } }
         throw new Error(failure);
       }
       try { sessionStorage.removeItem(pendingKey); } catch { /* The server answer is enough. */ }
+      attempt.current = null;
       onDone(row?.outcome === "duplicate" ? `Сервер уже записал интервал, версия ${row?.result?.version}.` : `Сервер записал интервал, версия ${row?.result?.version}.`);
     } catch (failure) {
       setError(failure instanceof ApiError ? "Нет подтверждения сервера. Повторите в этой форме, не закрывая её." : failure instanceof Error ? failure.message : "Нет подтверждения сервера. Повторите в этой форме, не закрывая её.");

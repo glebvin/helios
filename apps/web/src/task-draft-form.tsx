@@ -5,14 +5,13 @@ import { Dialog } from "./dialog";
 import { DeskSelect } from "./kit";
 import { staffRequest } from "./staff-form";
 import type { ServerEmployee } from "./staff-list";
-import { ApiError, v1 } from "./v1";
+import { ApiError, v1, v1Items } from "./v1";
 import {
   taskDraftBody, taskDraftError, taskDraftFrom, taskDraftValidation,
   type TaskDraft,
 } from "./task-draft";
 import type { ServerTask } from "./task-read";
 
-type NamedPage<T> = { items: T[]; total: number };
 type Member = { userId: string; role: string; status: string };
 
 const describe = (reason: unknown) => taskDraftError(reason instanceof ApiError ? reason.status : null, reason instanceof ApiError ? reason.message : "");
@@ -34,6 +33,7 @@ export function TaskDraftDialog({ session, projectId, day, task, onClose, onSave
   const [draft, setDraft] = useState<TaskDraft>(() => taskDraftFrom(task, day, session.userId, "UTC"));
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [pass, setPass] = useState(0);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [stored, setStored] = useState(true);
@@ -45,22 +45,23 @@ export function TaskDraftDialog({ session, projectId, day, task, onClose, onSave
   const problem = ready ? taskDraftValidation(draft, !!workType?.requiresRd) : "";
   useEffect(() => {
     let live = true;
+    setReady(false); setLoadError("");
     void (async () => {
       try {
-        const [zonePage, typePage, peoplePage, clock] = await Promise.all([
-          v1<NamedPage<Zone>>(session, `/projects/${projectId}/zones?limit=100`),
-          v1<NamedPage<WorkType>>(session, `/projects/${projectId}/work-types?limit=100`),
-          v1<NamedPage<ServerEmployee>>(session, `/employees?projectId=${projectId}&limit=100`),
+        const [zoneItems, typeItems, peopleItems, clock] = await Promise.all([
+          v1Items<Zone>(session, `/projects/${projectId}/zones`),
+          v1Items<WorkType>(session, `/projects/${projectId}/work-types`),
+          v1Items<ServerEmployee>(session, `/employees?projectId=${projectId}`),
           v1<{ timezone: string }>(session, "/overview"),
         ]);
         const memberships = session.role === "director"
-          ? await v1<NamedPage<Member>>(session, `/projects/${projectId}/memberships?limit=100`).catch(() => ({ items: [] as Member[], total: 0 }))
-          : { items: [] as Member[], total: 0 };
+          ? await v1Items<Member>(session, `/projects/${projectId}/memberships`)
+          : [];
         if (!live) return;
-        setZones(activeForNewTask(zonePage.items));
-        setTypes(activeForNewTask(typePage.items));
-        setPeople(peoplePage.items.filter((item) => item.status === "active"));
-        setMembers(memberships.items.filter((item) => item.status === "active" && (item.role === "director" || item.role === "master")));
+        setZones(activeForNewTask(zoneItems));
+        setTypes(activeForNewTask(typeItems));
+        setPeople(peopleItems.filter((item) => item.status === "active"));
+        setMembers(memberships.filter((item) => item.status === "active" && (item.role === "director" || item.role === "master")));
         setTimezone(clock.timezone);
         setDraft(taskDraftFrom(task, day, session.userId, clock.timezone));
         setReady(true);
@@ -69,9 +70,12 @@ export function TaskDraftDialog({ session, projectId, day, task, onClose, onSave
       }
     })();
     return () => { live = false; };
-  }, [session, projectId, day, task]);
+  }, [session, projectId, day, task, pass]);
   useEffect(() => { if (error) alertRef.current?.focus(); }, [error]);
   const responsibles = responsibleOptions(session, people, members);
+  if (source?.responsibleUserId && !responsibles.some((item) => item.value === source.responsibleUserId)) {
+    responsibles.push({ value: source.responsibleUserId, label: "Текущий ответственный" });
+  }
   async function submit() {
     if (lock.current || problem || !timezone) return;
     const fields = taskDraftBody(draft, "", timezone, source?.version);
@@ -107,6 +111,7 @@ export function TaskDraftDialog({ session, projectId, day, task, onClose, onSave
     <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
       {error ? <p ref={alertRef} tabIndex={-1} role="alert">{error}</p> : null}
       {!ready && !loadError ? <p className="quiet" role="status">Читаем зоны, виды и людей…</p> : null}
+      {loadError ? <p role="alert">{loadError} <button className="ghost desk-action" type="button" onClick={() => setPass((value) => value + 1)}>Повторить загрузку</button></p> : null}
       {ready ? <fieldset className="employee-fields" disabled={busy}>
         <DeskSelect label="Зона" value={draft.zoneId} options={selectOptions(zones.map((item) => ({ value: item.id, label: item.name })), "Выберите зону")} onChange={(zoneId) => setDraft({ ...draft, zoneId })} />
         <DeskSelect label="Вид работ" value={draft.workTypeId} options={selectOptions(types.map((item) => ({ value: item.id, label: item.name })), "Выберите вид")} onChange={(workTypeId) => setDraft({ ...draft, workTypeId })} />

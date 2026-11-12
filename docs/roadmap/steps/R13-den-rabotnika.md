@@ -2,7 +2,7 @@
 
 GitHub: [R13 · задача #13](https://github.com/glebvin/helios/issues/13).
 
-Статус: **review**. Работник читает свой день и опубликованные задания. Учебная подготовка дня с телефона убрана. [PR68](https://github.com/glebvin/helios/pull/68). Merge и выкладка не выполнены.
+Статус: **verified**. Техническая проверка R13–R17 завершена; [отчёт](../../qa/release-shifts-2026-11-12.md). Факт объединения/публикации — в GitHub Releases.
 
 - Группа: Смена.
 - Роли: worker.

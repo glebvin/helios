@@ -2,7 +2,7 @@
 
 GitHub: [R08 · задача #8](https://github.com/glebvin/helios/issues/8).
 
-Статус: **review**. Справочники зон и видов работ пишутся на сервер выбранного объекта. [PR62](https://github.com/glebvin/helios/pull/62). Merge и выкладка не выполнены.
+Статус: **verified**. Техническая проверка пакета R08–R12 завершена. [Отчёт](../../qa/release-tasks-2026-11-12.md); факт объединения и публикации — в GitHub Releases.
 
 - Группа: Задания.
 - Роли: rp, master.

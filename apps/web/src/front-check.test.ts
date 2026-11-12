@@ -48,3 +48,13 @@ test("a new checklist sends its code, and an edit sends the read version", () =>
   assert.equal("code" in updated, false);
   assert.equal(updated.items[0].critical, true);
 });
+
+
+test("lost front reply keeps the full command after a refreshed task version", async () => {
+  const { frontCommand } = await import("./front-check.ts");
+  const template = { projectId: "p", code: "front", title: "Front", version: 2, items: [{ id: "a", label: "A", critical: true }] };
+  const first = frontCommand(null, 7, template, { a: true }, () => "request-a");
+  const restored = JSON.parse(JSON.stringify(first));
+  assert.deepEqual(frontCommand(restored, 8, template, { a: true }, () => "must-not-create"), first);
+  assert.equal(frontCommand(restored, 8, template, { a: false }, () => "request-b").body.requestId, "request-b");
+});

@@ -3,7 +3,7 @@ import type { Session } from "./api";
 import { Dialog } from "./dialog";
 import { Flash } from "./flash";
 import { canWriteShift, shiftBatchError, shiftEventBody, shiftNeedsReason, shiftProblem, type ShiftBatch, type ShiftGeo, type ShiftKind } from "./shift-command";
-import { ApiError, v1 } from "./v1";
+import { ApiError, v1, v1Collection } from "./v1";
 import { NoteMark } from "./note-mark";
 import { SegmentPanel } from "./segment-panel";
 import { taskListPath, type ServerTask } from "./task-read";
@@ -30,12 +30,12 @@ export function ShiftPanel({ session, projectId, employeeId, day, onChanged }: {
       try {
         const [clock, shifts] = await Promise.all([
           v1<DayReading>(session, dayReadPath(projectId, employeeId, day)),
-          v1<Page<DayShift>>(session, shiftListPath(projectId, employeeId)),
+          v1Collection<DayShift>(session, shiftListPath(projectId, employeeId)),
         ]);
         if (!live) return;
         try {
-          const taskPage = await v1<Page<ServerTask>>(session, taskListPath(projectId, day));
-          if (live) setTaskChoices(visibleWorkerTasks(taskPage.items, employeeId).map((item) => ({ id: item.id, title: item.title })));
+          const taskPage = await v1Collection<ServerTask>(session, taskListPath(projectId, day));
+          if (live) setTaskChoices(visibleWorkerTasks(taskPage.items, employeeId).filter((item) => item.workflowKind === "managed02b" && item.status === "published").map((item) => ({ id: item.id, title: item.title })));
         } catch { if (live) setTaskChoices([]); }
         const found = shiftReading(shifts.items, shifts.total, employeeId, projectId);
         setReading(clock);
@@ -65,15 +65,16 @@ export function ShiftPanel({ session, projectId, employeeId, day, onChanged }: {
       {open ? <button className="ghost desk-action" type="button" onClick={() => setKind("shift_end")}>Закончить смену</button> : <button className="fill desk-action" type="button" onClick={() => setKind("shift_start")}>Начать смену</button>}
     </div> : null}
     <Flash message={saved} pulse={pulse} />
-    {kind && reading ? <ShiftDialog session={session} projectId={projectId} employeeId={employeeId} kind={kind} shiftId={openId} expectedVersion={reading.version} previousEventId={previousId} needsReason={shiftNeedsReason(session.role)} open={open} onClose={() => setKind(null)} onDone={(message) => { setKind(null); setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); onChanged(); }} /> : null}
+    {kind && reading ? <ShiftDialog session={session} projectId={projectId} employeeId={employeeId} kind={kind} day={day} shiftId={openId} expectedVersion={reading.version} previousEventId={previousId} needsReason={shiftNeedsReason(session.role)} open={open} onClose={() => setKind(null)} onDone={(message) => { setKind(null); setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); onChanged(); }} /> : null}
   </section>;
 }
 
-export function ShiftDialog({ session, projectId, employeeId, kind, shiftId, expectedVersion, previousEventId, needsReason, open, immediate = false, onClose, onDone }: {
+export function ShiftDialog({ session, projectId, employeeId, kind, day, shiftId, expectedVersion, previousEventId, needsReason, open, immediate = false, onClose, onDone }: {
   session: Session;
   projectId: string;
   employeeId: string;
   kind: ShiftKind;
+  day: string;
   shiftId: string;
   expectedVersion: number;
   previousEventId: string;
@@ -89,7 +90,8 @@ export function ShiftDialog({ session, projectId, employeeId, kind, shiftId, exp
   const [geoNote, setGeoNote] = useState("");
   const lock = useRef(false);
   const alertRef = useRef<HTMLParagraphElement>(null);
-  const pendingKey = `helios.shift:${session.tenantId}:${session.userId}:${employeeId}:${kind}`;
+  const attempt = useRef<{ body: ReturnType<typeof shiftEventBody> } | null>(null);
+  const pendingKey = `helios.shift:${session.tenantId}:${session.userId}:${projectId}:${employeeId}:${day}:${kind}`;
   const problem = shiftProblem(typeof navigator === "undefined" ? true : navigator.onLine, kind, open, reason, needsReason);
   useEffect(() => { if (error) alertRef.current?.focus(); }, [error]);
   useEffect(() => {
@@ -112,10 +114,10 @@ export function ShiftDialog({ session, projectId, employeeId, kind, shiftId, exp
     lock.current = true; setBusy(true); setError("");
     try {
       const trimmed = needsReason ? reason.trim() : "";
-      let stored: { body: ReturnType<typeof shiftEventBody> } | null = null;
-      try { stored = JSON.parse(sessionStorage.getItem(pendingKey) ?? "null"); } catch { stored = null; }
+      let stored = attempt.current;
+      if (!stored) { try { stored = JSON.parse(sessionStorage.getItem(pendingKey) ?? "null"); } catch { stored = null; } }
       const event = stored?.body.events[0];
-      const same = event?.kind === kind && event.expectedVersion === expectedVersion && (event.onBehalfReason ?? "") === trimmed;
+      const same = event?.kind === kind && event.projectId === projectId && event.employeeId === employeeId && (kind !== "shift_end" || event.shiftId === shiftId) && (attempt.current !== null || event.expectedVersion === expectedVersion) && (event.onBehalfReason ?? "") === trimmed;
       if (!same) {
         const geo = await readGeo();
         setGeoNote(geo ? "" : "Геопозиция не записана.");
@@ -126,13 +128,15 @@ export function ShiftDialog({ session, projectId, employeeId, kind, shiftId, exp
         }) };
         try { sessionStorage.setItem(pendingKey, JSON.stringify(stored)); } catch { /* The open form still repeats this attempt. */ }
       }
+      attempt.current = stored;
       const result = await v1<ShiftBatch>(session, "/execution/events", stored!.body);
       const failure = shiftBatchError(result, 200);
       if (failure) {
-        if (result.results?.[0]?.code === "stale_version") { try { sessionStorage.removeItem(pendingKey); } catch { /* The next confirmation reads the fresh day. */ } }
+        if (result.results?.[0]?.code === "stale_version") { attempt.current = null; try { sessionStorage.removeItem(pendingKey); } catch { /* The next confirmation reads the fresh day. */ } }
         throw new Error(failure);
       }
       try { sessionStorage.removeItem(pendingKey); } catch { /* The server answer is enough. */ }
+      attempt.current = null;
       const version = result.results?.[0]?.result?.version;
       return result.results?.[0]?.outcome === "duplicate" ? `Сервер уже записал эту смену, версия ${version}.` : `Сервер записал смену, версия ${version}.`;
     } catch (failure) {

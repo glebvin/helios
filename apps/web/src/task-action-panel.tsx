@@ -28,7 +28,7 @@ export function TaskActionPanel({ session, projectId, task, onDone }: { session:
       {actions.map((action) => <button className={action === "publish" || action === "submit" ? "fill desk-action" : "ghost desk-action"} key={action} type="button" onClick={() => setChoice(action)}>{taskActionLabel(action)}</button>)}
     </div>
     <Flash message={saved} pulse={pulse} />
-    {choice ? <ActionDialog session={session} projectId={projectId} task={task} action={choice} onClose={() => setChoice(null)} onSaved={(row) => {
+    {choice ? <ActionDialog session={session} projectId={projectId} task={task} action={choice} onRead={() => { setChoice(null); onDone(); }} onClose={() => setChoice(null)} onSaved={(row) => {
       setChoice(null);
       setSaved(`Сервер записал статус «${taskStatusText(row.status)}».`);
       setPulse((value) => value + 1);
@@ -37,11 +37,12 @@ export function TaskActionPanel({ session, projectId, task, onDone }: { session:
   </section>;
 }
 
-function ActionDialog({ session, projectId, task, action, onClose, onSaved }: {
+function ActionDialog({ session, projectId, task, action, onRead, onClose, onSaved }: {
   session: Session;
   projectId: string;
   task: ServerTask;
   action: TaskActionName;
+  onRead: () => void;
   onClose: () => void;
   onSaved: (row: ServerTask) => void;
 }) {
@@ -78,6 +79,7 @@ function ActionDialog({ session, projectId, task, action, onClose, onSaved }: {
       <p className="quiet">{task.title}</p>
       {taskNeedsReason(action) ? <label className="field"><span>Причина</span><input required maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} /></label> : <p className="quiet">Переход запишется, только если сервер его подтвердит.</p>}
       {problem ? <p className="quiet">{problem}</p> : null}
+      {error ? <button className="ghost desk-action" type="button" disabled={busy} onClick={onRead}>Прочитать актуальное задание</button> : null}
       {error && !stored ? <p className="quiet">Номер попытки не сохранён браузером. Повторите в этой форме, не закрывая её.</p> : null}
       <button className="ghost desk-action" type="button" disabled={busy} onClick={onClose}>Отмена</button>
       <button className="fill desk-action" type="submit" disabled={busy || !!problem}>{busy ? "Записываем…" : taskActionLabel(action)}</button>
