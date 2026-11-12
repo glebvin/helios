@@ -152,7 +152,7 @@ export function DirectorDesk({
           <ProfileMenu name={scope.actor?.name ?? session.name} role={roleTitle(scope.actor?.role ?? session.role)} onLogout={onLogout} />
         </header>
         {preview ? <p className="quiet preview-note">Просмотр кабинета: {access.hint} Вход не меняется: {session.name}, {roleTitle(session.role)}. Запись от выбранного вида не выполняется.</p> : null}
-        <PageShift pageKey={page} refreshKey={scope.projectId}>
+        <PageShift pageKey={page}>
           {page === "overview" ? (
             <>
             {preview ? null : <DayFlow session={session} />}
