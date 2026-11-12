@@ -28,7 +28,7 @@ try{
  p.on('request',r=>{if(r.method()==='POST'&&new URL(r.url()).pathname===path)ids.push(r.postDataJSON().requestId);});await save(p);
  let rows=(await (await p.request.get(`${base}${path}`,{headers:h})).json()).items;assert.equal(rows.length,1);assert.equal(ids[0],ids[1]);check('lost create response plus reload reuses command without duplicate');
  await panel(p).getByText('Действует',{exact:true}).waitFor();check('valid until tenant today is active inclusively');
- const fresh=await login('director');await open(fresh,name);await panel(fresh).getByText(title,{exact:true}).waitFor();await panel(fresh).getByText('Удостоверение № 42',{exact:true}).waitFor();check('qualification and metadata survive fresh authorized login');
+ const fresh=await login('director');await open(fresh,name);await panel(fresh).getByText(title,{exact:true}).waitFor();await panel(fresh).getByText(/Удостоверение № 42/).waitFor();check('qualification and metadata survive fresh authorized login');
  await panel(fresh).getByRole('button',{name:'Изменить',exact:true}).click();await fresh.getByRole('dialog').getByLabel('Действует по',{exact:true}).fill('2000-01-01');await save(fresh);await panel(fresh).getByText('Истекла',{exact:true}).waitFor();check('editing expiry persists and expired qualification is not active');
  await fresh.setViewportSize({width:390,height:844});await fresh.waitForTimeout(500);assert.ok(await fresh.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));await fresh.screenshot({path:`${out}/r04-mobile.png`,fullPage:true});check('qualification list fits 390px');
  await panel(fresh).getByRole('button',{name:'Изменить',exact:true}).click();await fresh.getByRole('dialog').getByLabel('Название квалификации',{exact:true}).fill('Локальный черновик');

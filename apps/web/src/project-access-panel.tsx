@@ -71,7 +71,7 @@ export function ProjectAccessPanel({ session, projectId, employeeId, userId, arc
         {session.role === "director" && userId && !blocked ? <AccessActions session={session} path={`/projects/${projectId}/memberships/${userId}`} kind="membership" disabled={loading || !data} activate={data ? accessCommand(data.membership?.version ?? 0, "active", "") : null} revoke={data?.membership?.status === "active" ? accessCommand(data.membership.version, "revoked", "") : null} active={data?.membership?.status === "active"} onRead={load} onSaved={() => saved("membership")} /> : null}
       </div>
       <div className="access-part">
-        <div className="access-copy"><h3>Назначение</h3>{data ? <DeskBadge tone={data.assignment?.status === "active" && !data.assignment.currentAdmission.eligible ? "warn" : "neutral"}>{data.assignment?.status === "active" ? "Назначен" : "Не назначен"}</DeskBadge> : null}</div>
+        <div className="access-copy"><h3>Назначение</h3>{data ? <DeskBadge tone={data.assignment?.status === "active" && !data.assignment.currentAdmission.eligible ? "warn" : "neutral"}>{data.assignment?.status === "active" ? "Назначен" : "Не назначен"}</DeskBadge> : null}{admissionProblem ? <span className="check-stale">Допуск не актуален</span> : null}</div>
         {session.role === "director" && !blocked ? <AccessActions session={session} path={`/projects/${projectId}/assignments/${employeeId}`} kind="assignment" disabled={loading || !data} activate={data?.latest?.passed && !archived ? accessCommand(data.assignment?.version ?? 0, "active", "", data.latest.id) : null} revoke={data?.assignment?.status === "active" ? accessCommand(data.assignment.version, "revoked", "") : null} active={data?.assignment?.status === "active"} onRead={load} onSaved={() => saved("assignment")} /> : null}
       </div>
       <Flash message={confirmed} pulse={pulse} />
@@ -102,7 +102,9 @@ function AccessActions({ session, path, kind, disabled, activate, revoke, active
   const openLabel = kind === "membership" ? "Открыть доступ к объекту" : active ? "Обновить" : "Назначить на объект";
   const closeLabel = kind === "membership" ? "Закрыть доступ к объекту" : "Снять назначение";
   return <div className="access-actions">
-    <Flash pulse={pulse} message={error || (!busy && pending ? "Предыдущее изменение не подтверждено. Повтор отправит ту же команду." : "") || (!stored ? "Номер команды не сохранён браузером. Повторите здесь, не закрывая карточку." : "")} />
+    {error ? <p className="access-feedback" role="alert">{error}</p> : null}
+    {!busy && pending ? <p className="access-feedback quiet">Предыдущее изменение не подтверждено. Повтор отправит ту же команду.</p> : null}
+    {!stored ? <p className="access-feedback quiet">Номер команды не сохранён браузером. Повторите здесь, не закрывая карточку.</p> : null}
     {pending ? <button className="fill desk-action" type="button" disabled={busy} onClick={() => void send(pending)}>{busy ? "Подтверждаем…" : kind === "membership" ? "Повторить доступ" : "Повторить назначение"}</button> : <div className="template-bar">
       {kind === "assignment" || !active ? <button className="fill desk-action" type="button" aria-label={kind === "assignment" && active ? "Обновить назначение по последней проверке" : undefined} disabled={busy || disabled || conflict || !activate} onClick={() => { if (activate) void send(activate); }}>{openLabel}</button> : null}
       {active ? <button className="ghost desk-action" type="button" disabled={busy || disabled || conflict || !revoke} onClick={() => { if (revoke) void send(revoke); }}>{closeLabel}</button> : null}

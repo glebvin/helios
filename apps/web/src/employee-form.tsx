@@ -7,12 +7,13 @@ import type { ServerEmployee } from "./staff-list";
 import { ApiError, v1 } from "./v1";
 
 export function EmployeeForm({
-  session, organizations, employee, onSaved, toast = true, extra = null,
+  session, organizations, employee, onSaved, onRead = onSaved, toast = true, extra = null,
 }: {
   session: Session;
   organizations: StaffOrg[];
   employee: ServerEmployee | null;
   onSaved: (row: ServerEmployee) => void;
+  onRead?: (row: ServerEmployee) => void;
   toast?: boolean;
   extra?: ReactNode;
 }) {
@@ -78,7 +79,7 @@ export function EmployeeForm({
     busy.current = true; setSaving(true);
     try {
       const row = await v1<ServerEmployee>(session, `/employees/${employee.id}`);
-      setSource(row); setDraft(staffDraft(row, organizations)); setError(""); setSaved(""); onSaved(row);
+      setSource(row); setDraft(staffDraft(row, organizations)); setError(""); setSaved(""); onRead(row);
     } catch (reason) { setError(staffWriteError(reason instanceof ApiError ? reason.status : null)); }
     finally { busy.current = false; setSaving(false); }
   }
