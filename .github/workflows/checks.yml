@@ -2,7 +2,6 @@ name: Проверки HELIOS
 
 on:
   pull_request:
-    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -86,3 +85,122 @@ jobs:
         run: corepack pnpm --filter @helios/api seed
       - name: API regression последовательно
         run: corepack pnpm --filter @helios/api test
+
+  browser-smoke:
+    name: Браузерный smoke текущего UI
+    needs: [project-checks, server-tests]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: codex-api
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: helios
+          POSTGRES_PASSWORD: helios
+          POSTGRES_DB: helios
+          PGPORT: '54339'
+          PGDATA: ${{ github.workspace }}/codex-api/.data/pg-54339
+        ports:
+          - 54339:54339
+        options: >-
+          --health-cmd "pg_isready -U helios -d helios -p 54339"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      ADMIN_DATABASE_URL: postgres://helios:helios@127.0.0.1:54339/helios
+      DATABASE_URL: postgres://helios_app:helios_app@127.0.0.1:54339/helios
+      HELIOS_DB_PORT: '54339'
+      HELIOS_CI_FIXTURE: disposable
+      PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          path: codex-api
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm install --global corepack@0.35.0
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm exec playwright install --with-deps chromium
+      - run: node .github/scripts/prepare-ci-db.mjs
+      - run: corepack pnpm --filter @helios/api migrate
+      - run: corepack pnpm --filter @helios/api seed
+      - run: corepack pnpm --filter @helios/web build
+      - name: Реальный UI → NestJS → PostgreSQL
+        run: node --experimental-strip-types qa/ci-smoke.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: browser-smoke-${{ github.sha }}
+          path: |
+            codex-api/.data/ci-browser/results.json
+            codex-api/.data/ci-browser/*.png
+            codex-api/.data/ci-browser/*.log
+          retention-days: 7
+          include-hidden-files: true
+          if-no-files-found: warn
+
+  offline-checks:
+    name: Offline — Chromium и WebKit, очередь и реальный API
+    needs: browser-smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: codex-api
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: helios
+          POSTGRES_PASSWORD: helios
+          POSTGRES_DB: helios
+          PGPORT: '54339'
+          PGDATA: ${{ github.workspace }}/codex-api/.data/pg-54339
+        ports:
+          - 54339:54339
+        options: >-
+          --health-cmd "pg_isready -U helios -d helios -p 54339"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      ADMIN_DATABASE_URL: postgres://helios:helios@127.0.0.1:54339/helios
+      DATABASE_URL: postgres://helios_app:helios_app@127.0.0.1:54339/helios
+      HELIOS_DB_PORT: '54339'
+      API_PORT: '4327'
+      PLAYWRIGHT_BROWSERS_PATH: /home/runner/.cache/ms-playwright
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          path: codex-api
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - run: npm install --global corepack@0.35.0
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm exec playwright install --with-deps chromium webkit
+      - run: node .github/scripts/prepare-ci-db.mjs
+      - run: corepack pnpm --filter @helios/api migrate
+      - name: 70 сценариев существующей очереди, последовательно
+        shell: bash
+        run: |
+          mkdir -p .data/ci-offline
+          export HELIOS_PLAYWRIGHT_MODULE="$(node --input-type=module -e "import {createRequire} from 'node:module'; import {dirname,join} from 'node:path'; console.log(join(dirname(createRequire(import.meta.url).resolve('playwright')),'index.mjs'))")"
+          node packages/offline/test/browser.test.mjs all 2>&1 | tee .data/ci-offline/results.tap
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: offline-${{ github.sha }}
+          path: codex-api/.data/ci-offline/results.tap
+          retention-days: 7
+          include-hidden-files: true
+          if-no-files-found: warn
