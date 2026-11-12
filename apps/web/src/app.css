@@ -1030,3 +1030,12 @@ h1, h2, h3, p { margin: 0; }
 .qualification-list { display: grid; margin-top: 16px; }
 .qualification-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 0; border-top: 1px solid var(--line); min-width: 0; }
 .qualification-row > div { display: grid; gap: 5px; flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
+
+.admission-checks { padding: 20px; min-width: 0; }
+.admission-checks h2 { padding: 0; }
+.admission-checks > p, .admission-checks > button, .admission-checks form { margin-top: 12px; }
+.check-history { display: grid; gap: 12px; margin-top: 16px; }
+.check-result, .check-point { padding: 16px 0; border-top: 1px solid var(--line); min-width: 0; overflow-wrap: anywhere; }
+.check-result > p, .check-result details, .check-point .desk-select { margin-top: 8px; }
+.check-stale { color: var(--warn); }
+.check-result summary { cursor: pointer; }

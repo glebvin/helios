@@ -6,6 +6,7 @@ import { useStaffCard, useStaffList } from "./staff-read";
 import { hasV1ProjectScope } from "./scope";
 import type { Desk, Session } from "./api";
 import { Dialog } from "./dialog";
+import { AdmissionChecksPanel } from "./admission-check-panel";
 import { QualificationsPanel } from "./qualifications-panel";
 import { EmployeeForm } from "./employee-form";
 import { canWriteStaff } from "./staff-form";
@@ -33,9 +34,10 @@ const peopleTabLabels: { id: Tab; label: string }[] = [
 ];
 
 export function People({
-  session, data, onOpenTask, inviteWorker = false, inviteForeman = false, peopleTabs = ["people"], admitStep = "none", dayStep = "none", canExport = false, admissions = [], onAdmit, cards = [], onCard,
+  session, projectId = "", data, onOpenTask, inviteWorker = false, inviteForeman = false, peopleTabs = ["people"], admitStep = "none", dayStep = "none", canExport = false, admissions = [], onAdmit, cards = [], onCard,
 }: {
   session: Session;
+  projectId?: string;
   data: Desk;
   onOpenTask: (taskId: string) => void;
   inviteWorker?: boolean;
@@ -72,6 +74,7 @@ export function People({
   if (personId) {
     return (
       <ServerProfile
+        projectId={projectId}
         loading={opened.loading}
         error={opened.error}
         employee={opened.employee}
@@ -237,8 +240,9 @@ function Timesheet({ data, dayStep, onOpen }: { data: Desk; dayStep: "prepare" |
 }
 
 function ServerProfile({
-  loading, error, employee, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, session, onReload,
+  projectId, loading, error, employee, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, session, onReload,
 }: {
+  projectId: string;
   loading: boolean;
   error: string;
   employee: ServerEmployee | null;
@@ -269,6 +273,7 @@ function ServerProfile({
     {error ? <p className="quiet" role="alert">{error} Показана последняя прочитанная версия.</p> : null}
     <Profile
       person={{ id: shown.id, full_name: shown.fullName, phone: shown.phone ?? "", user_id: shown.userId, document_number: data.employees.find((row) => row.id === shown.id)?.document_number ?? null, role: shown.status === "archived" ? "archived" : null }}
+      admissionChecks={<AdmissionChecksPanel key={`${session.token}:${session.tenantId}:${shown.id}:${projectId}`} session={session} employeeId={shown.id} projectId={projectId} archived={shown.status === "archived"} />}
       qualifications={<QualificationsPanel key={`${session.token}:${shown.id}`} session={session} employeeId={shown.id} archived={shown.status === "archived"} />}
       editor={canWriteStaff(session.role) ? <EmployeeForm session={session} organizations={data.organizations} employee={shown} onSaved={(row) => { setWritten(row); onReload(); }} /> : null}
       data={data}
@@ -286,7 +291,7 @@ function ServerProfile({
 }
 
 function Profile({
-  person, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, editor = null, qualifications = null,
+  person, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, editor = null, qualifications = null, admissionChecks = null,
 }: {
   person: Desk["employees"][number];
   data: Desk;
@@ -300,6 +305,7 @@ function Profile({
   onCard: (card: PersonCard) => void;
   editor?: ReactNode;
   qualifications?: ReactNode;
+  admissionChecks?: ReactNode;
 }) {
   const [tab, setTab] = useState<ProfileTab>("overview");
   const [photoError, setPhotoError] = useState("");
@@ -349,7 +355,7 @@ function Profile({
         </div>
         <div className="person-badges">
           <DeskBadge tone={open ? "accent" : "neutral"}>{open ? "На смене" : "Не на смене"}</DeskBadge>
-          <DeskBadge tone={permitWords(until).tone}>{permitWords(until).label}</DeskBadge>
+          {admissionChecks ? <DeskBadge>Проверки — в документах</DeskBadge> : <DeskBadge tone={permitWords(until).tone}>{permitWords(until).label}</DeskBadge>}
         </div>
       </div>
       <FluidTabs name="person-tabs" label="Карточка сотрудника" value={tab} onChange={(id) => setTab(id as ProfileTab)} tabs={tabs.map(([id, label]) => ({ id, label }))} />
@@ -411,7 +417,7 @@ function Profile({
       {tab === "documents" ? (
         <>
           {qualifications}
-          <Permits person={person} until={until} scans={card.files.length} admitStep={admitStep} onAdmit={onAdmit} />
+          {admissionChecks ?? <Permits person={person} until={until} scans={card.files.length} admitStep={admitStep} onAdmit={onAdmit} />}
           <PersonFiles card={card} onCard={onCard} />
         </>
       ) : null}
