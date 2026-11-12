@@ -11,10 +11,10 @@ import { AdmissionChecksPanel } from "./admission-check-panel";
 import { QualificationsPanel } from "./qualifications-panel";
 import { EmployeeForm } from "./employee-form";
 import { canWriteStaff } from "./staff-form";
-import { minutesLabel, useBook, type Book } from "./book";
+import { TimeSheet } from "./time-sheet";
 import { Flash } from "./flash";
 import { DeskBadge, DeskCrumbs, DeskEmpty, DeskSelect, DeskTimeline, FluidTabs, SmoothButton, StatGrid } from "./kit";
-import { amount, clock, laneOf, laneTone, permitState, personName, statusLabel, todayKey, type Admission } from "./model";
+import { amount, clock, laneOf, laneTone, permitState, statusLabel, todayKey, type Admission } from "./model";
 import type { PeopleTab } from "./roles";
 
 export type PersonFile = { id: string; name: string; size: number; url: string };
@@ -36,7 +36,7 @@ const peopleTabLabels: { id: Tab; label: string }[] = [
 ];
 
 export function People({
-  session, projectId = "", data, onOpenTask, inviteWorker = false, inviteForeman = false, peopleTabs = ["people"], admitStep = "none", dayStep = "none", canExport = false, admissions = [], onAdmit, cards = [], onCard,
+  session, projectId = "", data, onOpenTask, inviteWorker = false, inviteForeman = false, peopleTabs = ["people"], admitStep = "none", canExport = false, admissions = [], onAdmit, cards = [], onCard,
 }: {
   session: Session;
   projectId?: string;
@@ -46,7 +46,6 @@ export function People({
   inviteForeman?: boolean;
   peopleTabs?: Tab[];
   admitStep?: "prepare" | "none";
-  dayStep?: "prepare" | "close" | "none";
   canExport?: boolean;
   admissions?: Admission[];
   onAdmit?: (employeeId: string, until: string) => void;
@@ -108,7 +107,7 @@ export function People({
       <div className="passport-head">
         <div>
           <h1>{workersOnly ? "Работники" : tab === "sheet" ? "Табель и рабочее время" : "Люди"}</h1>
-          <p className="sub">{workersOnly ? "Кого можно поставить на работу сегодня." : "Работник ставится в задание. Прораб задание ведёт."}</p>
+          <p className="sub">{tab === "sheet" ? "Записанные дни сервера. Пустая дата не означает подтверждённое отсутствие." : workersOnly ? "Кого можно поставить на работу сегодня." : "Работник ставится в задание. Прораб задание ведёт."}</p>
         </div>
         <div className="panel-tools">
           {(tab === "people" && canWriteStaff(session.role)) ? <SmoothButton onClick={() => setCreating(true)}>Добавить сотрудника</SmoothButton> : null}
@@ -171,75 +170,11 @@ export function People({
           </div>
         )
       ) : null}
-      {tab === "sheet" ? <Timesheet data={data} dayStep={dayStep} onOpen={setPersonId} /> : null}
+      {tab === "sheet" ? <TimeSheet session={session} projectId={projectId} /> : null}
     </section>
   );
 }
 
-
-function Timesheet({ data, dayStep, onOpen }: { data: Desk; dayStep: "prepare" | "close" | "none"; onOpen: (id: string) => void }) {
-  const { book, update } = useBook();
-  const dates = [...new Set(data.shifts.map((shift) => dayOf(shift.started_at)).filter(Boolean))].sort().reverse();
-  const [day, setDay] = useState(dates.includes(todayKey()) ? todayKey() : dates[0] ?? todayKey());
-  const [selected, setSelected] = useState<string | null>(null);
-  const rows = data.shifts.filter((shift) => dayOf(shift.started_at) === day);
-  const current = rows.find((shift) => shift.id === selected) ?? rows.find((shift) => shift.clock_requires_review) ?? rows[0];
-  const worked = new Set(rows.map((shift) => shift.employee_id).filter(Boolean));
-  const checks = rows.filter((shift) => shift.clock_requires_review).length;
-  return (
-    <>
-      <div className="object-tools">
-        <DeskSelect label="Период" value={day} options={(dates.length ? dates : [todayKey()]).map((item) => ({ value: item, label: labelDay(item) }))} onChange={(value) => { setDay(value); setSelected(null); }} />
-        <DeskSelect label="Бригада" value="" options={[{ value: "", label: "Бригад нет" }]} onChange={() => {}} />
-        {dayStep === "prepare" ? <SmoothButton onClick={() => update((item) => item.preparedDays.includes(day) ? item : { ...item, preparedDays: [...item.preparedDays, day] })}>{book.preparedDays.includes(day) ? "Закрытие подготовлено" : "Подготовить закрытие дня"}</SmoothButton> : null}
-        {dayStep === "close" ? <SmoothButton onClick={() => update((item) => item.closedDays.includes(day) ? item : { ...item, closedDays: [...item.closedDays, day] })}>{book.closedDays.includes(day) ? "День закрыт в браузере" : "Закрыть день"}</SmoothButton> : null}
-        {dayStep === "none" ? <DeskBadge>Утверждение табеля пока не реализовано</DeskBadge> : null}
-        <SmoothButton tone="ghost" onClick={() => save(`tabel-${day}.txt`, timesheetLines(data, book, day, rows))}>Выгрузить смены</SmoothButton>
-      </div>
-      <StatGrid items={[
-        { value: String(worked.size), label: "со сменой в этот день" },
-        { value: String(checks), label: "отметки на проверке" },
-        { value: String(rows.filter((shift) => shift.status === "open").length), label: "смены ещё открыты" },
-      ]} />
-      {book.downtime.filter((item) => item.day === day).length === 0 ? <p className="quiet">Простоя в этот день нет.</p> : book.downtime.filter((item) => item.day === day).map((item) => (
-        <p className="quiet" key={item.id}>Простой {minutesLabel(item.minutes)} · {item.cause}</p>
-      ))}
-      {rows.length === 0 ? <DeskEmpty title="В этот день смен нет" description="Выберите другую дату или дождитесь отметки с телефона." /> : (
-        <div className="sheet-split">
-          <div className="sheet-wrap">
-            <table className="sheet">
-              <thead>
-                <tr><th>Сотрудник</th><th>Начало</th><th>Окончание</th><th>Учтено</th><th>Статус</th></tr>
-              </thead>
-              <tbody>
-                {rows.map((shift) => (
-                  <tr key={shift.id} className={current?.id === shift.id ? "is-link is-on" : "is-link"} tabIndex={0} onClick={() => setSelected(shift.id)} onKeyDown={(event) => { if (event.key === "Enter") setSelected(shift.id); }}>
-                    <td><button type="button" className="linkish" onClick={(event) => { event.stopPropagation(); if (shift.employee_id) onOpen(shift.employee_id); }}>{short(personName(data, shift.employee_id ?? ""))}</button></td>
-                    <td>{clock(shift.started_at) || "—"}</td>
-                    <td>{clock(shift.finished_at) || "—"}</td>
-                    <td>{span(shift.started_at, shift.finished_at)}</td>
-                    <td><DeskBadge tone={shift.status === "open" || shift.clock_requires_review ? "accent" : "neutral"}>{shiftLabel(shift)}</DeskBadge></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="sheet-side">
-            <AnimatePresence mode="wait" initial={false}>
-              {current ? (
-                <motion.section className="panel" key={current.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}>
-                  <h2>История событий</h2>
-                  <DeskTimeline events={shiftStory(data, current)} />
-                </motion.section>
-              ) : null}
-            </AnimatePresence>
-          </div>
-        </div>
-      )}
-      <p className="quiet">Время смены и время задания считаются раздельно. Перерывы в эту таблицу ещё не пишутся.</p>
-    </>
-  );
-}
 
 function ServerProfile({
   projectId, loading, error, employee, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, session, onReload,
@@ -655,12 +590,6 @@ function within(at: string, days: number) {
   return Date.now() - time <= days * 86_400_000;
 }
 
-function shiftStory(data: Desk, shift: Desk["shifts"][number]) {
-  const rows = [{ id: `${shift.id}-start`, title: "Начало смены", detail: taskTitle(data, shift.task_id), when: clock(shift.started_at) || "—" }];
-  if (shift.finished_at) rows.push({ id: `${shift.id}-end`, title: "Окончание смены", detail: "", when: clock(shift.finished_at) || "—" });
-  return rows;
-}
-
 function shiftLabel(shift: Desk["shifts"][number]) {
   if (shift.clock_requires_review) return "На проверке";
   if (shift.status === "open") return "На смене";
@@ -736,33 +665,8 @@ function labelDay(value: string) {
   return new Date(year, month - 1, day).toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
 }
 
-function span(start?: string | null, end?: string | null) {
-  if (!start || !end) return "—";
-  const ms = new Date(end).getTime() - new Date(start).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return "—";
-  const hours = Math.floor(ms / 3_600_000);
-  const minutes = Math.floor((ms % 3_600_000) / 60_000);
-  if (hours === 0) return `${minutes} мин`;
-  return `${hours} ч ${minutes} мин`;
-}
-
 function initials(name: string) {
   return name.split(" ").slice(0, 2).map((part) => part.slice(0, 1)).join("").toUpperCase();
-}
-
-function short(name: string) {
-  const [first, last] = name.split(" ").filter(Boolean);
-  if (!last) return name;
-  return `${first.slice(0, 1)}. ${last}`;
-}
-
-function timesheetLines(data: Desk, book: Book, day: string, rows: Desk["shifts"]) {
-  const stops = book.downtime.filter((item) => item.day === day);
-  return [
-    "Выгрузка смен. Это не утверждённый табель.",
-    ...rows.map((shift) => `${personName(data, shift.employee_id ?? "")}\t${clock(shift.started_at) || "—"}\t${clock(shift.finished_at) || "—"}\t${span(shift.started_at, shift.finished_at)}\t${shift.status}`),
-    ...stops.map((item) => `простой\t${minutesLabel(item.minutes)}\t${item.cause}`),
-  ];
 }
 
 function save(name: string, lines: string[]) {
