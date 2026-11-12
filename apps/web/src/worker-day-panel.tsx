@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import type { Session } from "./api";
+import { Flash } from "./flash";
 import { DeskBadge } from "./kit";
 import { taskListPath, taskStatusText, type ServerTask } from "./task-read";
 import { ApiError, v1 } from "./v1";
+import { ShiftDialog } from "./shift-panel";
+import { shiftNeedsReason } from "./shift-command";
 import { clockLabel, dayReadError, dayReadPath, durationLabel, employeeListPath, ownEmployee, shiftListPath, shiftReading, visibleWorkerTasks, type DayEmployee, type DayReading, type DayShift, type ShiftReading } from "./worker-day";
 
 type Page<T> = { items: T[]; total: number };
@@ -16,6 +19,10 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
   const [loading, setLoading] = useState(true);
   const [gap, setGap] = useState("");
   const [employeeName, setEmployeeName] = useState("");
+  const [employeeId, setEmployeeId] = useState("");
+  const [shiftKind, setShiftKind] = useState<"shift_start" | "shift_end" | null>(null);
+  const [saved, setSaved] = useState("");
+  const [pulse, setPulse] = useState(0);
   const [reading, setReading] = useState<DayReading | null>(null);
   const [shifts, setShifts] = useState<ShiftReading | null>(null);
   const [tasks, setTasks] = useState<ServerTask[] | null>(null);
@@ -41,7 +48,7 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
       if (!live) return;
       if (!people.ok) {
         if (people.status === 401) expire.current();
-        setReading(null); setShifts(null); setTasks(null); setTasksTruncated(false);
+        setReading(null); setShifts(null); setTasks(null); setTasksTruncated(false); setEmployeeId("");
         setGap(""); setDayError(dayReadError(people.status, "people"));
         setLoading(false);
         return;
@@ -49,7 +56,7 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
       const employee = ownEmployee(people.ok.items, session.userId);
       if (!employee) {
         const own = people.ok.items.filter((item) => item.userId === session.userId);
-        setReading(null); setShifts(null); setTasks(null); setTasksTruncated(false); setDayError("");
+        setReading(null); setShifts(null); setTasks(null); setTasksTruncated(false); setEmployeeId(""); setDayError("");
         setGap(people.ok.items.length === 0 ? "Вас не назначили на этот объект. Без назначения день и задания не читаются." : own.length > 1 ? "Сервер показал больше одной своей карточки. День не выбирается сам." : "Своей карточки на этом объекте нет.");
         setLoading(false);
         return;
@@ -62,6 +69,7 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
       if (!live) return;
       if (dayResult.status === 401 || shiftResult.status === 401 || taskResult.status === 401) { expire.current(); setLoading(false); return; }
       setEmployeeName(employee.fullName);
+      setEmployeeId(employee.id);
       setReading(dayResult.ok ?? null);
       setDayError(dayResult.ok ? "" : dayReadError(dayResult.status, "day"));
       setShifts(shiftResult.ok ? shiftReading(shiftResult.ok.items, shiftResult.ok.total, employee.id, projectId) : null);
@@ -84,6 +92,11 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
         {ready && !loading && gap ? <p className="quiet worker-hold">{gap}</p> : null}
         {ready && !loading && dayError ? <p role="alert">{dayError} {retry}</p> : null}
         {ready && !loading && reading ? <DayFacts reading={reading} shifts={shifts} shiftError={shiftError} retry={retry} /> : null}
+        {ready && !loading && reading && employeeId && (shifts?.kind === "one" || shifts?.kind === "none") && Number.isSafeInteger(reading.version) ? <div className="template-bar">
+          {shifts.kind === "one" ? <button className="ghost desk-action" type="button" onClick={() => setShiftKind("shift_end")}>Закончить смену</button> : <button className="fill desk-action" type="button" onClick={() => setShiftKind("shift_start")}>Начать смену</button>}
+        </div> : null}
+        <Flash message={saved} pulse={pulse} />
+        {shiftKind && reading && employeeId ? <ShiftDialog session={session} projectId={projectId} employeeId={employeeId} kind={shiftKind} shiftId={shifts?.kind === "one" ? shifts.shift.id : ""} expectedVersion={reading.version} previousEventId={shifts?.kind === "one" ? shifts.shift.startEvent?.requestId ?? "" : ""} needsReason={shiftNeedsReason(session.role)} open={shifts?.kind === "one"} onClose={() => setShiftKind(null)} onDone={(message) => { setShiftKind(null); setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
         {ready && !loading && !gap && taskError ? <p role="alert">{taskError} {retry}</p> : null}
         {ready && !loading && tasks && tasks.length === 0 ? <p className="quiet">На сегодня опубликованных заданий нет. Их ставит прораб.</p> : null}
         {ready && !loading && tasksTruncated ? <p className="quiet">Сервер отдал не все задания этого дня.</p> : null}

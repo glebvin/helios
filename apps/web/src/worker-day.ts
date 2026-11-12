@@ -20,6 +20,7 @@ export type DayReading = {
   downtimeMs: string;
   idleMs: string;
   hasOpenIntervals: boolean;
+  version: number;
 };
 
 export type DayShift = {
@@ -28,6 +29,7 @@ export type DayShift = {
   employeeId: string;
   startedAt: string;
   endedAt: string | null;
+  startEvent?: { requestId: string } | null;
 };
 
 export type ShiftReading =

@@ -4,6 +4,7 @@ import { Flash } from "./flash";
 import { DeskBadge, DeskEmpty } from "./kit";
 import { NoteMark } from "./note-mark";
 import { FrontCheckPanel } from "./front-check-panel";
+import { ShiftPanel } from "./shift-panel";
 import { TaskActionPanel } from "./task-action-panel";
 import { TaskDraftDialog } from "./task-draft-form";
 import { canWriteTaskDraft } from "./task-draft";
@@ -170,10 +171,7 @@ function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack
           </dl>
         </section>
         <div className="person-column">
-          <section className="panel" aria-label="Смена">
-            <h2>Смена</h2>
-            <p className="quiet">{area === "shift" ? `Сервер отметил: ${taskStatusText(status)}. Начать или закончить смену с этой карточки нельзя.` : "В ответе задания нет открытой смены. Её начало и конец не выводятся из плана."}</p>
-          </section>
+          <ShiftPanel session={session} projectId={projectId} employeeId={task.assigneeEmployeeId} day={task.workDate} onChanged={() => { setPass((value) => value + 1); onChanged(); }} />
           <section className="panel" aria-label="Качество">
             <h2>Качество</h2>
             <p className="quiet">{area === "quality" ? `Сервер отметил: ${taskStatusText(status)}. Приёмка с этой карточки не записывается.` : "Приёмка с этой карточки не записывается. Сервер не отметил качество отдельным статусом."}</p>
