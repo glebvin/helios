@@ -419,9 +419,8 @@ function Profile({
       ) : null}
       {tab === "documents" ? (
         <>
-          {qualifications}
+          {qualifications || projectAccess ? <div className="documents-top">{qualifications}{projectAccess}</div> : null}
           {admissionChecks ?? <Permits person={person} until={until} scans={card.files.length} admitStep={admitStep} onAdmit={onAdmit} />}
-          {projectAccess}
           <PersonFiles card={card} onCard={onCard} />
         </>
       ) : null}

@@ -26,7 +26,7 @@ export function QualificationsPanel({ session, employeeId, archived }: { session
   }, []);
   useEffect(() => {
     let live = true;
-    setLoading(true); setPage(null);
+    setLoading(true);
     void (async () => {
       try {
         const [rows, clock] = await Promise.all([
@@ -47,8 +47,8 @@ export function QualificationsPanel({ session, employeeId, archived }: { session
   const writable = session.role === "director" && !archived && !blocked;
   return <section className="panel qualifications" aria-label="Квалификации">
     <div className="qualification-bar"><h2>Квалификации</h2>{writable ? <button className="ghost" type="button" onClick={() => { setEditor("new"); setSaved(""); }}>Добавить квалификацию</button> : null}</div>
-    <p className="quiet">Реквизиты документа сохраняются на сервере. Это не загрузка скана. Срок действует включительно по дню компании.</p>
-    {loading ? <p className="quiet" role="status">Читаем квалификации…</p> : null}
+    <p className="quiet">Срок действует включительно. Реквизиты — номер или ссылка на документ, не загрузка скана.</p>
+    {loading && !page ? <p className="quiet" role="status">Читаем квалификации…</p> : null}
     {error ? <p role="alert">{error} <button className="ghost" type="button" onClick={() => setPass(value => value + 1)}>Повторить чтение</button></p> : null}
     {page && !error ? <>
       {page.items.length === 0 ? <p className="quiet">Квалификаций пока нет.</p> : <div className="qualification-list">{page.items.map(row => {

@@ -1046,3 +1046,64 @@ h1, h2, h3, p { margin: 0; }
 .access-part { border-top: 1px solid var(--line); padding-top: 16px; margin-top: 16px; overflow-wrap: anywhere; }
 .access-actions > button { margin-top: 10px; }
 .project-access .access-actions button { height: auto; min-height: 40px; padding: 8px 14px; line-height: 1.3; }
+
+/* Employee documents: actions first, then a compact, inspectable history. */
+.documents-top { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; min-width: 0; }
+.documents-top > .panel { min-width: 0; }
+.documents-top h3 { font-size: 14px; font-weight: 500; }
+.documents-top .quiet { line-height: 1.5; }
+.documents-top .qualification-bar { align-items: center; }
+.documents-top .qualifications > .quiet { margin-top: 12px; }
+.documents-top .qualification-row > div { flex-basis: 180px; }
+.documents-top .qualification-row .badge { margin-left: auto; }
+.documents-top .access-part { padding-top: 14px; margin-top: 14px; }
+.documents-top .access-part > p { font-size: 13px; line-height: 1.5; }
+.documents-top .access-part ul { font-size: 13px; margin: 8px 0; padding-left: 18px; }
+.documents-top .access-actions { margin-top: 12px; }
+.documents-help { margin-top: 16px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.documents-help summary { cursor: pointer; width: fit-content; }
+.documents-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.documents-heading h2 { padding: 0; }
+.admission-checks > .quiet { line-height: 1.5; }
+.check-history { gap: 0; }
+.check-result { padding: 0; }
+.check-summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; cursor: pointer; list-style: none; border-radius: 6px; }
+.check-summary::-webkit-details-marker { display: none; }
+.check-summary:hover { background: color-mix(in srgb, var(--muted) 5%, transparent); }
+.check-summary:focus-visible, .documents-help summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.check-identity, .check-state { display: flex; align-items: center; gap: 16px; min-width: 0; }
+.check-identity b { font-size: 14px; font-weight: 500; }
+.check-identity time, .check-state .check-stale { color: var(--muted); font-size: 13px; }
+.check-identity time { font-variant-numeric: tabular-nums; }
+.check-state { margin-left: auto; justify-content: flex-end; }
+.check-chevron { color: var(--muted); font-size: 20px; width: 16px; text-align: center; flex: none; }
+.check-result[open] .check-chevron { transform: rotate(180deg); }
+.check-detail { padding: 0 0 20px; }
+.check-detail > p, .check-detail > ul { margin-top: 12px; }
+.check-detail h3 { font-size: 13px; font-weight: 500; margin-top: 20px; }
+.check-reasons { padding-left: 18px; font-size: 13px; line-height: 1.6; }
+.check-answers { list-style: none; padding: 0; display: grid; }
+.check-answers li { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 10px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.check-answers small { display: block; margin-top: 4px; }
+.check-answers b { font-size: 13px; font-weight: 500; }
+.check-evidence { list-style: none; padding: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+@media (max-width: 1000px) {
+  .documents-top { grid-template-columns: minmax(0, 1fr); }
+  .check-identity { flex-direction: column; align-items: flex-start; gap: 5px; }
+}
+@media (max-width: 600px) {
+  .check-summary { align-items: flex-start; gap: 10px; }
+  .check-state { flex-wrap: wrap; gap: 6px; max-width: 54%; }
+  .check-state .badge { white-space: normal; text-align: right; }
+  .check-state .check-stale { width: 100%; text-align: right; }
+  .documents-heading { flex-wrap: wrap; }
+  .documents-top .qualification-row { gap: 10px; }
+}
+@media (min-width: 601px) {
+  .documents-top .access-part:has(> .access-actions) { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 46%); column-gap: 16px; align-items: start; }
+  .documents-top .access-part:has(> .access-actions) > :not(.access-actions) { grid-column: 1; }
+  .documents-top .access-part > .access-actions { grid-column: 2; grid-row: 1 / span 6; align-self: center; margin-top: 0; }
+  .documents-top .access-actions .template-bar { justify-content: flex-start; gap: 8px; }
+  .documents-top .access-part > p, .documents-top .access-part > .badge { margin-top: 6px; }
+}
+.documents-top .qualification-row b { font-size: 14px; font-weight: 500; }

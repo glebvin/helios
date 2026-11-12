@@ -48,26 +48,26 @@ export function ProjectAccessPanel({ session, projectId, employeeId, userId, arc
     <h2>Доступ и назначение</h2>
     {!projectId ? <p className="quiet">Выберите объект в шапке для управления доступом и назначением.</p> : <>
       {data ? <p className="quiet">Объект: {data.projectName}</p> : null}
-      <p className="quiet">Учётная запись нужна для входа. Доступ открывает объект прорабу; работнику дополнительно нужно назначение. Это разные состояния.</p>
-      {loading ? <p className="quiet" role="status">Читаем доступ и назначение…</p> : null}
+      {loading && !data ? <p className="quiet" role="status">Читаем доступ и назначение…</p> : null}
       {error ? <p role="alert">{error} <button className="ghost" type="button" onClick={() => void load()}>Повторить чтение доступа</button></p> : null}
-      <div className="access-part"><h3>Учётная запись</h3><p>{userId ? "Привязана к сотруднику" : "Не привязана к сотруднику"}</p>
+      <div className="access-part"><h3>Учётная запись</h3><p className="quiet">{userId ? "Привязана к сотруднику" : "Не привязана к сотруднику"}</p>
         {!userId ? <p className="quiet">Назначение такой карточки не создаёт вход. Для работника с входом используйте приглашение из раздела «Люди».</p> : session.role === "director" ? <>
           {data ? <DeskBadge>{data.membership?.status === "active" ? "Доступ к объекту открыт" : "Доступ к объекту закрыт"}</DeskBadge> : null}
-          {data?.membership ? <p className="quiet">Роль учётной записи: {data.membership.role === "master" ? "Прораб" : data.membership.role === "worker" ? "Работник" : data.membership.role}. Роль здесь не меняется.</p> : null}
+          {data?.membership ? <p className="quiet">Роль: {data.membership.role === "master" ? "Прораб" : data.membership.role === "worker" ? "Работник" : data.membership.role}.</p> : null}
           {!blocked ? <AccessActions session={session} path={`/projects/${projectId}/memberships/${userId}`} kind="membership" disabled={loading || !data} activate={data ? accessCommand(data.membership?.version ?? 0, "active", "") : null} revoke={data?.membership?.status === "active" ? accessCommand(data.membership.version, "revoked", "") : null} active={data?.membership?.status === "active"} onRead={load} onSaved={() => saved("membership")} /> : null}
         </> : <p className="quiet">Доступом учётных записей управляет руководитель проекта.</p>}
       </div>
       <div className="access-part"><h3>Назначение сотрудника</h3>
         {data ? <><DeskBadge tone={data.assignment?.status === "active" && !data.assignment.currentAdmission.eligible ? "warn" : "neutral"}>{data.assignment?.status === "active" ? "Назначен на объект" : "Не назначен на объект"}</DeskBadge>
           {data.assignment?.status === "active" ? <><p>{data.assignment.currentAdmission.eligible ? "Сервер подтвердил актуальность допуска на момент чтения." : "Назначение сохранено, но условия допуска сейчас не выполнены."}</p><ul>{data.assignment.currentAdmission.reasons.map(reason => <li key={reason}>{admissionReason(reason)}</li>)}</ul></> : null}
-          <p className="quiet">{data.latest ? `Последняя попытка №${data.latest.sequence}: ${data.latest.passed ? "пройдена на момент записи" : "не пройдена"}. Актуальность повторно проверит сервер при назначении.` : "Пока нет проверки допуска этого сотрудника на объекте."}</p>
+          <p className="quiet">{data.latest ? `Последняя попытка №${data.latest.sequence}: ${data.latest.passed ? "пройдена" : "не пройдена"}.` : "Пока нет проверки допуска этого сотрудника на объекте."}</p>
         </> : null}
         {archived ? <p className="quiet">Архивного сотрудника нельзя назначить заново.</p> : null}
         {!userId ? <p className="quiet">После назначения сотрудник без привязанной учётной записи всё ещё не сможет войти.</p> : null}
         {session.role === "director" && !blocked ? <AccessActions session={session} path={`/projects/${projectId}/assignments/${employeeId}`} kind="assignment" disabled={loading || !data} activate={data?.latest?.passed && !archived ? accessCommand(data.assignment?.version ?? 0, "active", "", data.latest.id) : null} revoke={data?.assignment?.status === "active" ? accessCommand(data.assignment.version, "revoked", "") : null} active={data?.assignment?.status === "active"} onRead={load} onSaved={() => saved("assignment")} /> : null}
         {session.role !== "director" ? <p className="quiet">Назначение и снятие выполняет руководитель проекта.</p> : null}
       </div>
+      <details className="documents-help"><summary>Как работают доступ и назначение</summary><p className="quiet">Учётная запись нужна для входа. Прорабу достаточно доступа к объекту, работнику дополнительно нужно назначение с актуальной проверкой допуска. При назначении сервер заново проверит последнюю попытку, шаблон и квалификации.</p></details>
       {confirmed ? <p className="quiet" role="status">{confirmed}</p> : null}
     </>}
   </section>;
@@ -98,7 +98,7 @@ function AccessActions({ session, path, kind, disabled, activate, revoke, active
   return <div className="access-actions">
     {error ? <p role="alert">{error}</p> : null}
     {pending ? <><p className="quiet">Предыдущее изменение не подтверждено. Повтор отправит ту же команду.</p><button className="fill" type="button" disabled={busy} onClick={() => void send(pending)}>{busy ? "Подтверждаем…" : kind === "membership" ? "Повторить изменение доступа" : "Повторить изменение назначения"}</button>{!stored ? <p className="quiet">Номер команды не сохранён браузером. Повторите здесь, не закрывая карточку.</p> : null}</> : <div className="template-bar">
-      {kind === "assignment" || !active ? <button className="ghost" type="button" disabled={busy || disabled || conflict || !activate} onClick={() => { if (activate) void send(activate); }}>{openLabel}</button> : null}
+      {kind === "assignment" || !active ? <button className="fill" type="button" disabled={busy || disabled || conflict || !activate} onClick={() => { if (activate) void send(activate); }}>{openLabel}</button> : null}
       {active ? <button className="ghost" type="button" disabled={busy || disabled || conflict || !revoke} onClick={() => { if (revoke) void send(revoke); }}>{closeLabel}</button> : null}
     </div>}
     {error || conflict ? <button className="ghost" type="button" disabled={busy} onClick={() => void reread()}>Перечитать состояние</button> : null}

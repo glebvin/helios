@@ -48,19 +48,19 @@ export function AdmissionChecksPanel({ session, employeeId, projectId, archived 
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, path, offset, pass]);
   return <section className="panel admission-checks" aria-label="Проверки допуска">
-    <h2>Проверки допуска</h2>
+    <div className="documents-heading"><h2>Проверки допуска</h2>{session.role === "director" && !archived && !blocked && !editing && template && !error ? <button className="ghost" type="button" disabled={loading} onClick={() => { setEditing(template); setWritten(null); }}>Новая проверка</button> : null}</div>
     {!projectId ? <p className="quiet">Выберите объект в шапке для проверки допуска сотрудника.</p> : <>
       {projectName ? <p className="quiet">Объект: {projectName}</p> : null}
-      <p className="quiet">Результат каждой попытки определяет сервер. Пройденная попытка фиксирует проверку на момент записи; актуальный допуск и назначение на объект проверяются отдельно.</p>
-      {loading ? <p className="quiet" role="status">Читаем проверки допуска…</p> : null}
+      <p className="quiet">Успешная попытка — результат на момент записи. Текущий допуск и назначение проверяются отдельно.</p>
+      {loading && !page ? <p className="quiet" role="status">Читаем проверки допуска…</p> : null}
       {error ? <p role="alert">{error} <button className="ghost" type="button" onClick={() => setPass(value => value + 1)}>Повторить чтение проверок</button></p> : null}
-      {!loading && !error ? template ? <p className="quiet">Текущий шаблон: {template.title}, версия {template.version}.</p> : <p className="quiet">Шаблон допуска не создан. Руководитель задаёт его в «Настройках» этого объекта.</p> : null}
+      {!error && (page || !loading) ? template ? <p className="quiet">Текущий шаблон: {template.title}, версия {template.version}.</p> : <p className="quiet">Шаблон допуска не создан. Руководитель задаёт его в «Настройках» этого объекта.</p> : null}
       {archived ? <p className="quiet">Для архивного сотрудника доступна история; новые проверки не записываются.</p> : null}
       {session.role === "master" ? <p className="quiet">Прораб читает результаты. Попытку записывает руководитель проекта.</p> : null}
-      {session.role === "director" && !archived && !blocked ? editing ? <CheckForm session={session} path={path} projectId={projectId} initial={editing} latest={template} onCancel={() => setEditing(null)} onSaved={row => { setWritten(row); setEditing(null); setOffset(0); setPass(value => value + 1); }} /> : template && !error ? <button className="ghost" type="button" disabled={loading} onClick={() => { setEditing(template); setWritten(null); }}>Новая проверка</button> : null : null}
+      {session.role === "director" && !archived && !blocked ? editing ? <CheckForm session={session} path={path} projectId={projectId} initial={editing} latest={template} onCancel={() => setEditing(null)} onSaved={row => { setWritten(row); setEditing(null); setOffset(0); setPass(value => value + 1); }} /> : null : null}
       {written ? <p className="quiet" role="status">{`Сервер записал попытку №${written.sequence}: ${written.passed ? "проверка пройдена" : "проверка не пройдена"}.`}</p> : null}
       {written && !page?.items.some(item => item.id === written.id) ? <CheckResult row={written} template={template} /> : null}
-      {!loading && !error && page?.total === 0 ? <p className="quiet">Попыток проверки на этом объекте пока нет.</p> : null}
+      {!error && page?.total === 0 ? <p className="quiet">Попыток проверки на этом объекте пока нет.</p> : null}
       <div className="check-history">{page?.items.map(row => <CheckResult key={row.id} row={row} template={template} />)}</div>
       {page && page.total > 10 ? <div className="template-bar"><button className="ghost" disabled={loading || offset === 0} onClick={() => setOffset(Math.max(0, offset - 10))}>Предыдущие проверки</button><span className="quiet">{offset + 1}–{offset + page.items.length} из {page.total}</span><button className="ghost" disabled={loading || offset + page.items.length >= page.total} onClick={() => setOffset(offset + 10)}>Более ранние проверки</button></div> : null}
     </>}
@@ -68,14 +68,23 @@ export function AdmissionChecksPanel({ session, employeeId, projectId, archived 
 }
 function CheckResult({ row, template }: { row: AdmissionCheck; template: AdmissionTemplate | null }) {
   const stale = !!template && (row.templateVersion !== template.version || row.templateCode !== template.code);
-  return <article className="check-result">
-    <div className="template-bar"><b>Попытка №{row.sequence}</b><DeskBadge tone={!row.passed || stale ? "warn" : "neutral"}>{row.passed ? "Пройдена на момент записи" : "Не пройдена"}</DeskBadge></div>
-    <p className="quiet">{new Date(row.checkedAt).toLocaleString("ru-RU")} · шаблон версии {row.templateVersion}.</p>
-    {stale ? <p className="check-stale">Шаблон изменён. Эта попытка относится к прежней версии; нужна новая проверка.</p> : !template ? <p className="quiet">Актуальность шаблона не подтверждена.</p> : null}
-    {row.reasons.length ? <ul>{row.reasons.map(reason => <li key={reason}>{checkReason(reason, row.templateSnapshot)}</li>)}</ul> : null}
-    {row.warnings.length ? <ul className="quiet">{row.warnings.map(reason => <li key={reason}>{checkReason(reason, row.templateSnapshot)}</li>)}</ul> : null}
-    <details><summary>Ответы и требования на момент проверки</summary><ul>{row.templateSnapshot.items.map(item => <li key={item.id}>{item.label}: {row.answers.find(answer => answer.itemId === item.id)?.value ? "да" : "нет"}</li>)}</ul><p className="quiet">Квалификации: {row.templateSnapshot.requiredQualificationCodes.join(", ") || "не требовались"}.</p></details>
-  </article>;
+  return <details className="check-result">
+    <summary className="check-summary">
+      <span className="check-identity"><b>Попытка №{row.sequence}</b><time dateTime={row.checkedAt}>{new Date(row.checkedAt).toLocaleString("ru-RU")}</time></span>
+      <span className="check-state">{stale ? <span className="check-stale">Прежний шаблон</span> : null}<DeskBadge tone={!row.passed || stale ? "warn" : "done"}>{row.passed ? "Пройдена" : "Не пройдена"}</DeskBadge><span className="check-chevron" aria-hidden="true">⌄</span></span>
+    </summary>
+    <div className="check-detail">
+      <p>{row.passed ? "Пройдена на момент записи" : "Проверка не пройдена"}</p>
+      <p className="quiet">{row.templateSnapshot.title} · шаблон версии {row.templateVersion} · дата проверки {row.civilDate}.</p>
+      {stale ? <p className="check-stale">Шаблон изменён. Эта попытка относится к прежней версии; нужна новая проверка.</p> : !template ? <p className="quiet">Актуальность шаблона не подтверждена.</p> : null}
+      {row.reasons.length ? <ul className="check-reasons">{row.reasons.map(reason => <li key={reason}>{checkReason(reason, row.templateSnapshot)}</li>)}</ul> : null}
+      {row.warnings.length ? <ul className="check-reasons quiet">{row.warnings.map(reason => <li key={reason}>{checkReason(reason, row.templateSnapshot)}</li>)}</ul> : null}
+      <h3>Ответы и требования на момент проверки</h3>
+      <ul className="check-answers">{row.templateSnapshot.items.map(item => <li key={item.id}><span>{item.label}{item.critical ? <small className="quiet">Критичный пункт</small> : null}</span><b>{row.answers.find(answer => answer.itemId === item.id)?.value ? "Да" : "Нет"}</b></li>)}</ul>
+      <p className="quiet">Требуемые квалификации: {row.templateSnapshot.requiredQualificationCodes.join(", ") || "не требовались"}.</p>
+      {row.qualificationEvidence.length ? <ul className="check-evidence">{row.qualificationEvidence.map(item => <li key={item.id}>{item.code} · версия {item.version} · {item.validUntil ? `по ${item.validUntil.split("-").reverse().join(".")}` : "без срока"}</li>)}</ul> : null}
+    </div>
+  </details>;
 }
 function CheckForm({ session, path, projectId, initial, latest, onCancel, onSaved }: { session: Session; path: string; projectId: string; initial: AdmissionTemplate; latest: AdmissionTemplate | null; onCancel: () => void; onSaved: (row: AdmissionCheck) => void }) {
   const [source, setSource] = useState(initial);
