@@ -4,6 +4,8 @@ import { ApiError, v1 } from "./v1";
 import { Dialog } from "./dialog";
 import { DeskBadge, DeskSelect } from "./kit";
 import { staffRequest } from "./staff-form";
+import { Flash } from "./flash";
+import { NoteMark } from "./note-mark";
 import { qualificationError, qualificationState, type Qualification, type QualificationPage } from "./qualifications";
 
 const describe = (reason: unknown) => qualificationError(reason instanceof ApiError ? reason : {});
@@ -16,7 +18,7 @@ export function QualificationsPanel({ session, employeeId, archived }: { session
   const [loading, setLoading] = useState(true);
   const [blocked, setBlocked] = useState(false);
   const [editor, setEditor] = useState<Qualification | "new" | null>(null);
-  const [saved, setSaved] = useState("");
+  const [saved, setSaved] = useState(""), [savedPulse, setSavedPulse] = useState(0);
   const path = `/employees/${employeeId}/qualifications`;
   useEffect(() => {
     const refresh = () => setPass(value => value + 1);
@@ -46,24 +48,26 @@ export function QualificationsPanel({ session, employeeId, archived }: { session
   }, [session.token, session.tenantId, path, offset, pass]);
   const writable = session.role === "director" && !archived && !blocked;
   return <section className="panel qualifications" aria-label="Квалификации">
-    <div className="qualification-bar"><h2>Квалификации</h2>{writable ? <button className="ghost" type="button" onClick={() => { setEditor("new"); setSaved(""); }}>Добавить квалификацию</button> : null}</div>
-    <p className="quiet">Срок действует включительно. Реквизиты — номер или ссылка на документ, не загрузка скана.</p>
+    <div className="documents-heading">
+      <div className="documents-title"><h2>Квалификации</h2><NoteMark label="Как устроены квалификации"><p>Срок действует включительно. Реквизиты — номер или ссылка на документ, не загрузка скана.</p>{archived ? <p>У архивного сотрудника квалификации доступны для чтения.</p> : null}</NoteMark></div>
+      {writable ? <button className="ghost desk-action" type="button" onClick={() => { setEditor("new"); setSaved(""); }}>Добавить квалификацию</button> : null}
+    </div>
     {loading && !page ? <p className="quiet" role="status">Читаем квалификации…</p> : null}
     {error ? <p role="alert">{error} <button className="ghost" type="button" onClick={() => setPass(value => value + 1)}>Повторить чтение</button></p> : null}
     {page && !error ? <>
       {page.items.length === 0 ? <p className="quiet">Квалификаций пока нет.</p> : <div className="qualification-list">{page.items.map(row => {
         const state = qualificationState(row, day);
+        const meta = [`Код ${row.code}`, row.documentReference, row.validUntil ? `по ${row.validUntil.split("-").reverse().join(".")}` : "без срока"].filter(Boolean).join(" · ");
         return <article className="qualification-row" key={row.id}>
-          <div><b>{row.title}</b><span className="quiet">Код: {row.code}</span><span>{row.documentReference || "Реквизиты не указаны"}</span><span className="quiet">{row.validUntil ? `По ${row.validUntil.split("-").reverse().join(".")}` : "Без срока"}</span></div>
+          <div><b>{row.title}</b><span className="quiet">{meta}</span></div>
           <DeskBadge tone={state === "Действует" ? "accent" : "neutral"}>{state}</DeskBadge>
-          {writable && row.status === "active" ? <button className="ghost" type="button" onClick={() => { setEditor(row); setSaved(""); }}>Изменить</button> : null}
+          {writable && row.status === "active" ? <button className="ghost desk-action" type="button" onClick={() => { setEditor(row); setSaved(""); }}>Изменить</button> : null}
         </article>;
       })}</div>}
-      {page.total > 25 ? <div className="qualification-bar"><button className="ghost" disabled={loading || offset === 0} onClick={() => setOffset(Math.max(0, offset - 25))}>Назад</button><span className="quiet">{offset + 1}–{offset + page.items.length} из {page.total}</span><button className="ghost" disabled={loading || offset + page.items.length >= page.total} onClick={() => setOffset(offset + 25)}>Далее</button></div> : null}
+      {page.total > 25 ? <div className="qualification-bar"><button className="ghost desk-action" disabled={loading || offset === 0} onClick={() => setOffset(Math.max(0, offset - 25))}>Назад</button><span className="quiet">{offset + 1}–{offset + page.items.length} из {page.total}</span><button className="ghost desk-action" disabled={loading || offset + page.items.length >= page.total} onClick={() => setOffset(offset + 25)}>Далее</button></div> : null}
     </> : null}
-    {saved ? <p className="quiet" role="status">{saved}</p> : null}
-    {archived ? <p className="quiet">У архивного сотрудника квалификации доступны для чтения.</p> : null}
-    {editor && writable ? <QualificationEditor session={session} path={path} row={editor === "new" ? null : editor} onClose={() => setEditor(null)} onSaved={row => { setEditor(null); setSaved(`Сервер записал «${row.title}».`); setPass(value => value + 1); }} /> : null}
+    <Flash message={saved} pulse={savedPulse} />
+    {editor && writable ? <QualificationEditor session={session} path={path} row={editor === "new" ? null : editor} onClose={() => setEditor(null)} onSaved={row => { setEditor(null); setSaved(`Сервер записал «${row.title}».`); setSavedPulse(value => value + 1); setPass(value => value + 1); }} /> : null}
   </section>;
 }
 
@@ -130,8 +134,8 @@ function QualificationEditor({ session, path, row, onClose, onSaved }: { session
       {error ? <p role="alert">{error}</p> : null}
       {error && source ? <button className="ghost" type="button" disabled={busy} onClick={() => void readCurrent()}>Прочитать актуальную запись</button> : null}
       {error && !stored ? <p className="quiet">Номер попытки не сохранён браузером. Повторите в этой форме, не закрывая её.</p> : null}
-      <button className="ghost" type="button" disabled={busy} onClick={onClose}>Отмена</button>
-      <button className="fill" type="submit" disabled={busy || source?.status === "revoked" || !title.trim() || !code.trim()}>{busy ? "Записываем…" : "Сохранить квалификацию"}</button>
+      <button className="ghost desk-action" type="button" disabled={busy} onClick={onClose}>Отмена</button>
+      <button className="fill desk-action" type="submit" disabled={busy || source?.status === "revoked" || !title.trim() || !code.trim()}>{busy ? "Записываем…" : "Сохранить квалификацию"}</button>
     </form>
   </Dialog>;
 }

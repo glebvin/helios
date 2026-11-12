@@ -1,4 +1,4 @@
-import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, animate, motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 const ease = [0.2, 0, 0, 1] as const;
@@ -361,19 +361,31 @@ export function ProfileMenu({ name, role, onLogout }: { name: string; role: stri
   );
 }
 
-export function PageShift({ pageKey, children }: { pageKey: string; children: ReactNode }) {
+export function PageShift({ pageKey, refreshKey = "", children }: { pageKey: string; refreshKey?: string; children: ReactNode }) {
+  const reduce = useReducedMotion();
+  const frame = useRef<HTMLDivElement>(null);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    if (reduce || !frame.current) return;
+    const play = animate(frame.current, { opacity: [0.4, 1], y: [8, 0] }, { duration: 0.32, ease: [0.23, 1, 0.32, 1] });
+    return () => play.stop();
+  }, [refreshKey, reduce]);
   return (
-    <AnimatePresence mode="wait" initial={false}>
-      <motion.div
-        key={pageKey}
-        className="workspace-page"
-        initial={{ opacity: 0, x: 12 }}
-        animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: -12 }}
-        transition={{ duration: 0.22, ease }}
-      >
-        {children}
-      </motion.div>
-    </AnimatePresence>
+    <div className="workspace-stage">
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          ref={frame}
+          key={pageKey}
+          className="workspace-page"
+          initial={reduce ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reduce ? undefined : { opacity: 0 }}
+          transition={reduce ? { duration: 0 } : { type: "spring", bounce: 0, duration: 0.28 }}
+        >
+          {children}
+        </motion.div>
+      </AnimatePresence>
+    </div>
   );
 }

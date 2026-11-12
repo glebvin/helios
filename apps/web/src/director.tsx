@@ -152,7 +152,7 @@ export function DirectorDesk({
           <ProfileMenu name={scope.actor?.name ?? session.name} role={roleTitle(scope.actor?.role ?? session.role)} onLogout={onLogout} />
         </header>
         {preview ? <p className="quiet preview-note">Просмотр кабинета: {access.hint} Вход не меняется: {session.name}, {roleTitle(session.role)}. Запись от выбранного вида не выполняется.</p> : null}
-        <PageShift pageKey={page}>
+        <PageShift pageKey={page} refreshKey={scope.projectId}>
           {page === "overview" ? (
             <>
             {preview ? null : <DayFlow session={session} />}
@@ -248,7 +248,7 @@ export function DirectorDesk({
             />
           ) : null}
           {page === "documents" ? <Documents data={data} canConfirm={false} canDraft={canDraftAct} checklistNote={access.checklistNote} /> : null}
-          {page === "settings" ? <Settings session={session} projectId={templateProjectId} data={data} theme={theme} onTheme={onTheme} onLogout={onLogout} viewLabel={roleTitle(session.role)} viewHint={preview ? access.hint : "Этот вход видит только свои серверные действия."} showAccess={!preview && access.showAccess} slim={access.settingsSlim || preview} /> : null}
+          {page === "settings" ? <Settings session={session} projectId={templateProjectId} data={data} onLogout={onLogout} viewLabel={roleTitle(session.role)} viewHint={preview ? access.hint : "Этот вход видит только свои серверные действия."} showAccess={!preview && access.showAccess} slim={access.settingsSlim || preview} /> : null}
         </PageShift>
       </div>
     </div>
