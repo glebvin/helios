@@ -14,7 +14,7 @@ GitHub: [задача #35](https://github.com/glebvin/helios/issues/35). Ста�
 
 ## Зависимости
 
-[R05](https://github.com/glebvin/helios/issues/5), [R11](https://github.com/glebvin/helios/issues/11), [R24](https://github.com/glebvin/helios/issues/24), [R27](https://github.com/glebvin/helios/issues/27). Перед стартом сверить принятые результаты, свежую main и открытые PR.
+[R05](https://github.com/glebvin/helios/issues/5), [R11](https://github.com/glebvin/helios/issues/11), [R24](https://github.com/glebvin/helios/issues/24), [R27](https://github.com/glebvin/helios/issues/27), [R32](https://github.com/glebvin/helios/issues/38). Перед стартом сверить принятые результаты, свежую main и открытые PR.
 
 ## Контракт перед реализацией
 
