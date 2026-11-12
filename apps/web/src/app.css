@@ -379,6 +379,8 @@ h1, h2, h3, p { margin: 0; }
 .time-range input { height: 32px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); padding: 0 10px; color: var(--ink); font: inherit; font-size: 13px; }
 .time-decide { display: grid; gap: 10px; margin-top: 8px; }
 .time-decide .template-bar { justify-content: flex-start; gap: 8px; }
+.time-gaps { margin: 8px 0 0; padding-left: 18px; }
+.time-gaps li { margin: 4px 0; }
 .object-search {
   flex: 1;
   min-width: 220px;
