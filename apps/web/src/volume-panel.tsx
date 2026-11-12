@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "./api";
 import { Dialog } from "./dialog";
+import { EvidenceFiles } from "./evidence-panel";
 import { segmentListPath } from "./segment";
 import { ApiError, v1 } from "./v1";
 import { dayReadPath, type DayReading } from "./worker-day";
@@ -75,6 +76,7 @@ export function VolumeDesk({ session, projectId, employeeId, day, tasks, writabl
     <h2>Объём</h2>
     {error ? <p role="alert">{error}</p> : <p className="quiet">{shiftText}</p>}
     {ready && !reportsReady && !error ? <p className="quiet">Сервер отдал не все отчёты. Повтор не показываем.</p> : null}
+    {ready && reportsReady && reports.length === 0 ? <p className="quiet">Фото привязывается к сданному отчёту. Незавершённый файл сохранённым не считается.</p> : null}
     {tasks.map((task) => {
       const found = reportsForTask(reports, reportsReady ? reports.length : reports.length + 1, task.id);
       const rows = found.kind === "ready" ? found.items : [];
@@ -83,6 +85,7 @@ export function VolumeDesk({ session, projectId, employeeId, day, tasks, writabl
       return <div key={task.id}>
         <p>{task.title}</p>
         {rows.map((row) => <p className="quiet" key={row.reportId}>Сообщено {row.submittedQuantity} {row.unit || task.unit}. Не принято.</p>)}
+        {reportsReady ? rows.map((row) => <EvidenceFiles key={row.reportId} session={session} projectId={projectId} employeeId={employeeId} reportId={row.reportId} onDone={onDone} />) : null}
         {closed && work[task.id] === "no" && eligible ? <p className="quiet">В этой смене нет закрытой работы по заданию.</p> : null}
         {closed && work[task.id] === "incomplete" ? <p className="quiet">Интервалы смены прочитаны не полностью.</p> : null}
         {canSend ? <div className="template-bar"><button className="ghost desk-action" type="button" onClick={() => setTaskId(task.id)}>Сдать объём</button></div> : null}
