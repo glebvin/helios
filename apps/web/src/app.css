@@ -1053,6 +1053,11 @@ h1, h2, h3, p { margin: 0; }
 .qualification-list { display: grid; margin-top: 8px; animation: rise-in .32s cubic-bezier(.23, 1, .32, 1); }
 .catalog-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; }
 .task-hold { min-height: 168px; }
+.worker-hold { min-height: 148px; }
+.worker-day { display: grid; gap: 12px; }
+.worker-day h2 { font-size: 22px; letter-spacing: -0.04em; font-weight: 500; }
+.worker-day .shift-card > div:first-child { flex: 1; min-width: 0; }
+.worker-time { flex: 0 0 auto; text-align: right; }
 .task-read { display: grid; gap: 16px; }
 .task-read h1 { font-size: 28px; letter-spacing: -0.04em; font-weight: 500; }
 .check-line { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13px; }
