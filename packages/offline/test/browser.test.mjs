@@ -401,9 +401,22 @@ if(suite==='mechanics'||suite==='all') tests.push(
       const absent=await queue.get(command.requestId);const transaction=IDBDatabase.prototype.transaction;let strict=0;
       IDBDatabase.prototype.transaction=function(...args){if(args[2]){strict++;throw new TypeError('injected unsupported durability');}return transaction.apply(this,args);};
       try{await queue.enqueueEvent(command);}finally{IDBDatabase.prototype.transaction=transaction;}
-      const info=await queue.storageInfo({requestPersistence:true});const storage=navigator.storage;
-      const originals={persisted:storage.persisted,estimate:storage.estimate,persist:storage.persist};Object.assign(storage,{persisted:async()=>true,estimate:async()=>({usage:123,quota:456}),persist:async()=>false});
-      const explicit=await queue.storageInfo({requestPersistence:true});storage.estimate=async()=>{throw new Error('private diagnostic');};const failure=await queue.storageInfo();Object.assign(storage,originals);
+      const info=await queue.storageInfo({requestPersistence:true});const nativeStorage=navigator.storage;
+      // StorageManager is optional even with native IndexedDB (Linux WebKit).
+      // Keep the native capability check, then inject only the diagnostic API;
+      // quota, durability, versionchange and queue data still use real IndexedDB.
+      {
+        if(info.persistenceSupported!==!!nativeStorage?.persist)throw new Error('native persistence capability mismatch');
+        if(!nativeStorage&&(info.persisted!==null||info.estimate!==null||info.persistenceGranted!==null||info.error!==null))throw new Error('missing StorageManager must stay explicit');
+      }
+      const descriptor=Object.getOwnPropertyDescriptor(navigator,'storage');
+      const storage={persisted:async()=>true,estimate:async()=>({usage:123,quota:456}),persist:async()=>false};let explicit,failure;
+      Object.defineProperty(navigator,'storage',{value:storage,configurable:true});
+      try {
+        explicit=await queue.storageInfo({requestPersistence:true});storage.estimate=async()=>{throw new Error('private diagnostic');};failure=await queue.storageInfo();
+      } finally {
+        if(descriptor)Object.defineProperty(navigator,'storage',descriptor);else delete navigator.storage;
+      }
       await new Promise((resolve,reject)=>{const r=indexedDB.open('helios-managed-offline',2);r.onsuccess=()=>{r.result.close();resolve();};r.onerror=()=>reject(r.error);r.onblocked=()=>reject(new Error('versionchange did not release connection'));});
       const closed=await queue.list().then(()=>null,e=>e.code);return {quota,absent,strict,info,explicit,failure,closed};
     },command);assert.equal(result.quota,'QuotaExceededError');assert.equal(result.absent,null);assert.equal(result.strict,1);assert.equal(result.info.indexedDB,true);assert.equal(result.info.webLocks,true);assert.deepEqual(result.explicit.estimate,{usage:123,quota:456});assert.equal(result.explicit.persisted,true);assert.equal(result.explicit.persistenceGranted,false);assert.equal(result.failure.error,'storage_info_failed');assert.equal(result.closed,'storage_closed');

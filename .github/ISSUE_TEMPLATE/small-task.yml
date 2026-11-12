@@ -7,6 +7,14 @@ body:
     attributes:
       label: Шаг roadmap и роль
   - type: textarea
+    id: source
+    attributes:
+      label: Связь с ТЗ и обязательный остаток
+      description: Пункт ТЗ 4.0; какую часть делает задача и что остаётся в других issues. Для технического обеспечения укажите связанный NFR.
+      placeholder: "Реализует часть 19.2.1: квалификации. Проверка допуска остаётся в R06 / #6."
+    validations:
+      required: true
+  - type: textarea
     id: outcome
     attributes:
       label: Что должно заработать
