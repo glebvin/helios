@@ -2,7 +2,7 @@
 
 GitHub: [R10 · задача #10](https://github.com/glebvin/helios/issues/10).
 
-Статус: **review**. Черновик пишется на сервер прежней доски и появляется в «Назначено» только после ответа. [PR64](https://github.com/glebvin/helios/pull/64). Merge и выкладка не выполнены.
+Статус: **verified**. Техническая проверка пакета R08–R12 завершена. [Отчёт](../../qa/release-tasks-2026-11-12.md); факт объединения и публикации — в GitHub Releases.
 
 - Группа: Задания.
 - Роли: rp, master.

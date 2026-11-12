@@ -63,6 +63,15 @@ export function frontCheckBody(taskVersion: number, template: FrontTemplate, ans
   };
 }
 
+export type FrontCommand = { body: ReturnType<typeof frontCheckBody> };
+
+export function frontCommand(previous: FrontCommand | null, taskVersion: number, template: FrontTemplate, answers: FrontAnswers, createId: () => string): FrontCommand {
+  const body = frontCheckBody(taskVersion, template, answers, "");
+  const saved = previous?.body;
+  if (saved && typeof saved.requestId === "string" && Number.isInteger(saved.expectedVersion) && saved.templateVersion === body.templateVersion && JSON.stringify(saved.answers) === JSON.stringify(body.answers)) return previous!;
+  return { body: { ...body, requestId: createId() } };
+}
+
 export function frontTemplateCurrent(seen: FrontTemplate, latest: FrontTemplate) {
   return seen.version === latest.version && seen.code === latest.code;
 }

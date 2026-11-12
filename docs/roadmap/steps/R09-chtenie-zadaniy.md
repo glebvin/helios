@@ -2,7 +2,7 @@
 
 GitHub: [R09 · задача #9](https://github.com/glebvin/helios/issues/9).
 
-Статус: **review**. Доска и список читают статус сервера, локальный перенос карточки не считается статусом. [PR63](https://github.com/glebvin/helios/pull/63).
+Статус: **verified**. Техническая проверка пакета R08–R12 завершена. [Отчёт](../../qa/release-tasks-2026-11-12.md); факт объединения и публикации — в GitHub Releases.
 
 - Группа: Задания.
 - Роли: rp, master, worker.

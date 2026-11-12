@@ -3,11 +3,10 @@ import type { Session } from "./api";
 import { Dialog } from "./dialog";
 import { Flash } from "./flash";
 import { DeskSelect } from "./kit";
-import { staffRequest } from "./staff-form";
 import { ApiError, v1 } from "./v1";
 import {
-  blankFrontAnswers, canWriteFrontCheck, frontAnswersComplete, frontCheckBody, frontError, frontReason, frontTemplateCurrent,
-  type FrontAnswers, type FrontCheck, type FrontReadiness, type FrontTemplate,
+  blankFrontAnswers, canWriteFrontCheck, frontAnswersComplete, frontCommand, frontError, frontReason, frontTemplateCurrent,
+  type FrontAnswers, type FrontCheck, type FrontCommand, type FrontReadiness, type FrontTemplate,
 } from "./front-check";
 
 const describe = (reason: unknown) => frontError(reason instanceof ApiError ? reason.status : null, reason instanceof ApiError ? reason.message : "");
@@ -63,7 +62,7 @@ export function FrontCheckPanel({ session, projectId, taskId, taskVersion, statu
       {readiness.warnings.length ? <ul className="check-reasons">{readiness.warnings.map((reason) => <li key={reason}>{frontReason(reason, items)}</li>)}</ul> : null}
     </> : null}
     <Flash message={saved} pulse={pulse} />
-    {open && template ? <FrontAnswerDialog session={session} projectId={projectId} taskId={taskId} taskVersion={taskVersion} template={template} onClose={() => setOpen(false)} onSaved={(row) => {
+    {open && template ? <FrontAnswerDialog session={session} projectId={projectId} taskId={taskId} taskVersion={taskVersion} template={template} onRead={() => { setOpen(false); onRecorded(); }} onClose={() => setOpen(false)} onSaved={(row) => {
       setOpen(false);
       setSaved(row.passed ? `Сервер записал проверку №${row.sequence}.` : `Сервер записал проверку №${row.sequence}. Критичный пункт не пройден.`);
       setPulse((value) => value + 1);
@@ -72,12 +71,13 @@ export function FrontCheckPanel({ session, projectId, taskId, taskVersion, statu
   </section>;
 }
 
-function FrontAnswerDialog({ session, projectId, taskId, taskVersion, template, onClose, onSaved }: {
+function FrontAnswerDialog({ session, projectId, taskId, taskVersion, template, onRead, onClose, onSaved }: {
   session: Session;
   projectId: string;
   taskId: string;
   taskVersion: number;
   template: FrontTemplate;
+  onRead: () => void;
   onClose: () => void;
   onSaved: (row: FrontCheck) => void;
 }) {
@@ -86,8 +86,9 @@ function FrontAnswerDialog({ session, projectId, taskId, taskVersion, template, 
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [stored, setStored] = useState(true);
+  const [stale, setStale] = useState(false);
   const lock = useRef(false);
-  const request = useRef({ id: "", key: "" });
+  const request = useRef<FrontCommand | null>(null);
   const alertRef = useRef<HTMLParagraphElement>(null);
   const pendingKey = `helios.front-check:${session.tenantId}:${session.userId}:${taskId}:${source.version}`;
   const complete = frontAnswersComplete(source, answers);
@@ -95,7 +96,7 @@ function FrontAnswerDialog({ session, projectId, taskId, taskVersion, template, 
   async function readTemplate() {
     const latest = await v1<FrontTemplate>(session, `/projects/${projectId}/front-template`);
     if (!frontTemplateCurrent(source, latest)) {
-      setSource(latest); setAnswers(blankFrontAnswers(latest)); request.current = { id: "", key: "" };
+      setSource(latest); setAnswers(blankFrontAnswers(latest)); request.current = null;
       setError("Шаблон изменён. Прочитайте пункты версии " + latest.version + " и ответьте заново.");
       return null;
     }
@@ -107,16 +108,15 @@ function FrontAnswerDialog({ session, projectId, taskId, taskVersion, template, 
     try {
       const latest = await readTemplate();
       if (!latest) return;
-      const key = JSON.stringify(frontCheckBody(taskVersion, latest, answers, ""));
-      if (!request.current.id) {
-        try { const previous = JSON.parse(sessionStorage.getItem(pendingKey) ?? "null"); if (typeof previous?.id === "string" && typeof previous?.key === "string") request.current = previous; } catch { /* The open form can still repeat the same attempt. */ }
+      if (!request.current) {
+        try { request.current = JSON.parse(sessionStorage.getItem(pendingKey) ?? "null"); } catch { /* The open form can still repeat the same attempt. */ }
       }
-      request.current = staffRequest(request.current, key, () => crypto.randomUUID());
+      request.current = frontCommand(request.current, taskVersion, latest, answers, () => crypto.randomUUID());
       try { sessionStorage.setItem(pendingKey, JSON.stringify(request.current)); setStored(true); } catch { setStored(false); }
-      const row = await v1<FrontCheck>(session, `/projects/${projectId}/tasks/${taskId}/front-checks`, frontCheckBody(taskVersion, latest, answers, request.current.id));
+      const row = await v1<FrontCheck>(session, `/projects/${projectId}/tasks/${taskId}/front-checks`, request.current.body);
       try { sessionStorage.removeItem(pendingKey); } catch { /* The server answer is enough. */ }
       onSaved(row);
-    } catch (reason) { setError(describe(reason)); }
+    } catch (reason) { setError(describe(reason)); setStale(reason instanceof ApiError && reason.status === 409 && reason.message === "stale_version"); }
     finally { lock.current = false; setBusy(false); }
   }
   return <Dialog title="Проверка фронта" onClose={() => { if (!lock.current) onClose(); }}>
@@ -131,6 +131,7 @@ function FrontAnswerDialog({ session, projectId, taskId, taskVersion, template, 
         </div>)}
       </fieldset>
       {error ? <button className="ghost desk-action" type="button" disabled={busy} onClick={() => void readTemplate().catch((reason: unknown) => setError(describe(reason)))}>Прочитать актуальную версию</button> : null}
+      {stale ? <button className="ghost desk-action" type="button" disabled={busy} onClick={() => { try { sessionStorage.removeItem(pendingKey); } catch { /* The next dialog starts from current server state. */ } onRead(); }}>Прочитать актуальное задание</button> : null}
       {error && !stored ? <p className="quiet">Номер попытки не сохранён браузером. Повторите в этой форме, не закрывая её.</p> : null}
       <button className="ghost desk-action" type="button" disabled={busy} onClick={onClose}>Отмена</button>
       <button className="fill desk-action" type="submit" disabled={busy || !complete}>{busy ? "Записываем…" : "Записать проверку"}</button>

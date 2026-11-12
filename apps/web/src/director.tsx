@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import type { Desk, NewTask, Session } from "./api";
+import { WorkBoard } from "./board";
 import { TaskRead } from "./task-read-panel";
 import { Inbox } from "./inbox";
 import { Icon, paths } from "./icons";
@@ -14,7 +15,7 @@ import { Mark } from "./mark";
 import { People, type PersonCard } from "./people";
 import { DayFlow } from "./dayflow";
 import { ScopeBar, useCabinetScope } from "./scope-read";
-import { projectDesk } from "./scope";
+import { hasV1ProjectScope, projectDesk } from "./scope";
 import { RoleSwitch, accessOf, roleTitle, serverRights, type Section, type View } from "./roles";
 import { minutesLabel, useBook } from "./book";
 import { amount, dayTasks, laneOf, laneTone, personName, progress, statusLabel, todayKey, type Admission, type Lane, type Remark } from "./model";
@@ -192,7 +193,7 @@ export function DirectorDesk({
               onOpenDocuments={() => onSection("documents")}
             />
           ) : null}
-          {page === "objects" ? <Objects lead={<ProjectCatalogs session={session} projectId={templateProjectId} writable={!preview && session.role === "director"} />} data={data} canEdit={canPlace} normsNote={access.normsNote} onSavePlace={onSavePlace} onTasks={() => onSection("tasks")} /> : null}
+          {page === "objects" ? <Objects lead={hasV1ProjectScope(session.role) ? <ProjectCatalogs session={session} projectId={templateProjectId} writable={!preview && session.role === "director"} /> : null} data={data} canEdit={canPlace} normsNote={access.normsNote} onSavePlace={onSavePlace} onTasks={() => onSection("tasks")} /> : null}
           {page === "people" ? (
             <People
               projectId={templateProjectId}
@@ -212,7 +213,21 @@ export function DirectorDesk({
               onCard={(card) => setCards((list) => [...list.filter((item) => item.employeeId !== card.employeeId), card])}
             />
           ) : null}
-          {page === "tasks" ? <TaskRead session={session} projectId={templateProjectId} day={scope.day} notice={scope.notice} openTaskId={openTask?.id ?? ""} openToken={openTask?.token ?? 0} /> : null}
+          {page === "tasks" ? (hasV1ProjectScope(session.role) ? <TaskRead key={`${session.tenantId}:${templateProjectId}:${scope.day}`} session={session} projectId={templateProjectId} day={scope.day} notice={scope.notice} openTaskId={openTask?.id ?? ""} openToken={openTask?.token ?? 0} /> : <WorkBoard
+              data={data}
+              tasks={tasks}
+              canAccept={canAccept}
+              canCreate={canCreate}
+              onStart={onStart}
+              onEnd={onEnd}
+              onSubmit={onSubmit}
+              onAccept={onAccept}
+              onCreate={onCreate}
+              openTask={openTask}
+              admissions={admissions}
+              remarks={remarks}
+              onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
+            />) : null}
           {page === "materials" ? <Materials canEdit={canRecordSupply} /> : null}
           {page === "quality" ? (
             <Quality
