@@ -5,8 +5,9 @@ import { Flash } from "./flash";
 import { DeskBadge } from "./kit";
 import { taskListPath, taskStatusText, type ServerTask } from "./task-read";
 import { ApiError, v1 } from "./v1";
+import { SegmentPanel } from "./segment-panel";
 import { ShiftDialog } from "./shift-panel";
-import { shiftNeedsReason } from "./shift-command";
+import { canWriteShift, shiftNeedsReason } from "./shift-command";
 import { clockLabel, dayReadError, dayReadPath, durationLabel, employeeListPath, ownEmployee, shiftListPath, shiftReading, visibleWorkerTasks, type DayEmployee, type DayReading, type DayShift, type ShiftReading } from "./worker-day";
 
 type Page<T> = { items: T[]; total: number };
@@ -92,6 +93,7 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
         {ready && !loading && gap ? <p className="quiet worker-hold">{gap}</p> : null}
         {ready && !loading && dayError ? <p role="alert">{dayError} {retry}</p> : null}
         {ready && !loading && reading ? <DayFacts reading={reading} shifts={shifts} shiftError={shiftError} retry={retry} /> : null}
+        {ready && !loading && reading && employeeId && shifts?.kind === "one" && Number.isSafeInteger(reading.version) ? <SegmentPanel session={session} projectId={projectId} employeeId={employeeId} shiftId={shifts.shift.id} version={reading.version} tasks={(tasks ?? []).map((item) => ({ id: item.id, title: item.title }))} writable={canWriteShift(session.role)} onDone={(message) => { setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
         {ready && !loading && reading && employeeId && (shifts?.kind === "one" || shifts?.kind === "none") && Number.isSafeInteger(reading.version) ? <div className="template-bar">
           {shifts.kind === "one" ? <button className="ghost desk-action" type="button" onClick={() => setShiftKind("shift_end")}>Закончить смену</button> : <button className="fill desk-action" type="button" onClick={() => setShiftKind("shift_start")}>Начать смену</button>}
         </div> : null}

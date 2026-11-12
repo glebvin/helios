@@ -4,7 +4,9 @@ import { Dialog } from "./dialog";
 import { Flash } from "./flash";
 import { canWriteShift, shiftBatchError, shiftEventBody, shiftNeedsReason, shiftProblem, type ShiftBatch, type ShiftGeo, type ShiftKind } from "./shift-command";
 import { ApiError, v1 } from "./v1";
-import { dayReadPath, shiftListPath, shiftReading, type DayReading, type DayShift } from "./worker-day";
+import { SegmentPanel } from "./segment-panel";
+import { taskListPath, type ServerTask } from "./task-read";
+import { dayReadPath, shiftListPath, shiftReading, visibleWorkerTasks, type DayReading, type DayShift } from "./worker-day";
 
 type Page<T> = { items: T[]; total: number };
 
@@ -16,6 +18,7 @@ export function ShiftPanel({ session, projectId, employeeId, day, onChanged }: {
   const [text, setText] = useState("Читаем смену…");
   const [error, setError] = useState("");
   const [kind, setKind] = useState<ShiftKind | null>(null);
+  const [taskChoices, setTaskChoices] = useState<{ id: string; title: string }[]>([]);
   const [saved, setSaved] = useState("");
   const [pulse, setPulse] = useState(0);
   const writable = canWriteShift(session.role);
@@ -28,6 +31,10 @@ export function ShiftPanel({ session, projectId, employeeId, day, onChanged }: {
           v1<Page<DayShift>>(session, shiftListPath(projectId, employeeId)),
         ]);
         if (!live) return;
+        try {
+          const taskPage = await v1<Page<ServerTask>>(session, taskListPath(projectId, day));
+          if (live) setTaskChoices(visibleWorkerTasks(taskPage.items, employeeId).map((item) => ({ id: item.id, title: item.title })));
+        } catch { if (live) setTaskChoices([]); }
         const found = shiftReading(shifts.items, shifts.total, employeeId, projectId);
         setReading(clock);
         setOpenId(found.kind === "one" ? found.shift.id : "");
@@ -47,6 +54,7 @@ export function ShiftPanel({ session, projectId, employeeId, day, onChanged }: {
   return <section className="panel" aria-label="Смена">
     <h2>Смена</h2>
     {error ? <p role="alert">{error}</p> : <p className="quiet">{text} Колонка задания сменится, только если сервер сменит его статус.</p>}
+    {openId && reading && Number.isSafeInteger(reading.version) ? <SegmentPanel session={session} projectId={projectId} employeeId={employeeId} shiftId={openId} version={reading.version} tasks={taskChoices} writable={writable} onDone={(message) => { setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); onChanged(); }} /> : null}
     {writable && ready && reading ? <div className="template-bar">
       {open ? <button className="ghost desk-action" type="button" onClick={() => setKind("shift_end")}>Закончить смену</button> : <button className="fill desk-action" type="button" onClick={() => setKind("shift_start")}>Начать смену</button>}
     </div> : null}
