@@ -2,7 +2,7 @@
 
 GitHub: [R04 · задача #4](https://github.com/glebvin/helios/issues/4).
 
-Статус: **review**, [PR #32](https://github.com/glebvin/helios/pull/32). Реализация и технические/браузерные проверки подготовлены отдельно; merge/deploy не выполнялись.
+Статус: **review**, [PR #32](https://github.com/glebvin/helios/pull/32). Реализация и локальная техническая/браузерная QA завершены; ожидается ревью и продуктовая оценка. [Отчёт и снимки](../../qa/r04-qualifications-2026-11-11.md). Merge и новая выкладка не выполнялись.
 
 - Группа: Люди.
 - Роли: rp.

@@ -1024,3 +1024,9 @@ h1, h2, h3, p { margin: 0; }
 .admission-template button { min-height: 40px; border-radius: 12px; }
 .admission-template textarea { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 10px 12px; }
 .template-items > li > span:first-child { display: inline; }
+.qualifications { padding: 20px; }
+.qualifications h2 { padding: 0; }
+.qualification-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+.qualification-list { display: grid; margin-top: 16px; }
+.qualification-row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 0; border-top: 1px solid var(--line); min-width: 0; }
+.qualification-row > div { display: grid; gap: 5px; flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; }
