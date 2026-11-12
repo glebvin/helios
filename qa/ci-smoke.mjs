@@ -53,7 +53,7 @@ try{
  const name=`00 CI ${randomUUID()}`;
  await director.getByRole('button',{name:'Добавить сотрудника',exact:true}).click();
  await director.getByRole('dialog').getByLabel('Имя',{exact:true}).fill(name);
- await director.getByRole('button',{name:'Создать на сервере',exact:true}).click();
+ await director.getByRole('button',{name:'Создать',exact:true}).click();
  await director.getByText(`Сервер записал «${name}».`,{exact:true}).waitFor();
  const fresh=await login('director');await people(fresh);await fresh.getByText(name,{exact:true}).click();
  await fresh.getByRole('heading',{name,exact:true}).waitFor();
