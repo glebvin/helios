@@ -9,6 +9,8 @@ import { TaskActionPanel } from "./task-action-panel";
 import { TaskDraftDialog } from "./task-draft-form";
 import { canWriteTaskDraft } from "./task-draft";
 import { ApiError, v1 } from "./v1";
+import { VolumeDesk } from "./volume-panel";
+import { canWriteVolume, reportListPath, volumeLines, type VolumeReport } from "./volume";
 import { boardColumn, shownTaskStatus, taskArea, taskError, taskListPath, taskStatusText, type BoardColumn, type ServerTask } from "./task-read";
 
 type Page = { items: ServerTask[]; total: number; limit: number; offset: number };
@@ -33,6 +35,8 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
   const [editing, setEditing] = useState<ServerTask | null>(null);
   const [saved, setSaved] = useState("");
   const [savedPulse, setSavedPulse] = useState(0);
+  const [reported, setReported] = useState<Record<string, { reportId: string; submittedQuantity: string }[]> | null>(null);
+  const [volumeNote, setVolumeNote] = useState("");
   const canWrite = canWriteTaskDraft(session.role);
   const ready = Boolean(projectId && day && !notice);
   useEffect(() => { setOffset(0); setOpenId(openTaskId || null); }, [projectId, day, openTaskId, openToken]);
@@ -53,16 +57,27 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
         ]);
         if (!live) return;
         setNames({ ...people, ...zones, ...types });
+        try {
+          const reports = await v1<{ items: VolumeReport[]; total: number }>(session, reportListPath(projectId));
+          if (!live) return;
+          const lines = volumeLines(reports.items, reports.total);
+          setReported(lines);
+          setVolumeNote(lines ? "" : "Отчёты объёма прочитаны не полностью.");
+        } catch {
+          if (!live) return;
+          setReported(null);
+          setVolumeNote("Отчёты объёма прочитать не удалось.");
+        }
       } catch (reason) {
         if (!live) return;
-        setPage(null); setError(taskError(reason instanceof ApiError ? reason.status : null));
+        setPage(null); setReported(null); setVolumeNote(""); setError(taskError(reason instanceof ApiError ? reason.status : null));
       } finally { if (live) setLoading(false); }
     })();
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, day, offset, pass, ready]);
   const body = !ready ? <div className="page"><DeskEmpty title="Объект и день не подтверждены" description={notice || "Доска читается только после выбора объекта и рабочего дня."} /></div>
-    : openId ? <div className="page"><TaskDetail session={session} projectId={projectId} taskId={openId} names={names} canEdit={canWrite} onEdit={setEditing} onBack={() => setOpenId(null)} onChanged={() => setPass((value) => value + 1)} /></div>
-    : <TaskBoard view={view} onView={setView} canWrite={canWrite} onCreate={() => setCreating(true)} page={page} loading={loading} error={error} offset={offset} names={names} onOpen={setOpenId} onRetry={() => setPass((value) => value + 1)} onOffset={setOffset} />;
+    : openId ? <div className="page"><TaskDetail session={session} projectId={projectId} taskId={openId} names={names} canEdit={canWrite} onEdit={setEditing} onBack={() => setOpenId(null)} onChanged={() => setPass((value) => value + 1)} onNoted={(message) => { setSaved(message); setSavedPulse((value) => value + 1); }} /></div>
+    : <TaskBoard view={view} onView={setView} canWrite={canWrite} onCreate={() => setCreating(true)} page={page} loading={loading} error={error} offset={offset} names={names} reported={reported} volumeNote={volumeNote} onOpen={setOpenId} onRetry={() => setPass((value) => value + 1)} onOffset={setOffset} />;
   const savedDraft = (row: ServerTask) => {
     setCreating(false); setEditing(null);
     setSaved(row.workDate === day ? `Сервер записал черновик «${row.title}».` : `Сервер записал черновик на ${row.workDate.split("-").reverse().join(".")}. На доске этого дня его нет.`);
@@ -76,11 +91,11 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
   </div>;
 }
 
-function TaskBoard({ view, onView, canWrite, onCreate, page, loading, error, offset, names, onOpen, onRetry, onOffset }: { view: BoardView; onView: (view: BoardView) => void; canWrite: boolean; onCreate: () => void; page: Page | null; loading: boolean; error: string; offset: number; names: Record<string, string>; onOpen: (id: string) => void; onRetry: () => void; onOffset: (offset: number) => void }) {
+function TaskBoard({ view, onView, canWrite, onCreate, page, loading, error, offset, names, reported, volumeNote, onOpen, onRetry, onOffset }: { view: BoardView; onView: (view: BoardView) => void; canWrite: boolean; onCreate: () => void; page: Page | null; loading: boolean; error: string; offset: number; names: Record<string, string>; reported: Record<string, { reportId: string; submittedQuantity: string }[]> | null; volumeNote: string; onOpen: (id: string) => void; onRetry: () => void; onOffset: (offset: number) => void }) {
   const items = page?.items ?? [];
   return <>
     <div className="tasks-head">
-      <div className="documents-title"><h1>Задания</h1><NoteMark label="Как устроена доска"><p>Колонка берётся из статуса сервера. Перетаскивание карточку не переносит. Смена, сдача объёма и приёмка появятся на этих же карточках, когда их подтвердит сервер.</p></NoteMark></div>
+      <div className="documents-title"><h1>Задания</h1><NoteMark label="Как устроена доска"><p>Колонка берётся из статуса сервера. Перетаскивание карточку не переносит. Сообщённый объём сам колонку «Сдано» не включает и приёмкой не считается.</p></NoteMark></div>
       <div className="rowline">
         {canWrite ? <button className="ghost desk-action" type="button" onClick={onCreate}>Создать задание</button> : null}
         <div className="roles" role="group" aria-label="Вид заданий">
@@ -91,6 +106,7 @@ function TaskBoard({ view, onView, canWrite, onCreate, page, loading, error, off
     </div>
     {loading && !page ? <p className="quiet task-hold" role="status">Читаем задания…</p> : null}
     {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={onRetry}>Повторить чтение</button></p> : null}
+    {volumeNote ? <p className="quiet">{volumeNote}</p> : null}
     {page && !error && view === "board" ? <div className="kanban">{columns.map((column) => {
       const cards = items.filter((task) => boardColumn(shownTaskStatus(task)) === column.id);
       return <section className="column" key={column.id} aria-label={column.title}>
@@ -102,6 +118,7 @@ function TaskBoard({ view, onView, canWrite, onCreate, page, loading, error, off
             return <article className="card is-read" key={task.id} role="button" tabIndex={0} aria-label={task.title} onClick={() => onOpen(task.id)} onKeyDown={(event) => { if (event.key === "Enter") onOpen(task.id); }}>
               <div className="meta">{names[task.assigneeEmployeeId] ?? "исполнитель не прочитан"} · {task.plannedQuantity} {task.unit}</div>
               <p className="title">{task.title}</p>
+              {reported?.[task.id]?.map((row) => <div className="quiet" key={row.reportId}>Сообщено {row.submittedQuantity} {task.unit}. Не принято.</div>)}
               <DeskBadge tone={status === "published" ? "accent" : status === "cancelled" || status === "needs_fix" ? "warn" : "neutral"}>{taskStatusText(status)}</DeskBadge>
             </article>;
           })}
@@ -114,7 +131,7 @@ function TaskBoard({ view, onView, canWrite, onCreate, page, loading, error, off
         const status = shownTaskStatus(task);
         const column = columns.find((item) => item.id === boardColumn(status));
         return <tr className="is-link" key={task.id} tabIndex={0} onClick={() => onOpen(task.id)} onKeyDown={(event) => { if (event.key === "Enter") onOpen(task.id); }}>
-          <td><b>{task.title}</b></td>
+          <td><b>{task.title}</b>{reported?.[task.id]?.map((row) => <div className="quiet" key={row.reportId}>Сообщено {row.submittedQuantity} {task.unit}. Не принято.</div>)}</td>
           <td>{names[task.assigneeEmployeeId] ?? "исполнитель не прочитан"}</td>
           <td>{task.plannedQuantity} {task.unit}</td>
           <td>{column?.title}</td>
@@ -126,7 +143,7 @@ function TaskBoard({ view, onView, canWrite, onCreate, page, loading, error, off
   </>;
 }
 
-function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack, onChanged }: { session: Session; projectId: string; taskId: string; names: Record<string, string>; canEdit: boolean; onEdit: (task: ServerTask) => void; onBack: () => void; onChanged: () => void }) {
+function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack, onChanged, onNoted }: { session: Session; projectId: string; taskId: string; names: Record<string, string>; canEdit: boolean; onEdit: (task: ServerTask) => void; onBack: () => void; onChanged: () => void; onNoted: (message: string) => void }) {
   const [task, setTask] = useState<ServerTask | null>(null);
   const [error, setError] = useState("");
   const [pass, setPass] = useState(0);
@@ -172,6 +189,7 @@ function TaskDetail({ session, projectId, taskId, names, canEdit, onEdit, onBack
         </section>
         <div className="person-column">
           <ShiftPanel session={session} projectId={projectId} employeeId={task.assigneeEmployeeId} day={task.workDate} onChanged={() => { setPass((value) => value + 1); onChanged(); }} />
+          <VolumeDesk session={session} projectId={projectId} employeeId={task.assigneeEmployeeId} day={task.workDate} tasks={[{ id: task.id, title: task.title, unit: task.unit, status: task.status, workflowKind: task.workflowKind }]} writable={canWriteVolume(session.role)} onDone={(message) => { onNoted(message); setPass((value) => value + 1); onChanged(); }} />
           <section className="panel" aria-label="Качество">
             <h2>Качество</h2>
             <p className="quiet">{area === "quality" ? `Сервер отметил: ${taskStatusText(status)}. Приёмка с этой карточки не записывается.` : "Приёмка с этой карточки не записывается. Сервер не отметил качество отдельным статусом."}</p>

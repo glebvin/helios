@@ -8,6 +8,8 @@ import { ApiError, v1 } from "./v1";
 import { SegmentPanel } from "./segment-panel";
 import { ShiftDialog } from "./shift-panel";
 import { canWriteShift, shiftNeedsReason } from "./shift-command";
+import { VolumeDesk } from "./volume-panel";
+import { canWriteVolume } from "./volume";
 import { clockLabel, dayReadError, dayReadPath, durationLabel, employeeListPath, ownEmployee, shiftListPath, shiftReading, visibleWorkerTasks, type DayEmployee, type DayReading, type DayShift, type ShiftReading } from "./worker-day";
 
 type Page<T> = { items: T[]; total: number };
@@ -110,6 +112,7 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
             <div className="rowline quiet"><span>{item.plannedQuantity} {item.unit}</span><DeskBadge tone="accent">{taskStatusText(item.status)}</DeskBadge></div>
           </article>
         )) : null}
+        {ready && !loading && reading && employeeId && tasks && tasks.length ? <VolumeDesk session={session} projectId={projectId} employeeId={employeeId} day={day} tasks={tasks.map((item) => ({ id: item.id, title: item.title, unit: item.unit, status: item.status, workflowKind: item.workflowKind }))} writable={canWriteVolume(session.role)} onDone={(message) => { setSaved(message); setPulse((value) => value + 1); setPass((value) => value + 1); }} /> : null}
       </motion.div>
     </section>
   );
