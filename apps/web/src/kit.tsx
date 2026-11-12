@@ -367,16 +367,17 @@ export function PageShift({ pageKey, refreshKey = "", children }: { pageKey: str
   const first = useRef(true);
   useEffect(() => {
     if (first.current) { first.current = false; return; }
-    if (reduce || !frame.current) return;
+    if (reduce || !frame.current || frame.current.dataset.pageKey !== pageKey) return;
     const play = animate(frame.current, { opacity: [0.4, 1], y: [8, 0] }, { duration: 0.32, ease: [0.23, 1, 0.32, 1] });
     return () => play.stop();
-  }, [refreshKey, reduce]);
+  }, [refreshKey, reduce, pageKey]);
   return (
     <div className="workspace-stage">
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           ref={frame}
           key={pageKey}
+          data-page-key={pageKey}
           className="workspace-page"
           initial={reduce ? false : { opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
