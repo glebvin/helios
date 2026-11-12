@@ -40,7 +40,10 @@ async function login(role){
  return page;
 }
 async function headers(page){return page.evaluate(()=>{const s=JSON.parse(localStorage.getItem('helios.session'));return {authorization:`Bearer ${s.token}`,'x-tenant-id':s.tenantId};});}
-async function people(page){await page.getByRole('button',{name:/^(Люди|Работники)$/}).first().click();}
+async function people(page){
+ await page.locator('.nav-item').filter({hasText:/^(Люди|Работники)$/}).click();
+ await page.getByRole('heading',{name:/^(Люди|Работники)$/}).waitFor();
+}
 try{
  const apiProcess=await launch('api',['--import',pathToFileURL(resolve(root,'apps/api/node_modules/tsx/dist/loader.mjs')).href,'src/main.ts'],resolve(root,'apps/api'));
  await ready(api+'/api/health',apiProcess);
@@ -76,6 +79,12 @@ try{
  await fresh.evaluate(()=>window.dispatchEvent(new Event('focus')));await fresh.getByRole('heading',{name:'Кто входит',exact:true}).waitFor();
  assert.equal(await fresh.evaluate(()=>localStorage.getItem('helios.session')),null);
  check('expired session returns to login and clears local session');assert.deepEqual(errors,[]);
+}catch(error){
+ for(const [index,context] of contexts.entries())for(const [tab,page] of context.pages().entries()){
+  await page.screenshot({path:resolve(out,`failure-${index}-${tab}.png`),fullPage:true}).catch(()=>{});
+  await writeFile(resolve(out,`failure-${index}-${tab}.log`),await page.locator('body').innerText().catch(()=>''));
+ }
+ throw error;
 }finally{
  await writeFile(resolve(out,'results.json'),JSON.stringify({results,errors},null,2));
  for(const context of contexts)await context.close();await browser?.close();
