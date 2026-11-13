@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
-import { cloneElement, isValidElement, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { cloneElement, isValidElement, useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
 import {InvitationDialog,InvitationList} from "./invitations";
 import { searchStaff, staffNotice, type ServerEmployee } from "./staff-list";
 import { useStaffCard, useStaffList } from "./staff-read";
@@ -36,7 +36,7 @@ const peopleTabLabels: { id: Tab; label: string }[] = [
 ];
 
 export function People({
-  session, projectId = "", data, onOpenTask, inviteWorker = false, inviteForeman = false, peopleTabs = ["people"], admitStep = "none", canExport = false, canDecideHours = false, admissions = [], onAdmit, cards = [], onCard,
+  session, projectId = "", data, onOpenTask, inviteWorker = false, inviteForeman = false, peopleTabs = ["people"], admitStep = "none", canExport = false, canDecideHours = false, admissions = [], onAdmit, cards = [], onCard, openSheet = 0, sheetDay = "",
 }: {
   session: Session;
   projectId?: string;
@@ -52,8 +52,11 @@ export function People({
   onAdmit?: (employeeId: string, until: string) => void;
   cards?: PersonCard[];
   onCard?: (card: PersonCard) => void;
+  openSheet?: number;
+  sheetDay?: string;
 }) {
   const [rawTab, setTab] = useState<Tab>(peopleTabs[0] ?? "people");
+  useEffect(() => { if (openSheet > 0 && peopleTabs.includes("sheet")) setTab("sheet"); }, [openSheet, peopleTabs]);
   const tab = peopleTabs.includes(rawTab) ? rawTab : (peopleTabs[0] ?? "people");
   const workersOnly = peopleTabs.length === 1 && peopleTabs[0] === "people" && inviteWorker && !inviteForeman;
   const [query, setQuery] = useState("");
@@ -171,7 +174,7 @@ export function People({
           </div>
         )
       ) : null}
-      {tab === "sheet" ? <TimeSheet key={`${session.tenantId}:${session.userId}:${projectId}`} session={session} projectId={projectId} canDecide={canDecideHours} /> : null}
+      {tab === "sheet" ? <TimeSheet key={`${session.tenantId}:${session.userId}:${projectId}`} session={session} projectId={projectId} canDecide={canDecideHours} day={sheetDay} /> : null}
     </section>
   );
 }
