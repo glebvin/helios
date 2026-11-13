@@ -9,6 +9,7 @@ paths = [root / p for p in [
     'docs/DEVELOPMENT.md','docs/DEFINITION-OF-DONE.md','docs/BRANCHES-AND-RELEASES.md',
     'docs/roadmap/PILOT-19.2.md',
     '.github/pull_request_template.md','docs/PR-HANDOFF.md',
+    'docs/qa/retrospective-handoff-2026-11-13.md','docs/test-cases/README.md',
     'docs/qa/repository-setup-2026-11-11.md']]
 paths += sorted((root / 'docs/roadmap/steps').glob('R*.md'))
 errors=[]
