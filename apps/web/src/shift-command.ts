@@ -16,7 +16,7 @@ export function shiftNeedsReason(role: string) {
 }
 
 export function shiftProblem(online: boolean, kind: ShiftKind, open: boolean, reason: string, needsReason: boolean) {
-  if (!online) return "Нужна сеть. Смена на этом шаге не копится на телефоне.";
+  void online;
   if (kind === "shift_start" && open) return "Смена уже открыта на сервере.";
   if (kind === "shift_end" && !open) return "Открытой смены на сервере нет.";
   if (needsReason && !reason.trim()) return "Напишите, почему смена записывается за работника.";

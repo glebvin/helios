@@ -11,11 +11,13 @@ import { ShiftDialog } from "./shift-panel";
 import { canWriteShift, shiftNeedsReason } from "./shift-command";
 import { VolumeDesk } from "./volume-panel";
 import { canWriteVolume } from "./volume";
+import { deliveryNote, flushDelivery, watchDelivery } from "./delivery";
+import { readShiftSnapshot, saveShiftSnapshot, snapshotAge } from "./shift-snapshot";
 import { clockLabel, dayReadError, dayReadPath, durationLabel, employeeListPath, ownEmployee, shiftListPath, shiftReading, visibleWorkerTasks, type DayEmployee, type DayReading, type DayShift, type ShiftReading } from "./worker-day";
 
 type Page<T> = { items: T[]; total: number };
 
-export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { session: Session; projectId: string; day: string; notice: string; onExpire: () => void }) {
+export function WorkerDayPanel({ session, projectId, projectName, day, notice, onExpire }: { session: Session; projectId: string; projectName: string; day: string; notice: string; onExpire: () => void }) {
   const reduce = useReducedMotion();
   const expire = useRef(onExpire);
   expire.current = onExpire;
@@ -36,6 +38,8 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
   const [dayError, setDayError] = useState("");
   const [shiftError, setShiftError] = useState("");
   const [taskError, setTaskError] = useState("");
+  const [waiting, setWaiting] = useState("");
+  const [age, setAge] = useState("");
   const ready = Boolean(projectId && day && !notice);
 
   useEffect(() => {
@@ -43,6 +47,17 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    const read = () => { void deliveryNote().then((text) => { if (live) setWaiting(text); }); };
+    read();
+    void flushDelivery().finally(read);
+    const stop = watchDelivery(() => { void flushDelivery().finally(read); });
+    const online = () => { void flushDelivery().finally(read); };
+    window.addEventListener("online", online);
+    return () => { live = false; stop(); window.removeEventListener("online", online); };
+  }, [session.token, session.userId, session.tenantId]);
 
   useEffect(() => {
     if (!ready) return;
@@ -55,8 +70,24 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
       if (!live) return;
       if (!people.ok) {
         if (people.status === 401) expire.current();
+        const saved = people.status === null ? readShiftSnapshot(session.tenantId, session.userId) : null;
+        if (saved && saved.projectId === projectId && saved.day === day) {
+          setEmployeeId(saved.employeeId);
+          setReading(saved.reading);
+          setShifts(saved.shifts);
+          setTasks(saved.tasks);
+          setTasksTruncated(false);
+          setGap("");
+          setDayError("");
+          setShiftError("");
+          setTaskError("");
+          setAge(snapshotAge(saved.fetchedAt));
+          setStamp(scope);
+          return;
+        }
         if (switched) { setReading(null); setShifts(null); setTasks(null); setTasksTruncated(false); setEmployeeId(""); }
         setGap(""); setDayError(dayReadError(people.status, "people"));
+        setAge("");
         setStamp(scope);
         return;
       }
@@ -86,10 +117,19 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
         setTasksTruncated(Boolean(taskResult.ok && taskResult.ok.items.length < taskResult.ok.total));
       }
       setTaskError(taskResult.ok ? "" : dayReadError(taskResult.status, "tasks"));
+      if (dayResult.ok && shiftResult.ok && taskResult.ok) {
+        const visible = visibleWorkerTasks(taskResult.ok.items, employee.id);
+        saveShiftSnapshot({
+          tenantId: session.tenantId, userId: session.userId, projectId, projectName: projectName || "Объект", day,
+          employeeId: employee.id, reading: dayResult.ok, shifts: shiftReading(shiftResult.ok.items, shiftResult.ok.total, employee.id, projectId),
+          tasks: visible, fetchedAt: new Date().toISOString(),
+        });
+        setAge("");
+      }
       setStamp(scope);
     })();
     return () => { live = false; };
-  }, [session.token, session.userId, session.tenantId, projectId, day, pass, ready]);
+  }, [session.token, session.userId, session.tenantId, projectId, projectName, day, pass, ready]);
 
   const fresh = stamp === scope;
   const retry = <button className="ghost desk-action" type="button" onClick={() => setPass((value) => value + 1)}>Повторить чтение</button>;
@@ -97,6 +137,9 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
   return (
     <section className="worker-day" aria-busy={!fresh}>
       <h1>Моя смена</h1>
+      <p className="quiet">Без сети после входа здесь открывается только «Моя смена», с отметкой давности. Остальные разделы без сети не открываются.</p>
+      {age ? <p className="quiet" role="status">Снимок от {age}. Это сохранённое чтение, не свежий ответ сервера.</p> : null}
+      {waiting ? <p className="quiet" role="status">{waiting}</p> : null}
       <motion.div className="worker-stack" key={scope} initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}>
         {!ready ? <p className="quiet worker-hold">{notice || "Объект и день не подтверждены."}</p> : null}
         {ready && !fresh ? <p className="quiet worker-hold" role="status">Читаем день…</p> : null}

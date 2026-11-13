@@ -28,7 +28,7 @@ test("the same command keeps its version, and a master reason is not a status", 
 });
 
 test("offline, a closed shift and a missing reason stay different from a version conflict", () => {
-  assert.match(shiftProblem(false, "shift_start", false, "", false), /не копится/);
+  assert.equal(shiftProblem(false, "shift_start", false, "", false), "");
   assert.match(shiftProblem(true, "shift_end", false, "", false), /нет/);
   assert.match(shiftProblem(true, "shift_start", false, "  ", true), /почему/);
   assert.equal(shiftProblem(true, "shift_start", false, "", false), "");

@@ -47,7 +47,7 @@ export function volumeQuantity(value: string) {
 }
 
 export function volumeProblem(online: boolean, quantity: string, reason: string, needsReason: boolean) {
-  if (!online) return "Нужна сеть. Объём на этом шаге не копится на телефоне.";
+  void online;
   if (!volumeQuantity(quantity)) return "Укажите объём больше нуля, до трёх знаков после запятой.";
   if (needsReason && !reason.trim()) return "Напишите, почему объём записывается за работника.";
   return "";

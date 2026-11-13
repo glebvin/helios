@@ -3,6 +3,7 @@ import type { Session } from "./api";
 import { DeskSelect } from "./kit";
 import { chosenProject, civilLabel, hasV1ProjectScope, projectLabel, sameActor, scopeNotice, type ServerActor, type ServerProject } from "./scope";
 import { ApiError, v1 } from "./v1";
+import { readShiftSnapshot } from "./shift-snapshot";
 
 type ProjectPage = { items: ServerProject[]; total: number };
 type OverviewDay = { day: string; timezone: string };
@@ -74,9 +75,19 @@ export function useCabinetScope(session: Session, onUnauthorized: () => void, ca
         setError("");
       } catch (reason) {
         if (!live) return;
-        const text = readError(reason);
-        if (text === "unauthorized") expire.current();
-        else {
+        if (reason instanceof ApiError && reason.status === 401) {
+          expire.current();
+          return;
+        }
+        const saved = !(reason instanceof ApiError) ? readShiftSnapshot(session.tenantId, session.userId) : null;
+        if (saved) {
+          setActor(null);
+          setProjects([{ id: saved.projectId, name: saved.projectName }]);
+          setTotal(1);
+          setDay(saved.day);
+          setError("");
+        } else {
+          const text = readError(reason);
           setDay("");
           setProjects([]);
           setTotal(0);
