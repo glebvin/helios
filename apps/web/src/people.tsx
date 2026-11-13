@@ -11,6 +11,7 @@ import { AdmissionChecksPanel } from "./admission-check-panel";
 import { QualificationsPanel } from "./qualifications-panel";
 import { EmployeeForm } from "./employee-form";
 import { canWriteStaff } from "./staff-form";
+import { CrewPanel } from "./crew-panel";
 import { TimeSheet } from "./time-sheet";
 import { Flash } from "./flash";
 import { DeskBadge, DeskCrumbs, DeskEmpty, DeskSelect, DeskTimeline, FluidTabs, SmoothButton, StatGrid } from "./kit";
@@ -166,7 +167,7 @@ export function People({
       {(tab === 'people' && inviteWorker || tab === 'foremen' && inviteForeman) ? <InvitationList key={`${tab}-${inviting}-${invitingForeman}`} session={session} projectId={data.projectId} role={tab==='foremen'?'master':'worker'}/> : null}
       {creating ? <Dialog title="Сотрудник" onClose={() => setCreating(false)}><EmployeeForm session={session} organizations={data.organizations} employee={null} onSaved={() => list.reload()} /><button className="ghost" type="button" onClick={() => setCreating(false)}>Закрыть</button></Dialog> : null}
       {inviting || invitingForeman ? <InvitationDialog session={session} projectId={data.projectId} organizationId={data.organizations.find(o=>o.kind==='own')?.id ?? ''} role={invitingForeman?'master':'worker'} onClose={()=>{setInviting(false);setInvitingForeman(false);}}/> : null}
-      {tab === "crews" ? <DeskEmpty title="Бригад ещё нет" description="Состав и загрузка появятся, когда бригаду заведут. Сейчас люди числятся без бригады." /> : null}
+      {tab === "crews" ? <CrewPanel session={session} projectId={projectId} /> : null}
       {tab === "contractors" ? (
         contractors.length === 0 ? <DeskEmpty title="Подрядчиков нет" description="В кабинете одна своя организация. Чужие компании сюда не попадают." /> : (
           <div className="object-list">
