@@ -7,7 +7,7 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund
 COPY apps ./apps
 COPY packages ./packages
 COPY deploy ./deploy
-RUN mkdir -p /var/lib/helios/evidence && chown -R node:node /var/lib/helios
+RUN mkdir -p /var/lib/helios/evidence /var/run/helios && chown -R node:node /var/lib/helios /var/run/helios
 USER node
 ENV NODE_ENV=production
 CMD ["node", "deploy/helios-staging/entry.mjs"]

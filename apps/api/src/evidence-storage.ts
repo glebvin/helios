@@ -2,9 +2,9 @@ import {createHash,randomUUID} from 'node:crypto';
 import {constants} from 'node:fs';
 import {open,mkdir,chmod,link,unlink} from 'node:fs/promises';
 import type {FileHandle} from 'node:fs/promises';
-import {isAbsolute,resolve,join,dirname} from 'node:path';
+import {join,dirname} from 'node:path';
 import type {IncomingMessage} from 'node:http';
-import {fileURLToPath} from 'node:url';
+import {evidenceRoot} from './ready.js';
 import {httpError} from './errors.js';
 import {MAX_EVIDENCE_BYTES,type EvidenceType} from './evidence-input.js';
 import {uuid} from './api-input.js';
@@ -37,7 +37,7 @@ export async function readEvidenceRequest(req:IncomingMessage,d:BlobDeclaration)
 // Local/pilot adapter. Filesystem promotion and PostgreSQL ready commit are separate durability boundaries.
 export class EvidenceStorage {
  private readonly root:string;
- constructor(){const configured=process.env.HELIOS_EVIDENCE_ROOT;if(configured&&!isAbsolute(configured))throw new Error('HELIOS_EVIDENCE_ROOT must be absolute');this.root=configured??resolve(fileURLToPath(new URL('../../../.data/evidence-54339',import.meta.url)));}
+ constructor(){this.root=evidenceRoot();}
  private key(tenant:string,file:string){return join(this.root,uuid(tenant).toLowerCase(),uuid(file).toLowerCase());}
  // Small method seams allow tests to inject actual filesystem-stage failures without replacing the adapter.
  private async write(handle:FileHandle,bytes:Buffer){await handle.writeFile(bytes);}

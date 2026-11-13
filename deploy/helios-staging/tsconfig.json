@@ -10,7 +10,8 @@
     "paths": {
       "@helios/domain": ["packages/domain/src/index.ts"],
       "@helios/api/db": ["apps/api/src/db.ts"],
-      "@helios/api/jobs": ["apps/api/src/jobs.ts"]
+      "@helios/api/jobs": ["apps/api/src/jobs.ts"],
+      "@helios/api/ready": ["apps/api/src/ready.ts"]
     }
   },
   "include": ["../../apps/api/src", "../../apps/worker/src", "../../packages/domain/src"],
