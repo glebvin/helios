@@ -241,6 +241,17 @@ if(suite==='mechanics'||suite==='all') tests.push(
     await page.evaluate(c=>queue.enqueueEvent(c),next);
     assert.equal(await page.evaluate(c=>queue.enqueueEvent(c).then(()=>null,e=>e.code),{...next,requestId:crypto.randomUUID(),expectedVersion:0}),'local_stream_conflict');
   }],
+  ['acknowledged local history accepts a newer server-read version without skipping pending work',async(engine,profile,origin,n)=>{
+    const {page}=await openPage(engine,profile,origin),first=event(n);
+    await page.evaluate(c=>queue.enqueueEvent(c),first);
+    const next={...first,requestId:crypto.randomUUID(),expectedVersion:4,previousEventId:first.requestId};
+    assert.equal(await page.evaluate(c=>queue.enqueueEvent(c).then(()=>null,e=>e.code),next),'local_stream_conflict');
+    await page.evaluate(()=>queue.flush());
+    await page.evaluate(c=>queue.enqueueEvent(c),next);
+    await page.evaluate(()=>queue.flush());
+    assert.deepEqual(await page.evaluate(()=>queue.list().then(rows=>rows.map(r=>r.state))),['synced','synced']);
+    assert.equal(await page.evaluate(c=>queue.enqueueEvent(c).then(()=>null,e=>e.code),{...next,requestId:crypto.randomUUID(),expectedVersion:1}),'local_stream_conflict');
+  }],
   ['atomic cross-tab project tail race and blocked employee head',async(engine,profile,origin,n)=>{
     const {page,context}=await openPage(engine,profile,origin);const second=await addPage(context,origin);const a=event(n),b={...a,requestId:crypto.randomUUID(),projectId:crypto.randomUUID()};
     const results=await Promise.all([page.evaluate(c=>queue.enqueueEvent(c).then(()=>true,e=>e.code),a),second.evaluate(c=>queue.enqueueEvent(c).then(()=>true,e=>e.code),b)]);

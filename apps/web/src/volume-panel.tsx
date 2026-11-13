@@ -4,7 +4,7 @@ import { Dialog } from "./dialog";
 import { EvidenceFiles } from "./evidence-panel";
 import { NoteMark } from "./note-mark";
 import { segmentListPath } from "./segment";
-import { deliveryError, sendEvent } from "./delivery";
+import { deliveryError, deliveryPredecessor, sendEvent } from "./delivery";
 import { ApiError, v1, v1Collection } from "./v1";
 import type { EventPayload } from "../../../packages/offline/src/index.js";
 import { dayReadPath, type DayReading } from "./worker-day";
@@ -149,7 +149,7 @@ function VolumeDialog({ session, projectId, employeeId, shift, version, task, ne
         stored = { body: volumeEventBody({
           requestId: crypto.randomUUID(), employeeId, projectId, shiftId: shift.id, expectedVersion: version, occurredAt,
           taskId: task.id, reportId: crypto.randomUUID(), submittedQuantity: sent,
-          previousEventId: shift.endRequestId || undefined, onBehalfReason: needsReason ? reason : undefined,
+          previousEventId: await deliveryPredecessor(employeeId, projectId, version) ?? (shift.endRequestId || undefined), onBehalfReason: needsReason ? reason : undefined,
         }) };
         try { sessionStorage.setItem(pendingKey, JSON.stringify(stored)); } catch { /* The open form still repeats this attempt. */ }
       }

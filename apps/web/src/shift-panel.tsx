@@ -3,7 +3,7 @@ import type { Session } from "./api";
 import { Dialog } from "./dialog";
 import { Flash } from "./flash";
 import { canWriteShift, shiftBatchError, shiftEventBody, shiftNeedsReason, shiftProblem, type ShiftGeo, type ShiftKind } from "./shift-command";
-import { deliveryError, sendEvent } from "./delivery";
+import { deliveryError, deliveryPredecessor, sendEvent } from "./delivery";
 import { ApiError, v1, v1Collection } from "./v1";
 import type { EventPayload } from "../../../packages/offline/src/index.js";
 import { NoteMark } from "./note-mark";
@@ -125,7 +125,7 @@ export function ShiftDialog({ session, projectId, employeeId, kind, day, shiftId
         setGeoNote(geo ? "" : "Геопозиция не записана.");
         stored = { body: shiftEventBody({
           requestId: crypto.randomUUID(), employeeId, projectId, shiftId: shiftId || crypto.randomUUID(), expectedVersion,
-          occurredAt: new Date().toISOString(), kind, previousEventId: kind === "shift_end" && previousEventId ? previousEventId : undefined,
+          occurredAt: new Date().toISOString(), kind, previousEventId: await deliveryPredecessor(employeeId, projectId, expectedVersion) ?? (kind === "shift_end" && previousEventId ? previousEventId : undefined),
           onBehalfReason: trimmed || undefined, geo,
         }) };
         try { sessionStorage.setItem(pendingKey, JSON.stringify(stored)); } catch { /* The open form still repeats this attempt. */ }

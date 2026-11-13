@@ -152,7 +152,7 @@ export class NativeStore {
         const tailRequest = meta.get(tailKey(scope, employeeId));
         tailRequest.onsuccess = () => guard(() => {
           const tail = tailRequest.result?.value as Tail | undefined;
-          if (tail && event.expectedVersion !== tail.version + 1) fail('local_stream_conflict');
+          const continueEnqueue = () => guard(() => {
           const predecessor = tail?.projects[projectId];
           if (predecessor && event.previousEventId?.toLowerCase() !== predecessor) fail('local_dependency_conflict');
           // An unknown initial ID is the caller's explicit external acknowledgement, checked by the server on delivery.
@@ -176,6 +176,17 @@ export class NativeStore {
             });
           });
           if (dependency) dependency.onsuccess = save;else save();
+          });
+          if (tail && event.expectedVersion !== tail.version + 1) {
+            if (event.expectedVersion <= tail.version) fail('local_stream_conflict');
+            // Another device may have advanced the authoritative version. A new
+            // server-read version can start a gap only after all local work is acknowledged.
+            const previous = events.index('scope').getAll(scope);
+            previous.onsuccess = () => guard(() => {
+              if ((previous.result as StoredEvent[]).some(row => row.employeeId === employeeId && row.state !== 'synced')) fail('local_stream_conflict');
+              continueEnqueue();
+            });
+          } else continueEnqueue();
         });
       });
     });

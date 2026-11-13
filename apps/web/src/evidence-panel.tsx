@@ -40,9 +40,9 @@ export function EvidenceFiles({ session, projectId, employeeId, reportId, onDone
   }, [session.token, session.tenantId, projectId, employeeId, reportId, pass]);
   useEffect(() => {
     let live = true;
-    const read = () => { void reportFiles(reportId).then((rows) => { if (live) setLocal(rows); }); };
+    const read = () => { void reportFiles(reportId).then((rows) => { if (live) setLocal(rows); }).catch(() => { if (live) setLocal([]); }); };
     read();
-    const stop = watchDelivery(read);
+    const stop = watchDelivery(() => { read(); setPass((value) => value + 1); });
     return () => { live = false; stop(); };
   }, [session.token, reportId, pass]);
   return <div>
@@ -84,7 +84,6 @@ function EvidenceDialog({ session, projectId, employeeId, reportId, needsReason,
       if (invalid || !detected || !evidenceName(file.name)) throw new Error(invalid || "Файл не подходит.");
       const blob = new Blob([bytes], { type: detected });
       const dependencyRequestId = await reportDependency(reportId);
-      if (!dependencyRequestId) throw new Error(evidenceQueueError("local_dependency_conflict"));
       const sha256 = await sha256Hex(bytes);
       const key = `helios.evidence:${session.tenantId}:${session.userId}:${projectId}:${reportId}:${sha256}`;
       let stored: EvidenceAttempt | null = null;
@@ -100,7 +99,7 @@ function EvidenceDialog({ session, projectId, employeeId, reportId, needsReason,
       try { sessionStorage.setItem(key, JSON.stringify(attempt)); } catch { /* The open form still repeats this attempt. */ }
       const outcome = await sendEvidence({
         projectId, employeeId, filename: attempt.filename, contentType: detected, blob,
-        target: { kind: "final_report", reportId }, dependencyRequestId,
+        target: { kind: "final_report", reportId }, ...(dependencyRequestId ? { dependencyRequestId } : {}),
         fileId: attempt.fileId, reserveRequestId: attempt.requestId, attachRequestId: attempt.attachRequestId,
         ...(attempt.onBehalfReason ? { onBehalfReason: attempt.onBehalfReason } : {}),
       });

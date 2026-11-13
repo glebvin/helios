@@ -5,7 +5,7 @@ import { DeskSelect } from "./kit";
 import { NoteMark } from "./note-mark";
 import { shiftNeedsReason } from "./shift-command";
 import { downtimeReasons, openSegment, segmentActionLabel, segmentActions, segmentBatchError, segmentEventBody, segmentLabel, segmentListPath, segmentProblem, type DowntimeReason, type SegmentMode, type SegmentRow } from "./segment";
-import { deliveryError, sendEvent } from "./delivery";
+import { deliveryError, deliveryPredecessor, sendEvent } from "./delivery";
 import { ApiError, v1, v1Collection } from "./v1";
 import type { EventPayload } from "../../../packages/offline/src/index.js";
 
@@ -112,6 +112,7 @@ function SegmentDialog({ session, projectId, employeeId, shiftId, version, mode,
       if (!same) {
         stored = { body: segmentEventBody({
           requestId: crypto.randomUUID(), employeeId, projectId, shiftId, expectedVersion: version, occurredAt: new Date().toISOString(), mode,
+          previousEventId: await deliveryPredecessor(employeeId, projectId, version),
           taskId: mode === "work" || mode === "downtime" ? taskId : undefined,
           reasonCode: mode === "downtime" && reason ? reason : undefined,
           comment: mode === "downtime" ? comment : undefined,

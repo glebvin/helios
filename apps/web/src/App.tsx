@@ -100,6 +100,7 @@ export function App() {
     void openDelivery(session).catch(() => { if (live) setError("Очередь на этом входе не открылась."); });
     const unbind = bindRemoteClose(() => {
       if (!live) return;
+      clearShiftSnapshot(session.tenantId, session.userId);
       activeSession.current = null;
       saveSession(null);
       setSession(null);
@@ -149,7 +150,7 @@ export function App() {
   function expire() {
     const current = activeSession.current;
     if (current) clearShiftSnapshot(current.tenantId, current.userId);
-    void closeDelivery();
+    void closeDelivery().catch(() => {});
     activeSession.current = null;
     saveSession(null);
     setSession(null);
@@ -190,24 +191,21 @@ export function App() {
   async function logout() {
     if (!session) return;
     const current = session;
-    try {
-      await closeDelivery();
-      await fetch("/api/v1/auth/logout", {
-        method: "POST",
-        headers: { authorization: `Bearer ${session.token}`, "x-tenant-id": session.tenantId },
-      }).then(async (response) => {
-        if (!response.ok && response.status !== 401 && response.status !== 403) throw new Error((await response.json()).error ?? "logout_failed");
-      });
-    } catch (reason) {
-      void openDelivery(current).catch(() => {});
-      setError(explain(reason instanceof Error ? reason.message : "Сервер не подтвердил выход"));
-      return;
-    }
+    // Close the local private context immediately, including when the API is unreachable.
+    activeSession.current = null;
     clearShiftSnapshot(current.tenantId, current.userId);
     saveSession(null);
-    activeSession.current = null;
     setSession(null);
     setData(null);
+    setError("");
+    await closeDelivery().catch(() => {});
+    try {
+      await fetch("/api/v1/auth/logout", {
+        method: "POST",
+        headers: { authorization: `Bearer ${current.token}`, "x-tenant-id": current.tenantId },
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch { /* Local credentials are already removed; never reopen on a network failure. */ }
   }
 
   if (joinCode) {

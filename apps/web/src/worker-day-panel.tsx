@@ -11,7 +11,7 @@ import { ShiftDialog } from "./shift-panel";
 import { canWriteShift, shiftNeedsReason } from "./shift-command";
 import { VolumeDesk } from "./volume-panel";
 import { canWriteVolume } from "./volume";
-import { deliveryNote, flushDelivery, watchDelivery } from "./delivery";
+import { deliveryNote, retryDelivery, watchDelivery } from "./delivery";
 import { readShiftSnapshot, saveShiftSnapshot, snapshotAge } from "./shift-snapshot";
 import { clockLabel, dayReadError, dayReadPath, durationLabel, employeeListPath, ownEmployee, shiftListPath, shiftReading, visibleWorkerTasks, type DayEmployee, type DayReading, type DayShift, type ShiftReading } from "./worker-day";
 
@@ -40,6 +40,7 @@ export function WorkerDayPanel({ session, projectId, projectName, day, notice, o
   const [taskError, setTaskError] = useState("");
   const [waiting, setWaiting] = useState("");
   const [age, setAge] = useState("");
+  const [cacheWarning, setCacheWarning] = useState("");
   const ready = Boolean(projectId && day && !notice);
 
   useEffect(() => {
@@ -50,13 +51,10 @@ export function WorkerDayPanel({ session, projectId, projectName, day, notice, o
 
   useEffect(() => {
     let live = true;
-    const read = () => { void deliveryNote().then((text) => { if (live) setWaiting(text); }); };
+    const read = () => { void deliveryNote().then((text) => { if (live) setWaiting(text); }).catch(() => { if (live) setWaiting("Очередь устройства недоступна. Действия не отправлены."); }); };
     read();
-    void flushDelivery().finally(read);
-    const stop = watchDelivery(() => { void flushDelivery().finally(read); });
-    const online = () => { void flushDelivery().finally(read); };
-    window.addEventListener("online", online);
-    return () => { live = false; stop(); window.removeEventListener("online", online); };
+    const stop = watchDelivery(() => { read(); if (live) setPass((value) => value + 1); });
+    return () => { live = false; stop(); };
   }, [session.token, session.userId, session.tenantId]);
 
   useEffect(() => {
@@ -87,6 +85,7 @@ export function WorkerDayPanel({ session, projectId, projectName, day, notice, o
         }
         if (switched) { setReading(null); setShifts(null); setTasks(null); setTasksTruncated(false); setEmployeeId(""); }
         setGap(""); setDayError(dayReadError(people.status, "people"));
+        setCacheWarning("");
         setAge("");
         setStamp(scope);
         return;
@@ -119,11 +118,12 @@ export function WorkerDayPanel({ session, projectId, projectName, day, notice, o
       setTaskError(taskResult.ok ? "" : dayReadError(taskResult.status, "tasks"));
       if (dayResult.ok && shiftResult.ok && taskResult.ok) {
         const visible = visibleWorkerTasks(taskResult.ok.items, employee.id);
-        saveShiftSnapshot({
+        const cached = saveShiftSnapshot({
           tenantId: session.tenantId, userId: session.userId, projectId, projectName: projectName || "Объект", day,
           employeeId: employee.id, reading: dayResult.ok, shifts: shiftReading(shiftResult.ok.items, shiftResult.ok.total, employee.id, projectId),
           tasks: visible, fetchedAt: new Date().toISOString(),
         });
+        setCacheWarning(cached ? "" : "Снимок дня не записан: хранилище устройства недоступно. Холодный запуск без сети может не открыться.");
         setAge("");
       }
       setStamp(scope);
@@ -137,9 +137,10 @@ export function WorkerDayPanel({ session, projectId, projectName, day, notice, o
   return (
     <section className="worker-day" aria-busy={!fresh}>
       <h1>Моя смена</h1>
+      {cacheWarning ? <p role="status" className="quiet">{cacheWarning}</p> : null}
       <p className="quiet">Без сети после входа здесь открывается только «Моя смена», с отметкой давности. Остальные разделы без сети не открываются.</p>
       {age ? <p className="quiet" role="status">Снимок от {age}. Это сохранённое чтение, не свежий ответ сервера.</p> : null}
-      {waiting ? <p className="quiet" role="status">{waiting}</p> : null}
+      {waiting ? <p className="quiet" role="status">{waiting} <button className="ghost desk-action" type="button" onClick={() => { void retryDelivery().catch(() => setWaiting("Очередь устройства недоступна. Действия не отправлены.")); }}>Повторить отправку</button></p> : null}
       <motion.div className="worker-stack" key={scope} initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}>
         {!ready ? <p className="quiet worker-hold">{notice || "Объект и день не подтверждены."}</p> : null}
         {ready && !fresh ? <p className="quiet worker-hold" role="status">Читаем день…</p> : null}

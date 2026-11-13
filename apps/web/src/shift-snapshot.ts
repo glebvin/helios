@@ -19,13 +19,21 @@ function key(tenantId: string, userId: string) {
 }
 
 export function saveShiftSnapshot(snapshot: ShiftSnapshot) {
-  localStorage.setItem(key(snapshot.tenantId, snapshot.userId), JSON.stringify(snapshot));
+  try { localStorage.setItem(key(snapshot.tenantId, snapshot.userId), JSON.stringify(snapshot)); return true; }
+  catch { return false; }
 }
 
 export function readShiftSnapshot(tenantId: string, userId: string): ShiftSnapshot | null {
   try {
     const parsed = JSON.parse(localStorage.getItem(key(tenantId, userId)) ?? "null") as ShiftSnapshot | null;
-    if (!parsed || parsed.tenantId !== tenantId || parsed.userId !== userId || parsed.projectId === "" || parsed.fetchedAt === "") return null;
+    if (!parsed || parsed.tenantId !== tenantId || parsed.userId !== userId ||
+      ![parsed.projectId, parsed.projectName, parsed.employeeId, parsed.day, parsed.fetchedAt].every(value => typeof value === "string" && value.length > 0) ||
+      !Number.isFinite(new Date(parsed.fetchedAt).valueOf()) || !/^\d{4}-\d{2}-\d{2}$/.test(parsed.day) ||
+      !parsed.reading || parsed.reading.projectId !== parsed.projectId || parsed.reading.employeeId !== parsed.employeeId || parsed.reading.day !== parsed.day ||
+      !Number.isSafeInteger(parsed.reading.version) || ![parsed.reading.presenceMs, parsed.reading.workMs, parsed.reading.breakMs, parsed.reading.downtimeMs, parsed.reading.idleMs].every(value => typeof value === "string" && /^\d+$/.test(value)) ||
+      !parsed.shifts || !["none", "one", "many", "incomplete"].includes(parsed.shifts.kind) ||
+      (parsed.shifts.kind === "one" && (!parsed.shifts.shift || parsed.shifts.shift.projectId !== parsed.projectId || parsed.shifts.shift.employeeId !== parsed.employeeId || typeof parsed.shifts.shift.startedAt !== "string")) ||
+      !Array.isArray(parsed.tasks) || parsed.tasks.some(task => !task || typeof task.id !== "string" || typeof task.title !== "string" || typeof task.plannedQuantity !== "string" || typeof task.unit !== "string")) return null;
     return parsed;
   } catch {
     return null;
@@ -33,7 +41,7 @@ export function readShiftSnapshot(tenantId: string, userId: string): ShiftSnapsh
 }
 
 export function clearShiftSnapshot(tenantId: string, userId: string) {
-  localStorage.removeItem(key(tenantId, userId));
+  try { localStorage.removeItem(key(tenantId, userId)); } catch { /* The session is still closed independently. */ }
 }
 
 export function snapshotAge(fetchedAt: string) {

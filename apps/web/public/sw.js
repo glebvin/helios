@@ -1,27 +1,33 @@
-const cacheName = "helios-shell-v2";
+// Build replaces these placeholders with this release's complete shell.
+const cacheName = "helios-shell-__HELIOS_BUILD__";
+const shell = ["/", "/manifest.webmanifest", ...__HELIOS_SHELL_ASSETS__];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(cacheName).then((cache) => cache.addAll(["/", "/manifest.webmanifest"])));
-  self.skipWaiting();
+  event.waitUntil((async () => {
+    const cache = await caches.open(cacheName);
+    try { await cache.addAll(shell); }
+    catch (error) { await caches.delete(cacheName); throw error; }
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((key) => key.startsWith("helios-shell-") && key !== cacheName).map((key) => caches.delete(key)))).then(() => self.clients.claim()));
+  event.waitUntil((async () => {
+    // Keep the previous shell for tabs already running its hashed assets.
+    const old = (await caches.keys()).filter(key => key.startsWith("helios-shell-") && key !== cacheName);
+    await Promise.all(old.slice(0, -1).map(key => caches.delete(key)));
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (event.request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api")) return;
+  if (event.request.mode !== "navigate" && !shell.includes(url.pathname)) return;
   event.respondWith((async () => {
-    try {
-      const response = await fetch(event.request);
-      if (response.ok) {
-        const cache = await caches.open(cacheName);
-        await cache.put(event.request, response.clone());
-        return response;
-      }
-    } catch { /* Offline falls through to the shell. */ }
-    const cached = await caches.match(event.request, { ignoreVary: true }) || (event.request.mode === "navigate" ? await caches.match("/", { ignoreVary: true }) : undefined);
-    return cached || Response.error();
+    const cache = await caches.open(cacheName);
+    // A shell switches only after every file of the next build has been cached.
+    const cached = await cache.match(event.request.mode === "navigate" ? "/" : url.pathname);
+    return cached || await caches.match(event.request) || fetch(event.request);
   })());
 });
