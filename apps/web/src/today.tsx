@@ -72,7 +72,7 @@ function Hold({ text }: { text: string }) {
 function Appear({ children }: { children: ReactNode }) {
   const reduce = useReducedMotion();
   return (
-    <motion.div initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, ease }}>
+    <motion.div className="live-read-body" initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, ease }}>
       {children}
     </motion.div>
   );
@@ -159,7 +159,7 @@ function TodayBody({ body, day, openLabel, onOpen, onOpenTasks, onOpenSheet }: {
         </section>
         <section className="panel">
           <h2>Требует внимания {attention.length > 0 ? <span className="count">{attention.length}</span> : null}</h2>
-          <div className="attention">
+          <div className="attention live-attention">
             {attention.length === 0 ? <DeskEmpty title="Сейчас пусто" description="Здесь появятся дни табеля без сверки и задания, которые сервер ещё не принял." /> : null}
             {attention.map((item) => (
               <div className="attention-row" key={item.id}>
@@ -176,7 +176,7 @@ function TodayBody({ body, day, openLabel, onOpen, onOpenTasks, onOpenSheet }: {
           <b>Итоги дня</b>
           <div className="quiet">{accepted} из {body.tasks.items.length} на этой странице имеют серверный статус принятия. Это не приёмка качества.</div>
         </div>
-        <button className="fill" type="button" onClick={onOpen}>{openLabel}</button>
+        <button className="fill desk-action" type="button" onClick={onOpen}>{openLabel}</button>
       </div>
     </>
   );

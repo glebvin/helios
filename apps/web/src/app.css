@@ -374,6 +374,10 @@ h1, h2, h3, p { margin: 0; }
   padding: 12px;
 }
 .attention-row small { display: block; color: var(--muted); font-size: 12px; }
+.live-read-body { display: grid; gap: 12px; }
+.live-attention .attention-row { grid-template-columns: minmax(0, 1fr) auto; }
+.live-attention .attention-row > span { min-width: 0; overflow-wrap: anywhere; }
+.live-read-body .daybar > button { flex-shrink: 0; }
 .object-tools { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .time-range { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
 .time-range input { height: 32px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); padding: 0 10px; color: var(--ink); font: inherit; font-size: 13px; }
