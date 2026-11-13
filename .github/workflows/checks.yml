@@ -88,7 +88,6 @@ jobs:
 
   browser-smoke:
     name: Браузерный smoke текущего UI
-    needs: [project-checks, server-tests]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -148,7 +147,6 @@ jobs:
 
   offline-checks:
     name: Offline — Chromium и WebKit, очередь и реальный API
-    needs: browser-smoke
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     defaults:
@@ -190,7 +188,7 @@ jobs:
       - run: corepack pnpm exec playwright install --with-deps chromium webkit
       - run: node .github/scripts/prepare-ci-db.mjs
       - run: corepack pnpm --filter @helios/api migrate
-      - name: 70 сценариев существующей очереди, последовательно
+      - name: Полный набор очереди Chromium/WebKit, последовательно
         shell: bash
         run: |
           mkdir -p .data/ci-offline
