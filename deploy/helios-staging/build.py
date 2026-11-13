@@ -25,7 +25,7 @@ for name in ['package.json','package-lock.json']:
 (out/'apps/api/package.json').write_text(json.dumps({'name':'@helios/api','version':'0.1.0','type':'module','exports':{'./db':'./src/db.js','./jobs':'./src/jobs.js'}})+'\n')
 index=out/'web/index.html'
 text=index.read_text()
-banner='<aside role="note" style="padding:8px 16px;background:#fff4dc;color:#604000;font:13px/1.4 system-ui">HELIOS · чистый тестовый стенд. Прежний интерфейс, 13 кабинетов. Некоторые действия пока демонстрационные; офлайн не подключён.</aside>'
+banner='<aside role="note" style="padding:8px 16px;background:#fff4dc;color:#604000;font:13px/1.4 system-ui">HELIOS · тестовый стенд, 13 кабинетов. Офлайн подключён к «Моей смене»; проверка физических телефонов — отдельный этап.</aside>'
 index.write_text(text.replace('<body>','<body>'+banner))
 shutil.copy2(deploy/'Dockerfile',out/'Dockerfile')
 shutil.copy2(deploy/'compose.yaml',out/'compose.yaml')

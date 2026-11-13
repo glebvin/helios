@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import type { Session } from "./api";
 import { Dialog } from "./dialog";
 import { Flash } from "./flash";
-import { canWriteShift, shiftBatchError, shiftEventBody, shiftNeedsReason, shiftProblem, type ShiftBatch, type ShiftGeo, type ShiftKind } from "./shift-command";
+import { canWriteShift, shiftBatchError, shiftEventBody, shiftNeedsReason, shiftProblem, type ShiftGeo, type ShiftKind } from "./shift-command";
+import { deliveryError, deliveryPredecessor, sendEvent } from "./delivery";
 import { ApiError, v1, v1Collection } from "./v1";
+import type { EventPayload } from "../../../packages/offline/src/index.js";
 import { NoteMark } from "./note-mark";
 import { SegmentPanel } from "./segment-panel";
 import { taskListPath, type ServerTask } from "./task-read";
@@ -123,24 +125,22 @@ export function ShiftDialog({ session, projectId, employeeId, kind, day, shiftId
         setGeoNote(geo ? "" : "Геопозиция не записана.");
         stored = { body: shiftEventBody({
           requestId: crypto.randomUUID(), employeeId, projectId, shiftId: shiftId || crypto.randomUUID(), expectedVersion,
-          occurredAt: new Date().toISOString(), kind, previousEventId: kind === "shift_end" && previousEventId ? previousEventId : undefined,
+          occurredAt: new Date().toISOString(), kind, previousEventId: await deliveryPredecessor(employeeId, projectId, expectedVersion) ?? (kind === "shift_end" && previousEventId ? previousEventId : undefined),
           onBehalfReason: trimmed || undefined, geo,
         }) };
         try { sessionStorage.setItem(pendingKey, JSON.stringify(stored)); } catch { /* The open form still repeats this attempt. */ }
       }
       attempt.current = stored;
-      const result = await v1<ShiftBatch>(session, "/execution/events", stored!.body);
-      const failure = shiftBatchError(result, 200);
-      if (failure) {
-        if (result.results?.[0]?.code === "stale_version") { attempt.current = null; try { sessionStorage.removeItem(pendingKey); } catch { /* The next confirmation reads the fresh day. */ } }
-        throw new Error(failure);
+      const outcome = await sendEvent(stored!.body.events[0] as EventPayload);
+      if (outcome.state === "synced") {
+        try { sessionStorage.removeItem(pendingKey); } catch { /* The server answer is enough. */ }
+        attempt.current = null;
+        return "Сохранено сервером";
       }
-      try { sessionStorage.removeItem(pendingKey); } catch { /* The server answer is enough. */ }
-      attempt.current = null;
-      const version = result.results?.[0]?.result?.version;
-      return result.results?.[0]?.outcome === "duplicate" ? `Сервер уже записал эту смену, версия ${version}.` : `Сервер записал смену, версия ${version}.`;
+      if (outcome.state === "blocked" || outcome.state === "auth-required") throw new Error(shiftBatchError({ results: [{ outcome: "error", code: outcome.code ?? "" }] }, 200));
+      return "Ожидает отправки";
     } catch (failure) {
-      setError(failure instanceof ApiError ? "Нет подтверждения сервера. Повторите в этой форме, не закрывая её." : failure instanceof Error ? failure.message : "Нет подтверждения сервера. Повторите в этой форме, не закрывая её.");
+      setError(deliveryError(failure) ?? (failure instanceof Error ? failure.message : "Нет подтверждения сервера. Повторите в этой форме, не закрывая её."));
       return null;
     } finally { lock.current = false; setBusy(false); }
   }
@@ -161,8 +161,9 @@ function readGeo(): Promise<ShiftGeo | undefined> {
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition((position) => {
       const { latitude, longitude, accuracy } = position.coords;
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(accuracy)) { resolve(undefined); return; }
-      resolve({ latitude, longitude, accuracyMeters: accuracy, capturedAt: new Date(position.timestamp).toISOString() });
+      const captured = new Date(position.timestamp);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(accuracy) || !Number.isFinite(captured.valueOf()) || captured.getUTCFullYear() < 2000 || captured.getUTCFullYear() > 2100) { resolve(undefined); return; }
+      resolve({ latitude, longitude, accuracyMeters: accuracy, capturedAt: captured.toISOString() });
     }, () => resolve(undefined), { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
   });
 }

@@ -1,6 +1,8 @@
 import {JoinPage} from "./invitations";
 import { useEffect, useRef, useState } from "react";
 import { acceptReport, createTask, desk, loadSession, login, savePlace, saveSession, syncEvents, type Desk, type NewTask, type Session } from "./api";
+import { bindRemoteClose, closeDelivery, openDelivery } from "./delivery";
+import { clearShiftSnapshot, readShiftSnapshot, type ShiftSnapshot } from "./shift-snapshot";
 import { DirectorDesk, type Section } from "./director";
 import { BookProvider } from "./book";
 import { WorkerPhone } from "./field";
@@ -28,6 +30,22 @@ function explain(code: string) {
   return text[code] ?? code;
 }
 
+function offlineDesk(session: Session, saved: ShiftSnapshot): Desk {
+  return {
+    actor: { role: session.role, name: session.email },
+    projectId: saved.projectId,
+    cabinet: { name: saved.projectName },
+    organizations: [],
+    projects: [{ id: saved.projectId, name: saved.projectName, address: "", latitude: null, longitude: null }],
+    files: [],
+    employees: [],
+    tasks: [],
+    shifts: [],
+    reports: [],
+    summary: { sample: false, label: "", rings: [], live: { tasksToday: 0, openShifts: 0 } },
+  };
+}
+
 function loadTheme(): "light" | "dark" {
   return localStorage.getItem("helios.theme") === "dark" ? "dark" : "light";
 }
@@ -38,6 +56,7 @@ export function App() {
   const activeSession = useRef(session);
   activeSession.current = session;
   const [data, setData] = useState<Desk | null>(null);
+  const [deskFailed, setDeskFailed] = useState(false);
   const [error, setError] = useState("");
   const [entering, setEntering] = useState(false);
   const [pending, setPending] = useState(0);
@@ -60,13 +79,35 @@ export function App() {
 
   useEffect(() => {
     if (!session || joinCode) return;
-    void refresh(session).catch((reason: Error) => {
+    let live = true;
+    setDeskFailed(false);
+    void refresh(session).then(() => { if (live) setDeskFailed(false); }).catch((reason: Error) => {
+      if (!live) return;
       if (reason.message === "unauthorized" || reason.message === "tenant_denied") {
         expire();
         return;
       }
+      setDeskFailed(true);
+      if (session.role === "worker" && readShiftSnapshot(session.tenantId, session.userId)) return;
       setError(explain(reason.message));
     });
+    return () => { live = false; };
+  }, [session, joinCode]);
+
+  useEffect(() => {
+    if (!session || joinCode) return;
+    let live = true;
+    void openDelivery(session).catch(() => { if (live) setError("Очередь на этом входе не открылась."); });
+    const unbind = bindRemoteClose(() => {
+      if (!live) return;
+      clearShiftSnapshot(session.tenantId, session.userId);
+      activeSession.current = null;
+      saveSession(null);
+      setSession(null);
+      setData(null);
+      setError("Сессия закончилась. Войдите снова.");
+    });
+    return () => { live = false; unbind(); };
   }, [session, joinCode]);
 
   useEffect(() => {
@@ -107,6 +148,9 @@ export function App() {
   }
 
   function expire() {
+    const current = activeSession.current;
+    if (current) clearShiftSnapshot(current.tenantId, current.userId);
+    void closeDelivery().catch(() => {});
     activeSession.current = null;
     saveSession(null);
     setSession(null);
@@ -120,6 +164,7 @@ export function App() {
     const previous = session;
     setData(null);
     try {
+      await closeDelivery();
       const next = await login(email, password);
       activeSession.current = next;
       const chosen = homeView(next.role);
@@ -129,7 +174,10 @@ export function App() {
       setError("");
     } catch (reason) {
       setError(explain(reason instanceof Error ? reason.message : "Не удалось войти"));
-      if (previous) void refresh(previous).catch(() => {});
+      if (previous) {
+        void openDelivery(previous).catch(() => {});
+        void refresh(previous).catch(() => {});
+      }
     } finally { setEntering(false); }
   }
 
@@ -142,21 +190,22 @@ export function App() {
 
   async function logout() {
     if (!session) return;
+    const current = session;
+    // Close the local private context immediately, including when the API is unreachable.
+    activeSession.current = null;
+    clearShiftSnapshot(current.tenantId, current.userId);
+    saveSession(null);
+    setSession(null);
+    setData(null);
+    setError("");
+    await closeDelivery().catch(() => {});
     try {
       await fetch("/api/v1/auth/logout", {
         method: "POST",
-        headers: { authorization: `Bearer ${session.token}`, "x-tenant-id": session.tenantId },
-      }).then(async (response) => {
-        if (!response.ok && response.status !== 401 && response.status !== 403) throw new Error((await response.json()).error ?? "logout_failed");
+        headers: { authorization: `Bearer ${current.token}`, "x-tenant-id": current.tenantId },
+        signal: AbortSignal.timeout(5000),
       });
-    } catch (reason) {
-      setError(explain(reason instanceof Error ? reason.message : "Сервер не подтвердил выход"));
-      return;
-    }
-    saveSession(null);
-    activeSession.current = null;
-    setSession(null);
-    setData(null);
+    } catch { /* Local credentials are already removed; never reopen on a network failure. */ }
   }
 
   if (joinCode) {
@@ -192,7 +241,9 @@ export function App() {
     );
   }
 
-  if (!data) {
+  const savedShift = session.role === "worker" ? readShiftSnapshot(session.tenantId, session.userId) : null;
+  const deskData = data ?? (deskFailed && savedShift ? offlineDesk(session, savedShift) : null);
+  if (!deskData) {
     return <main className="login"><p>{error || "Открываем кабинет"}</p></main>;
   }
 
@@ -208,7 +259,7 @@ export function App() {
         <WorkerPhone
           key={`${session.userId}:${shown}`}
           session={session}
-          data={data}
+          data={deskData}
           pending={pending}
           theme={theme}
           onTheme={toggleTheme}
@@ -256,7 +307,7 @@ export function App() {
         demo={demoCabinets}
         onDemoAccount={(email, password) => void enter(email, password)}
         session={session}
-        data={data}
+        data={deskData}
         section={section}
         onSection={setSection}
         theme={theme}

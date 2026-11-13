@@ -2,13 +2,13 @@ import {fail, identityKey, type NativeStore, type EventPayload, type StoredEvent
 import {uuid, object, instant} from './transport.js';
 export type EvidenceTarget = {kind: 'execution_event'; actorUserId: string; requestId: string} | {kind: 'final_report'; reportId: string};
 export type EvidenceInput = {projectId: string; employeeId: string; filename: string; contentType: 'image/jpeg' | 'image/png' | 'application/pdf';
-  blob: Blob; target: EvidenceTarget; dependencyRequestId: string; fileId?: string; reserveRequestId?: string; attachRequestId?: string; onBehalfReason?: string};
+  blob: Blob; target: EvidenceTarget; dependencyRequestId?: string; fileId?: string; reserveRequestId?: string; attachRequestId?: string; onBehalfReason?: string};
 type Reservation = {requestId: string; fileId: string; employeeId: string; filename: string; contentType: EvidenceInput['contentType']; sizeBytes: number; sha256: string; onBehalfReason?: string};
 type Attachment = {requestId: string; target: EvidenceTarget; onBehalfReason?: string};
 export type StoredEvidence = {key: [string, string]; scope: string; id: string; projectId: string; employeeId: string; blob: Blob;
-  dependencyRequestId: string; target: EvidenceTarget; reserve: Reservation; attach: Attachment; canonical: string; commandHash: string;
+  dependencyRequestId: string | null; target: EvidenceTarget; reserve: Reservation; attach: Attachment; canonical: string; commandHash: string;
   stage: 'queued' | 'reserved' | 'uploaded' | 'synced'; state: Exclude<QueueState, 'sending'>; attemptCount: number; nextAttemptAt: number | null; lastError: string | null};
-export type QueueEvidence = Omit<StoredEvidence, 'key' | 'scope' | 'canonical' | 'commandHash' | 'state'> & {requestId: string; dependency: string; state: QueueState};
+export type QueueEvidence = Omit<StoredEvidence, 'key' | 'scope' | 'canonical' | 'commandHash' | 'state'> & {requestId: string; dependency: string | null; state: QueueState};
 export function canonicalJSON(input: unknown): string {
   if (input === null || typeof input === 'boolean' || typeof input === 'string') return JSON.stringify(input);
   if (typeof input === 'number' && Number.isFinite(input)) return JSON.stringify(input);
@@ -21,7 +21,7 @@ export async function digest(bytes: BufferSource): Promise<string> {
 /** Own all caller-controlled values synchronously; Blob bytes are immutable. */
 export function captureEvidence(input: EvidenceInput, actor: string) {
   const value = object(input, ['projectId','employeeId','filename','contentType','blob','target','dependencyRequestId','fileId','reserveRequestId','attachRequestId','onBehalfReason']);
-  const projectId = uuid(value.projectId), employeeId = uuid(value.employeeId), dependencyRequestId = uuid(value.dependencyRequestId);
+  const projectId = uuid(value.projectId), employeeId = uuid(value.employeeId), dependencyRequestId = value.dependencyRequestId === undefined ? null : uuid(value.dependencyRequestId);
   const blob = value.blob;
   if (!(blob instanceof Blob) || blob.size < 1 || blob.size > 8 * 1024 * 1024) fail('invalid_size');
   if (!['image/jpeg','image/png','application/pdf'].includes(value.contentType as string) || blob.type !== value.contentType) fail('invalid_content_type');
@@ -36,7 +36,7 @@ export function captureEvidence(input: EvidenceInput, actor: string) {
   const id = value.fileId === undefined ? crypto.randomUUID() : uuid(value.fileId);
   const reserveId = value.reserveRequestId === undefined ? crypto.randomUUID() : uuid(value.reserveRequestId);
   const attachId = value.attachRequestId === undefined ? crypto.randomUUID() : uuid(value.attachRequestId);
-  if (new Set([id,reserveId,attachId,dependencyRequestId]).size !== 4) fail('local_identity_conflict');
+  if (new Set([id,reserveId,attachId,...(dependencyRequestId ? [dependencyRequestId] : [])]).size !== (dependencyRequestId ? 4 : 3)) fail('local_identity_conflict');
   const reason = value.onBehalfReason === undefined ? {} : {onBehalfReason: (value.onBehalfReason as string).trim()};
   return {projectId, employeeId, dependencyRequestId, blob, target, id, reserveId, attachId, reason,
     filename: value.filename.trim(), contentType: value.contentType as EvidenceInput['contentType']};
@@ -76,9 +76,8 @@ export function saveEvidence(store: NativeStore, scope: string, epoch: number, r
         const reserveIdentity = meta.get(identityKey(scope,row.reserve.requestId)), attachIdentity = meta.get(identityKey(scope,row.attach.requestId));
         attachIdentity.onsuccess = () => guard(() => {
           if (reserveIdentity.result || attachIdentity.result) fail('local_identity_conflict');
-          const dependency = meta.get(identityKey(scope,row.dependencyRequestId));
-          dependency.onsuccess = () => guard(() => {
-            if (!dependency.result?.value?.event) fail('local_dependency_conflict');compatible(row,dependency.result.value.event);
+          const save = () => {
+            if (!row.dependencyRequestId && row.target.kind !== 'final_report') fail('local_dependency_conflict');
             const count = files.count();const cursor = files.openCursor();let bytes = 0;
             cursor.onsuccess = () => guard(() => {
               const item = cursor.result;if (item) {bytes += (item.value as StoredEvidence).blob.size;item.continue();return;}
@@ -87,7 +86,14 @@ export function saveEvidence(store: NativeStore, scope: string, epoch: number, r
               for (const [id,role] of [[row.id,'file'],[row.reserve.requestId,'reserve'],[row.attach.requestId,'attach']]) meta.put({key:identityKey(scope,id),value:{canonical:row.canonical,commandHash:row.commandHash,role,acknowledged:false}});
               saved.push(row);next(position+1);
             });
-          });
+          };
+          if (row.dependencyRequestId) {
+            const dependency = meta.get(identityKey(scope,row.dependencyRequestId));
+            dependency.onsuccess = () => guard(() => {
+              if (!dependency.result?.value?.event) fail('local_dependency_conflict');
+              compatible(row,dependency.result.value.event);save();
+            });
+          } else save();
         });
       });
     };
@@ -99,7 +105,11 @@ export function listEvidence(store: NativeStore, scope: string, epoch: number, c
   return store.scoped(scope,epoch,'readonly',check,(tx,result) => {const r=tx.objectStore('evidence').index('scope').getAll(scope);r.onsuccess=()=>result(r.result);});
 }
 export function evidenceDependency(store: NativeStore, scope: string, epoch: number, row: StoredEvidence, check: () => void): Promise<boolean> {
-  return store.scoped(scope,epoch,'readonly',check,(tx,result,guard) => {const r=tx.objectStore('meta').get(identityKey(scope,row.dependencyRequestId));r.onsuccess=()=>guard(()=>{
+  // A final report read from the server needs no locally queued submit event.
+  // Server reservation/attachment still enforce employee, project, actor and target.
+  if (!row.dependencyRequestId) {check();if(row.target.kind !== 'final_report')fail('local_dependency_conflict');return Promise.resolve(true);}
+  const dependencyRequestId = row.dependencyRequestId;
+  return store.scoped(scope,epoch,'readonly',check,(tx,result,guard) => {const r=tx.objectStore('meta').get(identityKey(scope,dependencyRequestId));r.onsuccess=()=>guard(()=>{
     const dependency=r.result?.value as Tombstone | undefined;if(!dependency?.event)fail('local_dependency_conflict');compatible(row,dependency.event);result(dependency.acknowledged);
   });});
 }
