@@ -51,7 +51,7 @@ export function WorkerPhone({
         {preview ? <p className="quiet">Просмотр кабинета. Смена и объём от этого вида не записываются: вход остаётся {session.name}.</p> : null}
         <Mark compact />
         <ScopeBar scope={scope} />
-        {tab === "shift" ? <WorkerDayPanel key={`${session.tenantId}:${scope.projectId}:${scope.day}`} session={session} projectId={scope.projectId} day={scope.day} notice={scope.notice} onExpire={onExpire} /> : null}
+        {tab === "shift" ? <WorkerDayPanel key={`${session.tenantId}:${scope.projectId}:${scope.day}`} session={session} projectId={scope.projectId} projectName={scope.projectName} day={scope.day} notice={scope.notice} onExpire={onExpire} /> : null}
         {tab === "task" ? <TaskRead key={`${session.tenantId}:${scope.projectId}:${scope.day}`} compact session={session} projectId={scope.projectId} day={scope.day} notice={scope.notice} /> : null}
         {tab === "profile" ? (
           <>
