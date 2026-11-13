@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { withTenant } from './db.js';
 import { httpError } from './errors.js';
-import { hashPassword, hashToken, newToken } from './password.js';
+import { hashPasswordCurrent, hashToken, newToken } from './password.js';
 import { uuid } from './api-input.js';
 import type { Actor } from './workforce.service.js';
 
@@ -125,7 +125,8 @@ export class InvitationsService {
         await this.authority(c,row.issued_by,row.project_id,row.role);
         if((await c.query(`SELECT 1 FROM users WHERE lower(email)=$1`,[email])).rowCount)throw httpError(409,'email_registered');
         const userId=randomUUID(), employeeId=randomUUID(), token=newToken();
-        await c.query(`INSERT INTO users(id,email,name,password_hash) VALUES($1,$2,$3,$4)`,[userId,email,name,hashPassword(b.password)]);
+        const passwordHash = await hashPasswordCurrent(b.password);
+        await c.query(`INSERT INTO users(id,email,name,password_hash) VALUES($1,$2,$3,$4)`,[userId,email,name,passwordHash]);
         await c.query(`INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,$3)`,[tenant,userId,row.role]);
         await c.query(`INSERT INTO employees(tenant_id,id,organization_id,user_id,full_name) VALUES($1,$2,$3,$4,$5)`,[tenant,employeeId,row.organization_id,userId,name]);
         await c.query(`INSERT INTO project_memberships(tenant_id,project_id,user_id) VALUES($1,$2,$3)`,[tenant,row.project_id,userId]);

@@ -20,7 +20,7 @@ On this Mac Docker is unavailable. Only the already compiled runtime is sent; th
 - Edge network `helios-staging-edge` connects only the HELIOS gateway and existing public Caddy. Its membership must also be retained in the public proxy's Compose configuration.
 - Public Caddy proxies only this new hostname to `helios-staging-gateway:8080`; preserve all existing routes.
 - Gateway serves UI and forwards the original `/api/*` path. API listens on 0.0.0.0 inside its private container via a dedicated staging entry, leaving local development entry untouched.
-- The API login endpoint has a small global staging rate cap, 30 attempts/minute. This is not a full production anti-abuse system.
+- The API login endpoint has a small global staging rate cap, 40 attempts/minute. This is not a full production anti-abuse system.
 - Create `helios_app` using a generated password before migration. API never receives ADMIN_DATABASE_URL. SQL owner and runtime roles are separate.
 - Never run the default dev seed on the internet. `seed-staging.mjs` accepts three randomly generated private credentials mounted readonly at `/run/helios-credentials.json`. It refuses automatic reinitialisation.
 - `worker` runs the existing pg-boss consumer; no additional Redis is used.
@@ -34,3 +34,5 @@ After publishing: restart services and confirm the same database/evidence; test 
 Rollback application by selecting the previous release/image with the same permanent volumes. Do not run `down -v`. Database migrations are not automatically reversible; verify schema compatibility before rolling back code. The public Caddy config is backed up before editing; validate candidate and restore/reload the saved config if the old site regresses.
 
 No physical phone/offline/production acceptance is claimed. See `docs/integration-status.md` for the demonstration boundaries.
+
+For the password-format release, retain a tested compatible rollback built with `compatible-rollback.py`. An unpatched old API cannot verify v2 password hashes. Do not restore the business database to roll back application code. See [release acceptance](../../docs/qa/release-brigady-passwords-2026-11-14.md).

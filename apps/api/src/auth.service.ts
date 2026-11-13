@@ -2,7 +2,7 @@ import { Inject, Injectable, type CanActivate, type ExecutionContext } from "@ne
 import type { Pool } from "pg";
 import { withTenant } from "./db.js";
 import { httpError } from "./errors.js";
-import { hashToken, newToken, verifyPassword } from "./password.js";
+import { checkPassword, hashPasswordCurrent, hashToken, newToken } from "./password.js";
 import type { Actor } from "./workforce.service.js";
 import { uuid } from "./api-input.js";
 import { readOnlyCabinetRoles } from "./cabinet-roles.js";
@@ -21,7 +21,15 @@ export class AuthService {
       [email.trim().toLowerCase()],
     );
     const row = user.rows[0];
-    if (!row || !verifyPassword(password, row.password_hash)) throw httpError(401, "unauthorized");
+    const verdict = row ? await checkPassword(password, row.password_hash) : { ok: false, stale: false };
+    if (!row || !verdict.ok) throw httpError(401, "unauthorized");
+    if (verdict.stale) {
+      const nextHash = await hashPasswordCurrent(password);
+      await this.pool.query(
+        `UPDATE users SET password_hash = $1 WHERE id = $2 AND password_hash = $3`,
+        [nextHash, row.id, row.password_hash],
+      );
+    }
     const token = newToken();
     await this.pool.query(
       `INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, now() + interval '12 hours')`,

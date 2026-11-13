@@ -2,7 +2,7 @@
 
 GitHub: [R27 · задача #27](https://github.com/glebvin/helios/issues/27).
 
-Статус: **согласование контрактов**, реализация не заявлена. Актуальная очередь — в GitHub; R01 принят.
+Статус: **на согласовании**. Матрица: [R27-role-contracts.md](../R27-role-contracts.md). Новые права не выданы и не реализованы.
 
 - Группа: Обязательный пилот.
 - Роли: gd, ds, zds-sso, zds-soso, supply, safety, hr, customer, admin.
