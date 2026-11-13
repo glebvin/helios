@@ -11,13 +11,15 @@ import {
   Param,
   Post,
   Req,
+  Res,
   UseGuards,
 } from "@nestjs/common";
 import type { Pool } from "pg";
 import type { PgBoss } from "pg-boss";
 import { AuthService, TenantGuard, actorOf, type ActorRequest } from "./auth.service.js";
 import { createPool } from "./db.js";
-import { createBoss, ensureQueue } from "./jobs.js";
+import { QUEUE_WORK_REPORT, createBoss, ensureQueue } from "./jobs.js";
+import { collectReady, evidenceCheck, evidenceRoot, workerCheck } from "./ready.js";
 import { WorkforceService } from "./workforce.service.js";
 import { DirectorApiController, VersionedAuthController, ApiSpecController } from "./director-api.controller.js";
 import { DirectorApiService } from "./director-api.service.js";
@@ -73,6 +75,28 @@ class AuthController {
 }
 
 @Controller("api")
+class ReadyController {
+  constructor(@Inject(APP_POOL) private readonly pool: Pool, @Inject(BOSS) private readonly boss: PgBoss) {}
+
+  @Get("ready")
+  async ready(@Res() response: { status: (code: number) => { json: (body: unknown) => void } }) {
+    const report = await collectReady({
+      db: () => this.pool.query("SELECT 1"),
+      evidence: () => {
+        try {
+          return evidenceCheck(evidenceRoot());
+        } catch {
+          return Promise.resolve("missing");
+        }
+      },
+      queue: async () => (await this.boss.getQueues()).some((queue) => queue.name === QUEUE_WORK_REPORT),
+      worker: () => workerCheck(process.env.HELIOS_WORKER_HEARTBEAT, Date.now()),
+    });
+    response.status(report.ok ? 200 : 503).json(report);
+  }
+}
+
+@Controller("api")
 @UseGuards(TenantGuard)
 class WorkforceController {
   constructor(@Inject(WorkforceService) private readonly workforce: WorkforceService) {}
@@ -123,7 +147,7 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [InvitationsController, AuthController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
   providers: [
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
