@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, stat, utimes } from "node:fs/promises";
+import { mkdtemp, readFile, stat, utimes, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { collectReady, evidenceCheck, workerCheck, writeWorkerHeartbeat } from "../src/ready.js";
+import { cachedReadiness, collectReady, evidenceCheck, startWorkerHeartbeat, workerCheck, writeWorkerHeartbeat } from "../src/ready.js";
 
 test("сбой базы виден и секрет не попадает в сигнал", async () => {
   const lines: string[] = [];
@@ -51,4 +51,38 @@ test("файлы, очередь и отметка работника читаю
   });
   assert.equal(again.ok, true);
   assert.equal(again.checks.backup, "not_configured");
+});
+
+test('stalled dependency is bounded and does not prevent other observations', async () => {
+  const started=Date.now();
+  const report=await collectReady({db:()=>new Promise(()=>{}),queue:async()=>true,evidence:async()=>"ok",worker:async()=>"ok",log:()=>{}},30);
+  assert.equal(report.ok,false);assert.equal(report.checks.db,"down");assert.equal(report.checks.queue,"ok");assert.ok(Date.now()-started<1000);
+});
+
+test('concurrent polling shares a probe and outage/recovery logs only transitions',async()=>{
+  let calls=0,healthy=false;const lines:string[]=[];
+  const read=cachedReadiness({db:async()=>{calls++;await new Promise(r=>setTimeout(r,15));if(!healthy)throw new Error('private')},queue:async()=>true,evidence:async()=>"ok",worker:async()=>"ok",log:s=>lines.push(s)},20,200);
+  const first=await Promise.all(Array.from({length:30},()=>read()));assert.equal(calls,1);assert.ok(first.every(x=>x.checks.db==='down'));
+  await read();assert.equal(calls,1);await new Promise(r=>setTimeout(r,25));await read();assert.equal(calls,2);assert.deepEqual(lines,['ready db']);
+  healthy=true;await new Promise(r=>setTimeout(r,25));assert.equal((await read()).ok,true);assert.deepEqual(lines,['ready db','ready recovered']);
+});
+
+test('directory and future timestamp cannot masquerade as a worker heartbeat',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'helios-beat-'));
+  try{assert.equal(await workerCheck(root,Date.now()),'stale');const file=join(root,'heartbeat');await writeWorkerHeartbeat(file);const future=new Date(Date.now()+60000);await utimes(file,future,future);assert.equal(await workerCheck(file,Date.now()),'stale');}finally{await rm(root,{recursive:true,force:true})}
+});
+
+test('a live worker with failing queue checks does not refresh its heartbeat',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'helios-beat-'));const file=join(root,'worker');await writeWorkerHeartbeat(file);const old=new Date(Date.now()-60000);await utimes(file,old,old);const lines:string[]=[];
+  let healthy=false;let attempts=0;
+  const stop=startWorkerHeartbeat(file,async()=>{attempts++;if(!healthy)throw new Error('private')},10,s=>lines.push(s));
+  try{
+    while(attempts<2)await new Promise(r=>setTimeout(r,10));assert.equal(await workerCheck(file,Date.now()),'stale');assert.deepEqual(lines,['worker_heartbeat']);
+    healthy=true;for(let i=0;i<100&&(await workerCheck(file,Date.now()))!=='ok';i++)await new Promise(r=>setTimeout(r,10));assert.equal(await workerCheck(file,Date.now()),'ok');assert.deepEqual(lines,['worker_heartbeat','worker_heartbeat recovered']);
+  }finally{stop();await rm(root,{recursive:true,force:true})}
+});
+
+test('production requirement cannot report ready with an unconfigured worker',async()=>{
+  const report=await collectReady({db:async()=>true,queue:async()=>true,evidence:async()=>"ok",worker:async()=>"not_configured",requireWorker:true,log:()=>{}});
+  assert.equal(report.ok,false);assert.equal(report.checks.worker,'not_configured');
 });

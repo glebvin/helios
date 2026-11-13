@@ -14,12 +14,12 @@ import {
   Res,
   UseGuards,
 } from "@nestjs/common";
-import type { Pool } from "pg";
+import { Pool } from "pg";
 import type { PgBoss } from "pg-boss";
 import { AuthService, TenantGuard, actorOf, type ActorRequest } from "./auth.service.js";
-import { createPool } from "./db.js";
+import { appUrl, createPool } from "./db.js";
 import { QUEUE_WORK_REPORT, createBoss, ensureQueue } from "./jobs.js";
-import { collectReady, evidenceCheck, evidenceRoot, workerCheck } from "./ready.js";
+import { cachedReadiness, evidenceCheck, evidenceRoot, workerCheck } from "./ready.js";
 import { WorkforceService } from "./workforce.service.js";
 import { DirectorApiController, VersionedAuthController, ApiSpecController } from "./director-api.controller.js";
 import { DirectorApiService } from "./director-api.service.js";
@@ -48,6 +48,8 @@ export const BOSS = "BOSS";
 class BossHost implements OnModuleInit, OnModuleDestroy {
   readonly boss = createBoss();
 
+  constructor() { this.boss.on("error", () => console.error("queue_unavailable")); }
+
   async onModuleInit() {
     await this.boss.start();
     await ensureQueue(this.boss);
@@ -75,23 +77,23 @@ class AuthController {
 }
 
 @Controller("api")
-class ReadyController {
-  constructor(@Inject(APP_POOL) private readonly pool: Pool, @Inject(BOSS) private readonly boss: PgBoss) {}
-
+class ReadyController implements OnModuleDestroy {
+  // Readiness must not wait behind business traffic or exhaust its pool during an outage.
+  private readonly pool = new Pool({connectionString: appUrl, max: 1,
+    connectionTimeoutMillis: 1000, statement_timeout: 1000, query_timeout: 1000, idleTimeoutMillis: 10000});
+  private readonly probe = cachedReadiness({
+    requireWorker: process.env.NODE_ENV === "production",
+    db: () => this.pool.query("SELECT 1"),
+    evidence: () => evidenceCheck(evidenceRoot()),
+    // createBoss uses the fixed default pgboss schema; read only the required queue.
+    queue: async () => (await this.pool.query("SELECT EXISTS (SELECT 1 FROM pgboss.queue WHERE name = $1) AS present", [QUEUE_WORK_REPORT])).rows[0]?.present === true,
+    worker: () => workerCheck(process.env.HELIOS_WORKER_HEARTBEAT, Date.now()),
+  });
+  constructor() { this.pool.on("error", () => {}); }
+  async onModuleDestroy() { await this.pool.end(); }
   @Get("ready")
   async ready(@Res() response: { status: (code: number) => { json: (body: unknown) => void } }) {
-    const report = await collectReady({
-      db: () => this.pool.query("SELECT 1"),
-      evidence: () => {
-        try {
-          return evidenceCheck(evidenceRoot());
-        } catch {
-          return Promise.resolve("missing");
-        }
-      },
-      queue: async () => (await this.boss.getQueues()).some((queue) => queue.name === QUEUE_WORK_REPORT),
-      worker: () => workerCheck(process.env.HELIOS_WORKER_HEARTBEAT, Date.now()),
-    });
+    const report = await this.probe();
     response.status(report.ok ? 200 : 503).json(report);
   }
 }

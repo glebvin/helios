@@ -22,7 +22,9 @@ for name in ['entry.mjs','seed-staging.mjs','seed-clean-cabinets.mjs']:
 for name in ['package.json','package-lock.json']:
     shutil.copy2(deploy/('runtime-'+name),out/name)
 (out/'packages/domain/package.json').write_text(json.dumps({'name':'@helios/domain','version':'0.1.0','type':'module','exports':{'.':'./src/index.js'}})+'\n')
-(out/'apps/api/package.json').write_text(json.dumps({'name':'@helios/api','version':'0.1.0','type':'module','exports':{'./db':'./src/db.js','./jobs':'./src/jobs.js'}})+'\n')
+api_exports=json.loads((root/'apps/api/package.json').read_text())['exports']
+assert all(isinstance(value,str) and value.startswith('./src/') and value.endswith('.ts') for value in api_exports.values())
+(out/'apps/api/package.json').write_text(json.dumps({'name':'@helios/api','version':'0.1.0','type':'module','exports':{key:value[:-3]+'.js' for key,value in api_exports.items()}})+'\n')
 index=out/'web/index.html'
 text=index.read_text()
 banner='<aside role="note" style="padding:8px 16px;background:#fff4dc;color:#604000;font:13px/1.4 system-ui">HELIOS · тестовый стенд, 13 кабинетов. Офлайн подключён к «Моей смене»; проверка физических телефонов — отдельный этап.</aside>'

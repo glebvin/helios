@@ -85,6 +85,25 @@ jobs:
         run: corepack pnpm --filter @helios/api seed
       - name: API regression последовательно
         run: corepack pnpm --filter @helios/api test
+      - name: Собранный runtime API/worker
+        run: |
+          python3 deploy/helios-staging/build.py
+          npm ci --prefix .data/staging-runtime --omit=dev --ignore-scripts --no-audit --no-fund
+          node deploy/helios-staging/check-runtime.mjs
+      - name: Отказы и восстановление readiness на отдельном TCP proxy
+        env:
+          HELIOS_READY_QA_PROFILE: ci
+        run: node qa/ready-integration.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: readiness-${{ github.sha }}
+          path: |
+            .data/ci-ready/results.json
+            .data/ci-ready/*.log
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: warn
 
   browser-smoke:
     name: Браузерный smoke текущего UI

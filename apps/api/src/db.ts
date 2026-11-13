@@ -4,7 +4,9 @@ export const adminUrl = process.env.ADMIN_DATABASE_URL ?? "postgres://helios:hel
 export const appUrl = process.env.DATABASE_URL ?? "postgres://helios_app:helios_app@127.0.0.1:54329/helios";
 
 export function createPool(connectionString = appUrl): Pool {
-  return new Pool({ connectionString });
+  const pool = new Pool({ connectionString });
+  pool.on("error", () => console.error("database_unavailable"));
+  return pool;
 }
 
 export async function withTenant<T>(

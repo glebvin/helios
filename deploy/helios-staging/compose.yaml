@@ -17,6 +17,7 @@ x-app: &app
     NODE_OPTIONS: --max-old-space-size=256
     DATABASE_URL: postgres://helios_app:${APP_DB_PASSWORD:?}@db:5432/helios
     HELIOS_EVIDENCE_ROOT: /var/lib/helios/evidence
+    HELIOS_WORKER_HEARTBEAT: /var/run/helios/worker.heartbeat
     # One 128MiB scrypt operation fits the staging API's 384MiB memory limit.
     HELIOS_PASSWORD_HASH_CONCURRENCY: '1'
   depends_on:
@@ -42,7 +43,7 @@ services:
   api:
     <<: *app
     mem_limit: 384m
-    volumes: ["evidence:/var/lib/helios/evidence"]
+    volumes: ["evidence:/var/lib/helios/evidence", "runtime:/var/run/helios:ro"]
     healthcheck:
       test: [CMD, node, -e, "fetch('http://127.0.0.1:4327/api/health',{signal:AbortSignal.timeout(3000)}).then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 15s
@@ -52,6 +53,13 @@ services:
     <<: *app
     command: [node, apps/worker/src/main.js]
     mem_limit: 160m
+    volumes: ["runtime:/var/run/helios"]
+    healthcheck:
+      test: [CMD, node, --input-type=module, -e, "import {workerCheck} from '@helios/api/ready'; process.exit(await workerCheck(process.env.HELIOS_WORKER_HEARTBEAT,Date.now())==='ok'?0:1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
   migrate:
     <<: *app
     restart: "no"
@@ -94,5 +102,6 @@ networks:
     name: helios-staging-edge
 volumes:
   pg: {}
+  runtime: {}
   evidence:
     name: ${EVIDENCE_VOLUME:-helios-staging_evidence}
