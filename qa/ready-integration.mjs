@@ -22,7 +22,7 @@ const proxy=createServer(client=>{
  const upstream=connect(targetPort,'127.0.0.1');sockets.add(upstream);upstream.on('error',()=>client.destroy());upstream.on('close',()=>{sockets.delete(upstream);client.destroy()});client.on('close',()=>upstream.destroy());client.pipe(upstream).pipe(client);
 });
 await new Promise((ok,no)=>{proxy.once('error',no);proxy.listen(54361,'127.0.0.1',ok)});
-const env={...process.env,DATABASE_URL:db.href,API_PORT:'14371',HELIOS_EVIDENCE_ROOT:evidence,HELIOS_WORKER_HEARTBEAT:beat,HELIOS_PASSWORD_HASH_CONCURRENCY:'1'};
+const env={...process.env,NODE_ENV:'production',DATABASE_URL:db.href,API_PORT:'14371',HELIOS_EVIDENCE_ROOT:evidence,HELIOS_WORKER_HEARTBEAT:beat,HELIOS_PASSWORD_HASH_CONCURRENCY:'1'};
 async function launch(name,path){
  const log=await open(resolve(out,name+'.log'),'w',0o600);logs.push(log);
  const child=spawn(process.execPath,[path],{cwd:runtime,env,stdio:['ignore',log.fd,log.fd]});children.push(child);return child;
