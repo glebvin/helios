@@ -4,7 +4,9 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {randomBytes, randomUUID} from 'node:crypto';
-import {mkdir, readFile, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, readFile, writeFile, rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import pg from 'pg';
 import {hashPassword} from '../apps/api/src/password.ts';
 
@@ -12,10 +14,14 @@ const api = process.env.HELIOS_R26_API ?? 'http://127.0.0.1:4371';
 const web = process.env.HELIOS_R26_WEB ?? 'http://127.0.0.1:5236';
 const adminUrl = new URL(process.env.HELIOS_R26_ADMIN_DATABASE_URL ?? 'postgres://helios:helios@127.0.0.1:54431/helios');
 assert.equal(adminUrl.hostname, '127.0.0.1');
-assert.equal(adminUrl.port, '54431');
-assert.equal(new URL(api).port, '4371');
-assert.equal(new URL(web).port, '5236');
-const out = '.data/r26';
+const review = process.env.HELIOS_RELEASE_REVIEW === '1';
+const dbPort = review ? '54360' : '54431';
+assert.equal(adminUrl.port, dbPort);
+assert.equal(new URL(api).hostname, '127.0.0.1');
+assert.equal(new URL(api).port, review ? '14369' : '4371');
+assert.equal(new URL(web).hostname, '127.0.0.1');
+assert.equal(new URL(web).port, review ? '15219' : '5236');
+const out = `.data/r26/${process.env.HELIOS_R26_BROWSER ?? 'chromium'}`;
 await mkdir(out, {recursive: true});
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
 
@@ -39,7 +45,7 @@ const pto = accounts.find((item) => item.role === 'pto');
 
 const db = new pg.Client({connectionString: adminUrl.href});
 await db.connect();
-assert.equal(String((await db.query('SELECT inet_server_port() port')).rows[0].port), '54431');
+assert.equal(String((await db.query('SELECT inet_server_port() port')).rows[0].port), dbPort);
 try {
   await db.query('BEGIN');
   await db.query('INSERT INTO tenants(id, name) VALUES($1, $2)', [tenantId, 'Изолированный день R26']);
@@ -90,16 +96,20 @@ for (const action of ['submit', 'publish']) task = await call(directorHeaders, '
 assert.equal(task.status, 'published');
 
 const browserName = process.env.HELIOS_R26_BROWSER ?? 'chromium';
-const playwright = await import('playwright');
-const browser = await playwright[browserName].launch({headless: true});
+const playwright = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
+const browser = await playwright[browserName].launch({headless: true, ...(browserName === 'chromium' && process.env.CHROMIUM_EXECUTABLE ? {executablePath: process.env.CHROMIUM_EXECUTABLE} : {})});
 const contexts = [];
+const profiles = [];
 const results = [];
 const errors = [];
 let current;
 const pass = (name) => { results.push(name); console.log('PASS', name); };
 async function login(role, width = 1280) {
   const account = accounts.find((item) => item.role === role);
-  const context = await browser.newContext({viewport: {width, height: width === 390 ? 844 : 900}, acceptDownloads: true});
+  const options = {viewport: {width, height: width === 390 ? 844 : 900}, acceptDownloads: true, serviceWorkers: 'block'};
+  const profile = browserName === 'webkit' ? await mkdtemp(join(tmpdir(), 'helios-r26-webkit-')) : null;
+  if (profile) profiles.push(profile);
+  const context = profile ? await playwright.webkit.launchPersistentContext(profile, {...options, headless: true}) : await browser.newContext(options);
   contexts.push(context);
   const page = await context.newPage();
   current = page;
@@ -129,9 +139,16 @@ async function endShift(page) {
   const track = await page.locator('.end-slide').boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  await page.mouse.move(track.x + track.width - 25, box.y + box.height / 2, {steps: 15});
+  await page.waitForTimeout(60);
+  for (let step = 1; step <= 20; step++) {
+    await page.mouse.move(box.x + box.width / 2 + (track.x + track.width - 25 - box.x - box.width / 2) * step / 20, box.y + box.height / 2);
+    await page.waitForTimeout(20);
+  }
   await page.mouse.up();
   await page.getByRole('button', {name: 'Начать смену', exact: true}).waitFor();
+}
+async function assertEventually(check) {
+  for (let i = 0; i < 100; i++) { try { return await check(); } catch (error) { if (i === 99) throw error; await new Promise(resolve => setTimeout(resolve, 200)); } }
 }
 try {
   const workerPage = await login('worker', 390);
@@ -151,9 +168,10 @@ try {
   await workerPage.getByRole('button', {name: 'Начать смену', exact: true}).click();
   const start = workerPage.getByRole('dialog');
   await start.getByRole('button', {name: 'Начать смену', exact: true}).click();
-  await start.getByRole('alert').waitFor();
-  await start.getByRole('button', {name: 'Начать смену', exact: true}).click();
   await start.waitFor({state: 'hidden'});
+  await workerPage.locator('.worker-interval').getByRole('button', {name: 'В работу', exact: true}).waitFor();
+  // The durable queue retries automatically; there is no second modal submission.
+  await assertEventually(() => assert.equal(writes.length, 2));
   await workerPage.unroute('**/api/v1/execution/events');
   assert.equal(writes.length, 2);
   assert.deepEqual(writes[0], writes[1]);
@@ -272,5 +290,6 @@ try {
   await writeFile(`${out}/results.json`, JSON.stringify({browser: browserName, results, errors, day: clock.day, projectId}, null, 2));
   for (const context of contexts) await context.close();
   await browser.close();
+  for (const profile of profiles) await rm(profile, {recursive:true,force:true});
 }
 console.log(JSON.stringify({ok: true, browser: browserName, steps: results.length}));

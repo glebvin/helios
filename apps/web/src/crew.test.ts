@@ -28,3 +28,14 @@ test("ошибки состава не обещают запись", () => {
   assert.match(crewError(409, "crew_conflict"), /другой бригаде/);
   assert.match(crewError(403), /руководитель/);
 });
+
+
+import { crewAttempt } from "./crew.ts";
+test("ambiguous crew retry preserves identity; changed command or invalid storage gets a new identity", () => {
+  const firstId = "33333333-3333-4333-8333-333333333333";
+  const secondId = "44444444-4444-4444-8444-444444444444";
+  const first = crewAttempt(null, "actor/project/create/name", () => firstId);
+  assert.equal(crewAttempt(first, first.signature, () => secondId).requestId, firstId);
+  assert.equal(crewAttempt(first, "actor/other-project/create/name", () => secondId).requestId, secondId);
+  assert.equal(crewAttempt({signature:first.signature,requestId:"broken"}, first.signature, () => secondId).requestId, secondId);
+});

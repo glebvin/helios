@@ -1253,3 +1253,7 @@ h1, h2, h3, p { margin: 0; }
   .task-facts { grid-template-columns: minmax(0, 1fr); }
   .task-who { flex-wrap: wrap; }
 }
+
+/* Crew membership facts wrap within the existing panel on narrow screens. */
+.crew-member { flex-wrap: wrap; justify-content: flex-start; margin-block: 12px; }
+.crew-member > b { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }

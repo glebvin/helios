@@ -1,10 +1,12 @@
 import { createHash, randomBytes, scrypt, scryptSync, timingSafeEqual } from "node:crypto";
 
 // OWASP Password Storage Cheat Sheet: scrypt minimum when Argon2id is not used.
-// Node has no Argon2. Legacy rows stay scrypt with Node's old defaults and upgrade on login.
+// Keep the established stable scrypt API; Node's experimental Argon2 is not introduced here.
+// Legacy rows stay readable and upgrade on login.
 const legacy = { N: 16384, r: 8, p: 1 };
 const current = { version: 2, N: 131072, r: 8, p: 1, keylen: 32, maxmem: 256 * 1024 * 1024 };
-const workLimit = 2;
+const workLimit = Number(process.env.HELIOS_PASSWORD_HASH_CONCURRENCY ?? 2);
+if (!Number.isInteger(workLimit) || workLimit < 1 || workLimit > 2) throw new Error("HELIOS_PASSWORD_HASH_CONCURRENCY must be 1 or 2");
 
 let active = 0;
 const waiting: Array<() => void> = [];
@@ -16,10 +18,13 @@ export function hashPassword(password: string): string {
 }
 
 export function verifyPassword(password: string, stored: string): boolean {
-  const parts = stored.split(":");
-  if (parts.length !== 3 || parts[0] !== "scrypt" || !parts[1] || !isHex(parts[2] ?? "", 32)) return false;
-  const actual = scryptSync(password, parts[1] ?? "", 32);
-  const expected = Buffer.from(parts[2] ?? "", "hex");
+  // Compatibility bridge for the previous AuthService and legacy QA callers.
+  // The live AuthService uses the bounded asynchronous checkPassword instead.
+  const parsed = parseStored(stored);
+  if (!parsed) return false;
+  const params = parsed.kind === "current" ? current : { ...legacy, maxmem: 64 * 1024 * 1024 };
+  const actual = scryptSync(password, parsed.salt, current.keylen, params);
+  const expected = Buffer.from(parsed.hash, "hex");
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 

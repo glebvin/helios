@@ -9,9 +9,13 @@ const api = process.env.HELIOS_R28_API ?? 'http://127.0.0.1:4373';
 const web = process.env.HELIOS_R28_WEB ?? 'http://127.0.0.1:5238';
 const adminUrl = new URL(process.env.HELIOS_R28_ADMIN_DATABASE_URL ?? 'postgres://helios:helios@127.0.0.1:54433/helios');
 assert.equal(adminUrl.hostname, '127.0.0.1');
-assert.equal(adminUrl.port, '54433');
-assert.equal(new URL(api).port, '4373');
-assert.equal(new URL(web).port, '5238');
+const review = process.env.HELIOS_RELEASE_REVIEW === '1';
+const dbPort = review ? '54360' : '54433';
+assert.equal(adminUrl.port, dbPort);
+assert.equal(new URL(api).hostname, '127.0.0.1');
+assert.equal(new URL(api).port, review ? '14369' : '4373');
+assert.equal(new URL(web).hostname, '127.0.0.1');
+assert.equal(new URL(web).port, review ? '15219' : '5238');
 const out = '.data/r28';
 await mkdir(out, { recursive: true });
 const tenantId = randomUUID();
@@ -34,7 +38,7 @@ const master = accounts[2];
 const worker = accounts[3];
 const db = new pg.Client({ connectionString: adminUrl.href });
 await db.connect();
-assert.equal(String((await db.query('SELECT inet_server_port() port')).rows[0].port), '54433');
+assert.equal(String((await db.query('SELECT inet_server_port() port')).rows[0].port), dbPort);
 try {
   await db.query('BEGIN');
   await db.query('INSERT INTO tenants(id, name) VALUES($1, $2)', [tenantId, 'Изолированные бригады R28']);
@@ -71,8 +75,8 @@ const admission = await call(directorHeaders, 'POST', `/projects/${projectId}/ad
 const check = await call(directorHeaders, 'POST', `/employees/${worker.employeeId}/admission-checks`, command({ projectId, templateVersion: admission.version, answers: [{ itemId: 'safe', value: true }] }));
 await call(directorHeaders, 'PUT', `/projects/${projectId}/assignments/${worker.employeeId}`, command({ expectedVersion: 0, status: 'active', admissionCheckId: check.id }));
 
-const { chromium } = await import('playwright');
-const browser = await chromium.launch({ headless: true });
+const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
+const browser = await chromium.launch({ headless: true, ...(process.env.CHROMIUM_EXECUTABLE ? { executablePath: process.env.CHROMIUM_EXECUTABLE } : {}) });
 const contexts = [];
 let current;
 async function login(account, width = 1280) {
@@ -106,6 +110,7 @@ try {
   await first.getByRole('button', { name: 'В состав', exact: true }).click();
   await first.getByText(worker.name, { exact: true }).waitFor();
   await first.getByText('Допуск актуален', { exact: false }).waitFor();
+  assert.ok(await first.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'populated crew at 390px');
 
   const second = await login(other);
   await openCrews(second);

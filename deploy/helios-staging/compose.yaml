@@ -17,6 +17,8 @@ x-app: &app
     NODE_OPTIONS: --max-old-space-size=256
     DATABASE_URL: postgres://helios_app:${APP_DB_PASSWORD:?}@db:5432/helios
     HELIOS_EVIDENCE_ROOT: /var/lib/helios/evidence
+    # One 128MiB scrypt operation fits the staging API's 384MiB memory limit.
+    HELIOS_PASSWORD_HASH_CONCURRENCY: '1'
   depends_on:
     db: {condition: service_healthy}
 services:

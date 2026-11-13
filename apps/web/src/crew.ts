@@ -3,6 +3,15 @@ export type CrewMember = { employeeId: string; status: "active" | "revoked"; ver
 export type Crew = { id: string; projectId: string; name: string; version: number; members: CrewMember[] };
 export type CrewAssignment = { employeeId: string; status: "active" | "revoked"; currentAdmission: CrewAdmission };
 
+export type CrewAttempt = { signature: string; requestId: string };
+export function crewAttempt(previous: unknown, signature: string, newId: () => string): CrewAttempt {
+  const saved = previous as Partial<CrewAttempt> | null;
+  if (saved?.signature === signature && typeof saved.requestId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(saved.requestId)) {
+    return { signature, requestId: saved.requestId };
+  }
+  return { signature, requestId: newId() };
+}
+
 export function memberFacts(status: "active" | "revoked", eligible: boolean) {
   return {
     membership: status === "active" ? "В составе" : "Снят",
