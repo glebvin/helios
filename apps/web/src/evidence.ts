@@ -51,7 +51,7 @@ export function evidenceSize(size: number) {
 }
 
 export function evidenceProblem(online: boolean, name: string, kind: EvidenceKind | "", size: number, reason: string, needsReason: boolean) {
-  if (!online) return "Нужна сеть. Файл на этом шаге не копится на телефоне.";
+  void online;
   if (!evidenceName(name)) return "Имя файла не подходит.";
   if (!kind) return "Нужен JPEG, PNG или PDF.";
   if (!evidenceSize(size)) return "Файл пустой или больше 8 МБ. Другой файл вместо него не отправляется.";
@@ -113,6 +113,14 @@ export function evidenceStageLabel(step: EvidenceStep | "chosen") {
 export function filesForReport(files: EvidenceFileRow[], total: number, reportId: string, projectId: string, employeeId: string) {
   if (Number(total) !== files.length || files.some((file) => file.projectId !== projectId || file.employeeId !== employeeId)) return { kind: "incomplete" as const };
   return { kind: "ready" as const, items: files.filter((file) => file.attachment?.target.kind === "final_report" && file.attachment.target.reportId === reportId) };
+}
+
+export function evidenceQueueError(code: string) {
+  if (code === "capacity_exceeded") return "На устройстве кончилось место очереди. Файл не сохранён.";
+  if (code === "invalid_size") return "Файл пустой или больше 8 МБ. Он не сохранён.";
+  if (code === "local_dependency_conflict") return "Этот отчёт не записан в очереди этого входа. Файл не отправляется.";
+  if (code === "quota_exceeded") return "Хранилище устройства отказало. Файл не сохранён.";
+  return "Файл не записан на этом устройстве.";
 }
 
 export function evidenceError(status: number | null, code: string) {

@@ -1,4 +1,4 @@
-import { OfflineQueueError, openOfflineQueue, type EventPayload, type OfflineQueue, type QueueState } from "../../../packages/offline/src/index.js";
+import { OfflineQueueError, openOfflineQueue, type EventPayload, type EvidenceInput, type OfflineQueue, type QueueState } from "../../../packages/offline/src/index.js";
 import type { Session } from "./api";
 
 type Live = { token: string; tenantId: string; actorUserId: string; generation: number };
@@ -82,7 +82,7 @@ export async function deliveryNote(): Promise<string> {
   const active = queue;
   if (!active) return "";
   const rows = await active.list();
-  const open = rows.filter((row) => "event" in row && row.state !== "synced");
+  const open = rows.filter((row) => row.state !== "synced");
   if (open.some((row) => row.state === "pending" || row.state === "sending" || row.state === "retry_wait")) return "Ожидает отправки";
   if (open.length) return "Сервер не принял команду. Это не сохранено.";
   return "";
@@ -91,4 +91,35 @@ export async function deliveryNote(): Promise<string> {
 export function deliveryError(error: unknown) {
   if (!(error instanceof OfflineQueueError)) return null;
   return "Команда не записана на этом устройстве.";
+}
+
+export async function reportDependency(reportId: string) {
+  const active = queue;
+  if (!active) return null;
+  const wanted = reportId.toLowerCase();
+  for (const row of await active.list()) {
+    if ("event" in row && row.event.kind === "submit_volume" && row.event.reportId.toLowerCase() === wanted) return row.event.requestId;
+  }
+  return null;
+}
+
+export async function reportFiles(reportId: string) {
+  const active = queue;
+  if (!active) return [];
+  const wanted = reportId.toLowerCase();
+  const rows = await active.list();
+  return rows.flatMap((row) => "event" in row || row.target.kind !== "final_report" || row.target.reportId.toLowerCase() !== wanted ? [] : [{
+    id: row.id, filename: row.reserve.filename, stage: row.stage, state: row.state, code: row.lastError,
+  }]);
+}
+
+export async function sendEvidence(input: EvidenceInput) {
+  const active = queue;
+  if (!active) throw new OfflineQueueError("auth_required");
+  const saved = await active.enqueueEvidence(input);
+  await active.flush();
+  const row = await active.get(saved.id);
+  notify();
+  if (!row || "event" in row) return { state: "pending" as QueueState, stage: "queued" as const, code: null as string | null };
+  return { state: row.state, stage: row.stage, code: row.lastError };
 }

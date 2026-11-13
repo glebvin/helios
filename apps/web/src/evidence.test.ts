@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evidenceAttachBody, evidenceError, evidenceKind, evidenceProblem, evidenceReserveBody, evidenceReuse, evidenceSaved, evidenceStep, filesForReport, type EvidenceAttempt, type EvidenceFileRow } from "./evidence.ts";
+import { evidenceAttachBody, evidenceError, evidenceKind, evidenceProblem, evidenceQueueError, evidenceReserveBody, evidenceReuse, evidenceSaved, evidenceStep, filesForReport, type EvidenceAttempt, type EvidenceFileRow } from "./evidence.ts";
 
 const png = Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
 const attempt: EvidenceAttempt = {
@@ -15,7 +15,7 @@ test("only a real jpeg, png or pdf is offered, and an empty file is not replaced
   assert.equal(evidenceKind(Uint8Array.from([1, 2, 3, 4])), "");
   assert.match(evidenceProblem(true, "photo.png", "", 4, "", false), /JPEG/);
   assert.match(evidenceProblem(true, "photo.png", "image/png", 0, "", false), /пустой/);
-  assert.match(evidenceProblem(false, "photo.png", "image/png", 4, "", false), /не копится/);
+  assert.equal(evidenceProblem(false, "photo.png", "image/png", 4, "", false), "");
 });
 
 test("the same bytes reuse one reservation and a pending file is not saved", () => {
@@ -35,6 +35,8 @@ test("the same bytes reuse one reservation and a pending file is not saved", () 
   assert.equal(evidenceStep(saved, "report-1"), "saved");
   assert.equal(filesForReport([saved, { ...saved, id: "other", projectId: "project-2" }], 2, "report-1", "project-1", "emp-1").kind, "incomplete");
   assert.deepEqual(filesForReport([saved], 1, "report-1", "project-1", "emp-1"), { kind: "ready", items: [saved] });
+  assert.match(evidenceQueueError("capacity_exceeded"), /не сохранён/);
+  assert.match(evidenceQueueError("quota_exceeded"), /Хранилище устройства отказало/);
   assert.match(evidenceError(null, ""), /не считается сохранённым/);
   assert.match(evidenceError(409, "evidence_pending"), /не догружены/);
   assert.match(evidenceError(409, "evidence_already_attached"), /Второй связи/);
