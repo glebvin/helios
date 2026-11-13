@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Session } from "./api";
 import { DeskBadge, DeskEmpty } from "./kit";
 import { civilLabel } from "./scope";
-import { taskListPath, type ServerTask } from "./task-read";
-import { ApiError, v1 } from "./v1";
+import { type ServerTask } from "./task-read";
+import { ApiError, v1Collection } from "./v1";
 import type { EvidenceFileRow } from "./evidence";
+import { useServerRead } from "./server-read";
 
 type Report = { reportId: string; taskId: string; employeeId: string; submittedQuantity: string; unit: string; acceptedQuantity: null };
 type Page<T> = { items: T[]; total: number };
@@ -18,30 +19,7 @@ function readError(reason: unknown) {
 }
 
 function useRead<T>(session: Session, projectId: string, day: string, notice: string, load: (session: Session, projectId: string, day: string) => Promise<T>) {
-  const [pass, setPass] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [body, setBody] = useState<T | null>(null);
-  const [key, setKey] = useState("");
-  useEffect(() => {
-    if (notice || !projectId || !day) { setLoading(false); return; }
-    let live = true;
-    const request = `${projectId}:${day}`;
-    if (key !== request) setLoading(true);
-    void load(session, projectId, day).then((next) => {
-      if (!live) return;
-      setBody(next);
-      setKey(request);
-      setError("");
-    }).catch((reason) => {
-      if (!live) return;
-      if (key !== request) setBody(null);
-      setError(readError(reason));
-    }).finally(() => { if (live) setLoading(false); });
-    return () => { live = false; };
-  }, [session.token, session.tenantId, projectId, day, pass, notice]);
-  const ready = body && key === `${projectId}:${day}` ? body : null;
-  return { loading: loading && !ready, error: ready ? "" : error, body: ready, retry: () => setPass((value) => value + 1) };
+  return useServerRead(session, `${projectId}:${day}`, notice || (!projectId || !day ? "Объект и день не подтверждены." : ""), () => load(session, projectId, day), readError);
 }
 
 export function PtoFacts({
@@ -56,8 +34,8 @@ export function PtoFacts({
 }) {
   const read = useRead(session, projectId, day, notice, async (current, project, date) => {
     const [reports, tasks] = await Promise.all([
-      v1<Page<Report>>(current, `/projects/${project}/execution/reports?day=${date}&limit=25`),
-      v1<Page<ServerTask>>(current, taskListPath(project, date, 0)),
+      v1Collection<Report>(current, `/projects/${project}/execution/reports?day=${date}`),
+      v1Collection<ServerTask>(current, `/projects/${project}/tasks`),
     ]);
     return { reports, tasks };
   });
@@ -75,7 +53,7 @@ export function PtoFacts({
       {!notice && read.body && read.body.reports.items.length === 0 ? <DeskEmpty title="За этот день сообщений нет" description="Пустой ответ не означает, что работу приняли или отклонили." /> : null}
       {!notice && read.body && read.body.reports.items.length > 0 ? (
         <div className="sheet-wrap">
-          <table className="sheet">
+          <table className="sheet facts-grid">
             <thead><tr><th>Работа</th><th>Сообщено</th><th>Приёмка</th></tr></thead>
             <tbody>
               {read.body.reports.items.map((row) => (
@@ -104,27 +82,34 @@ export function PtoFiles({
   day: string;
   notice: string;
 }) {
-  const [opening, setOpening] = useState("");
-  const [fileError, setFileError] = useState("");
-  const read = useRead(session, projectId, day, notice, (current, project) => v1<Page<EvidenceFileRow>>(current, `/projects/${project}/evidence?limit=25`));
+  const context = JSON.stringify([session.token, session.tenantId, projectId]);
+  const active = useRef(context);
+  active.current = context;
+  useEffect(() => { active.current = context; return () => { active.current = ""; }; }, [context]);
+  const [fileState, setFileState] = useState({ context, opening: "", error: "" });
+  const opening = fileState.context === context ? fileState.opening : "";
+  const fileError = fileState.context === context ? fileState.error : "";
+  const read = useRead(session, projectId, day, notice, (current, project) => v1Collection<EvidenceFileRow>(current, `/projects/${project}/evidence`));
   async function open(file: EvidenceFileRow) {
-    setOpening(file.id);
-    setFileError("");
+    setFileState({ context, opening: file.id, error: "" });
     try {
       const response = await fetch(`/api/v1/projects/${projectId}/evidence/${file.id}/content`, {
         headers: { authorization: `Bearer ${session.token}`, "x-tenant-id": session.tenantId },
       });
+      if (active.current !== context) return;
       if (!response.ok) throw new ApiError(response.status, "");
-      const url = URL.createObjectURL(await response.blob());
+      const blob = await response.blob();
+      if (active.current !== context) return;
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
       link.download = file.filename;
       link.click();
       URL.revokeObjectURL(url);
     } catch (reason) {
-      setFileError(readError(reason));
+      if (active.current === context) setFileState({ context, opening: "", error: readError(reason) });
     } finally {
-      setOpening("");
+      if (active.current === context) setFileState((value) => ({ ...value, opening: "" }));
     }
   }
   return (
@@ -141,7 +126,7 @@ export function PtoFiles({
       {!notice && read.body && read.body.items.length === 0 ? <DeskEmpty title="Файлов нет" description="Сервер не отдал ни одного файла. Это не пустой акт и не принятая работа." /> : null}
       {!notice && read.body && read.body.items.length > 0 ? (
         <div className="sheet-wrap">
-          <table className="sheet">
+          <table className="sheet facts-grid">
             <thead><tr><th>Файл</th><th>Состояние</th><th></th></tr></thead>
             <tbody>
               {read.body.items.map((file) => (

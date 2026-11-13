@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import type { Session } from "./api";
 import { DeskBadge, DeskEmpty, FluidTabs, StatGrid } from "./kit";
@@ -6,8 +6,9 @@ import { NoteMark } from "./note-mark";
 import { civilLabel } from "./scope";
 import { taskListPath, taskStatusText, type ServerTask } from "./task-read";
 import { timeStatusText, type TimeStatus } from "./time-sheet";
-import { ApiError, v1 } from "./v1";
+import { ApiError, v1, v1Collection } from "./v1";
 import { durationLabel } from "./worker-day";
+import { useServerRead } from "./server-read";
 
 type Managed = {
   presenceMs: string;
@@ -53,45 +54,15 @@ function taskTone(status: string): "neutral" | "accent" | "warn" {
 }
 
 function useServerDay(session: Session, projectId: string, day: string, notice: string) {
-  const [pass, setPass] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [body, setBody] = useState<DayBody | null>(null);
-  const [key, setKey] = useState("");
-  useEffect(() => {
-    const refresh = () => { if (document.visibilityState === "visible") setPass((value) => value + 1); };
-    window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
-  }, []);
-  useEffect(() => {
-    if (notice || !projectId || !day) { setLoading(false); return; }
-    let live = true;
-    const request = `${projectId}:${day}`;
-    if (key !== request) setLoading(true);
-    void (async () => {
-      try {
-        const [overview, tasks, days, people] = await Promise.all([
-          v1<Overview>(session, `/overview?projectId=${projectId}&day=${day}`),
-          v1<TaskPage>(session, taskListPath(projectId, day, 0)),
-          v1<TimePage>(session, `/projects/${projectId}/time/days?from=${day}&to=${day}&limit=25`),
-          v1<{ items: { id: string; fullName: string }[] }>(session, `/employees?projectId=${projectId}&limit=100`).catch(() => ({ items: [] })),
-        ]);
-        if (!live) return;
-        setBody({ overview, tasks, days, names: Object.fromEntries(people.items.map((item) => [item.id, item.fullName])) });
-        setKey(request);
-        setError("");
-      } catch (reason) {
-        if (!live) return;
-        if (key !== request) setBody(null);
-        setError(readError(reason));
-      } finally {
-        if (live) setLoading(false);
-      }
-    })();
-    return () => { live = false; };
-  }, [session.token, session.tenantId, projectId, day, pass, notice]);
-  const ready = body && key === `${projectId}:${day}` ? body : null;
-  return { loading: loading && !ready, error: ready ? "" : error, body: ready, retry: () => setPass((value) => value + 1) };
+  return useServerRead<DayBody>(session, `${projectId}:${day}`, notice || (!projectId || !day ? "Объект и день не подтверждены." : ""), async () => {
+    const [overview, tasks, days, people] = await Promise.all([
+      v1<Overview>(session, `/overview?projectId=${projectId}&day=${day}`),
+      v1<TaskPage>(session, taskListPath(projectId, day, 0)),
+      v1Collection<TimeRow>(session, `/projects/${projectId}/time/days?from=${day}&to=${day}`),
+      v1Collection<{ id: string; fullName: string }>(session, `/employees?projectId=${projectId}`).catch(() => ({ items: [], total: 0 })),
+    ]);
+    return { overview, tasks, days: { ...days, nextOffset: null }, names: Object.fromEntries(people.items.map((item) => [item.id, item.fullName])) };
+  }, readError);
 }
 
 function Hold({ text }: { text: string }) {
@@ -118,7 +89,7 @@ export function LiveToday({
   notice: string;
   openLabel: string;
   onOpen: () => void;
-  onOpenTasks: () => void;
+  onOpenTasks: (id?: string) => void;
   onOpenSheet: () => void;
 }) {
   const dayRead = useServerDay(session, projectId, day, notice);
@@ -137,14 +108,14 @@ export function LiveToday({
   );
 }
 
-function TodayBody({ body, day, openLabel, onOpen, onOpenTasks, onOpenSheet }: { body: DayBody; day: string; openLabel: string; onOpen: () => void; onOpenTasks: () => void; onOpenSheet: () => void }) {
+function TodayBody({ body, day, openLabel, onOpen, onOpenTasks, onOpenSheet }: { body: DayBody; day: string; openLabel: string; onOpen: () => void; onOpenTasks: (id?: string) => void; onOpenSheet: () => void }) {
   const managed = body.overview.managedExecution;
   const waiting = body.days.items.filter((row) => row.status !== "current");
   const accepted = body.tasks.items.filter((task) => task.status === "accepted" || task.status === "partially_accepted" || task.status === "closed").length;
   const attention = [
     ...waiting.map((row) => ({ id: `${row.employeeId}:${row.day}`, title: row.employeeName, detail: timeStatusText(row.status), open: onOpenSheet })),
     ...body.tasks.items.filter((task) => task.status === "pending_approval" || task.status === "needs_fix" || task.status === "submitted" || task.status === "in_review").map((task) => ({
-      id: task.id, title: task.title, detail: taskStatusText(task.status), open: onOpenTasks,
+      id: task.id, title: task.title, detail: taskStatusText(task.status), open: () => onOpenTasks(task.id),
     })),
   ];
   return (
@@ -158,7 +129,7 @@ function TodayBody({ body, day, openLabel, onOpen, onOpenTasks, onOpenSheet }: {
       <section className="panel">
         <h2>Сводка дня <NoteMark label="Что не считается"><p>Присутствие, работа и простой — снимок сервера, не утверждённые часы. Качество, приёмка объёма и исполнительная документация не подключены: вместо них не ставится ноль. Нет строки табеля — день не записан, это не подтверждённое отсутствие.</p></NoteMark></h2>
         <div className="summary-facts">
-          <div><b>{durationLabel(managed.presenceMs) || "—"}</b><span>присутствие, не утверждено</span></div>
+          <div><b>{durationLabel(managed.presenceMs) || "—"}</b><span>присутствие по источнику</span></div>
           <div><b>{durationLabel(managed.workMs) || "—"}</b><span>работа по заданиям</span></div>
           <div><b>{durationLabel(managed.downtimeMs) || "—"}</b><span>простой в снимке</span></div>
           <div><b>не подключено</b><span>качество и ИД</span></div>
@@ -219,36 +190,20 @@ export function LiveInbox({
   projectName: string;
   day: string;
   notice: string;
-  onOpenTasks: () => void;
+  onOpenTasks: (id?: string) => void;
   onOpenSheet: () => void;
 }) {
   const [slice, setSlice] = useState("today");
-  const [extra, setExtra] = useState<ServerTask[] | null>(null);
-  const [extraNote, setExtraNote] = useState("");
-  const [extraError, setExtraError] = useState("");
-  const [pass, setPass] = useState(0);
   const dayRead = useServerDay(session, projectId, day, notice);
-  useEffect(() => {
-    if (notice || !projectId) return;
-    let live = true;
-    void (async () => {
-      try {
-        const [pending, drafts] = await Promise.all([
-          v1<TaskPage>(session, `/projects/${projectId}/tasks?status=pending_approval&limit=25`),
-          v1<TaskPage>(session, `/projects/${projectId}/tasks?status=draft&limit=25`),
-        ]);
-        if (!live) return;
-        setExtra([...pending.items, ...drafts.items]);
-        setExtraNote(pending.total > pending.items.length || drafts.total > drafts.items.length ? "Показаны первые 25 черновиков и первые 25 заданий на согласовании." : "");
-        setExtraError("");
-      } catch (reason) {
-        if (!live) return;
-        setExtra(null);
-        setExtraError(readError(reason));
-      }
-    })();
-    return () => { live = false; };
-  }, [session.token, session.tenantId, projectId, pass, notice]);
+  const extraRead = useServerRead(session, projectId, notice || (!projectId ? "Объект не подтверждён." : ""), async () => {
+    const [pending, drafts] = await Promise.all([
+      v1Collection<ServerTask>(session, `/projects/${projectId}/tasks?status=pending_approval`),
+      v1Collection<ServerTask>(session, `/projects/${projectId}/tasks?status=draft`),
+    ]);
+    return [...pending.items, ...drafts.items];
+  }, readError);
+  const extra = extraRead.body;
+  const extraError = extraRead.error;
   const names = dayRead.body?.names ?? {};
   const items = [
     ...(extra ?? []).map((task) => ({
@@ -260,7 +215,7 @@ export function LiveInbox({
       tone: taskTone(task.status),
       note: task.status === "draft" ? "Черновик. Сервер не отмечает, возвращён он или ещё не отправлен." : "День задания, не отдельный срок.",
       action: "К заданию",
-      open: onOpenTasks,
+      open: () => onOpenTasks(task.id),
     })),
     ...(dayRead.body?.days.items ?? []).filter((row) => row.status !== "current").map((row) => ({
       id: `${row.employeeId}:${row.day}`,
@@ -286,17 +241,17 @@ export function LiveInbox({
       <div className="inbox-toolbar">
         <FluidTabs name="inbox-tabs" label="Срез дел" value={slice} onChange={setSlice} tabs={slices} />
         <div className="inbox-stat is-warn"><b>{extra === null ? "—" : overdue}</b><span>день задания раньше</span></div>
-        <div className="inbox-stat is-accent"><b>{dayRead.body ? dueToday : "—"}</b><span>на этот день</span></div>
+        <div className="inbox-stat is-accent"><b>{dayRead.body && extra ? dueToday : "—"}</b><span>на этот день</span></div>
       </div>
       {notice ? <DeskEmpty title="День не подтверждён" description={notice} /> : null}
       {!notice && (dayRead.loading || extra === null) && !dayRead.error && !extraError ? <Hold text="Читаем дела…" /> : null}
-      {!notice && (dayRead.error || extraError) ? <p role="alert">{dayRead.error || extraError} <button className="ghost desk-action" type="button" onClick={() => { dayRead.retry(); setPass((value) => value + 1); }}>Повторить чтение</button></p> : null}
+      {!notice && (dayRead.error || extraError) ? <p role="alert">{dayRead.error || extraError} <button className="ghost desk-action" type="button" onClick={() => { dayRead.retry(); extraRead.retry(); }}>Повторить чтение</button></p> : null}
       {!notice && dayRead.body && extra ? (
         <Appear>
           <div className="inbox">
             <div>
               <div className="inbox-list">
-                {visible.length === 0 ? <div className="inbox-empty"><p>{slice === "overdue" ? "Заданий с более ранним днём нет." : slice === "today" ? "На этот день открытых дел нет." : "Открытых дел нет."}</p><button className="ghost desk-action" type="button" onClick={onOpenTasks}>К заданиям</button></div> : null}
+                {visible.length === 0 ? <div className="inbox-empty"><p>{slice === "overdue" ? "Заданий с более ранним днём нет." : slice === "today" ? "На этот день открытых дел нет." : "Открытых дел нет."}</p><button className="ghost desk-action" type="button" onClick={() => onOpenTasks()}>К заданиям</button></div> : null}
                 {visible.map((item) => (
                   <article className={item.tone === "neutral" ? "inbox-row" : `inbox-row is-${item.tone}`} key={item.id}>
                     <span />
@@ -315,7 +270,6 @@ export function LiveInbox({
             <aside className="deadlines">
               <h2>Дни заданий</h2>
               <p className="quiet">Отдельного срока сервер не присылает. Приёмка качества отсюда не записывается.</p>
-              {extraNote ? <p className="quiet">{extraNote}</p> : null}
               {items.filter((item) => item.action === "К заданию").slice(0, 5).map((item) => (
                 <div className="deadline" key={item.id}><div><b>{civilLabel(item.date)}</b><div>{item.title}</div><span className="quiet">{item.who} · {projectName}</span></div></div>
               ))}

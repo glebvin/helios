@@ -384,6 +384,9 @@ h1, h2, h3, p { margin: 0; }
 .time-sheet-grid { min-width: 640px; }
 .time-sheet-grid th, .time-sheet-grid td:not(:first-child) { white-space: nowrap; }
 .time-sheet-grid th:first-child { min-width: 150px; }
+.facts-grid { min-width: 560px; }
+.facts-grid th, .facts-grid td:not(:first-child) { white-space: nowrap; }
+.facts-grid th:first-child { min-width: 200px; }
 .object-search {
   flex: 1;
   min-width: 220px;

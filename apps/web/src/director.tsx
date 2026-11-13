@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Desk, NewTask, Session } from "./api";
 import { WorkBoard } from "./board";
 import { TaskRead } from "./task-read-panel";
@@ -126,6 +126,12 @@ export function DirectorDesk({
   const canEditCheck = !preview && access.editCheck;
   const menu = access.sections;
   const page = menu.some((item) => item.id === section) ? section : (menu[0]?.id ?? "overview");
+  useEffect(() => { if (page !== "people") setSheetTick(0); }, [page]);
+  const taskProject = useRef(templateProjectId);
+  useEffect(() => {
+    if (page !== "tasks" || taskProject.current !== templateProjectId) setOpenTask(null);
+    taskProject.current = templateProjectId;
+  }, [page, templateProjectId]);
   const foreman = access.shell === "foreman";
   const crew = foreman
     ? data.employees.map((person) => ({
@@ -171,7 +177,7 @@ export function DirectorDesk({
               notice={scope.notice}
               openLabel={access.sections.some((item) => item.id === "mine") ? "Открыть дела" : "К заданиям"}
               onOpen={() => onSection(access.sections.some((item) => item.id === "mine") ? "mine" : "tasks")}
-              onOpenTasks={() => onSection("tasks")}
+              onOpenTasks={(id) => { if (id) setOpenTask({ id, token: Date.now() }); onSection("tasks"); }}
               onOpenSheet={openSheet}
             />
           ) : (
@@ -195,7 +201,7 @@ export function DirectorDesk({
             />
           )) : null}
           {page === "mine" ? (liveHome ? (
-            <LiveInbox session={session} projectId={templateProjectId} projectName={project} day={taskDay} notice={scope.notice} onOpenTasks={() => onSection("tasks")} onOpenSheet={openSheet} />
+            <LiveInbox session={session} projectId={templateProjectId} projectName={project} day={taskDay} notice={scope.notice} onOpenTasks={(id) => { if (id) setOpenTask({ id, token: Date.now() }); onSection("tasks"); }} onOpenSheet={openSheet} />
           ) : (
             <Inbox
               data={data}
