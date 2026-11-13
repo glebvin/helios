@@ -11,6 +11,7 @@ import { ShiftDialog } from "./shift-panel";
 import { canWriteShift, shiftNeedsReason } from "./shift-command";
 import { VolumeDesk } from "./volume-panel";
 import { canWriteVolume } from "./volume";
+import { deliveryNote, flushDelivery, watchDelivery } from "./delivery";
 import { clockLabel, dayReadError, dayReadPath, durationLabel, employeeListPath, ownEmployee, shiftListPath, shiftReading, visibleWorkerTasks, type DayEmployee, type DayReading, type DayShift, type ShiftReading } from "./worker-day";
 
 type Page<T> = { items: T[]; total: number };
@@ -36,6 +37,7 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
   const [dayError, setDayError] = useState("");
   const [shiftError, setShiftError] = useState("");
   const [taskError, setTaskError] = useState("");
+  const [waiting, setWaiting] = useState("");
   const ready = Boolean(projectId && day && !notice);
 
   useEffect(() => {
@@ -43,6 +45,17 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    const read = () => { void deliveryNote().then((text) => { if (live) setWaiting(text); }); };
+    read();
+    void flushDelivery().finally(read);
+    const stop = watchDelivery(() => { void flushDelivery().finally(read); });
+    const online = () => { void flushDelivery().finally(read); };
+    window.addEventListener("online", online);
+    return () => { live = false; stop(); window.removeEventListener("online", online); };
+  }, [session.token, session.userId, session.tenantId]);
 
   useEffect(() => {
     if (!ready) return;
@@ -97,6 +110,7 @@ export function WorkerDayPanel({ session, projectId, day, notice, onExpire }: { 
   return (
     <section className="worker-day" aria-busy={!fresh}>
       <h1>Моя смена</h1>
+      {waiting ? <p className="quiet" role="status">{waiting}</p> : null}
       <motion.div className="worker-stack" key={scope} initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}>
         {!ready ? <p className="quiet worker-hold">{notice || "Объект и день не подтверждены."}</p> : null}
         {ready && !fresh ? <p className="quiet worker-hold" role="status">Читаем день…</p> : null}

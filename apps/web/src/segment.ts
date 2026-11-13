@@ -63,7 +63,7 @@ export function segmentActionLabel(current: string, action: SegmentMode) {
 }
 
 export function segmentProblem(input: { online: boolean; mode: SegmentMode; taskId: string; reason: DowntimeReason | ""; comment: string; behalf: string; needsBehalf: boolean }) {
-  if (!input.online) return "Нужна сеть. Интервал на этом шаге не копится на телефоне.";
+  void input.online;
   if ((input.mode === "work" || input.mode === "downtime") && !input.taskId) return "Выберите опубликованное задание.";
   if (input.mode === "downtime" && !input.reason) return "Выберите причину простоя.";
   if (input.mode === "downtime" && !input.comment.trim()) return "Напишите, что остановило работу.";

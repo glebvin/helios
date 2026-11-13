@@ -5,7 +5,9 @@ import { DeskSelect } from "./kit";
 import { NoteMark } from "./note-mark";
 import { shiftNeedsReason } from "./shift-command";
 import { downtimeReasons, openSegment, segmentActionLabel, segmentActions, segmentBatchError, segmentEventBody, segmentLabel, segmentListPath, segmentProblem, type DowntimeReason, type SegmentMode, type SegmentRow } from "./segment";
+import { deliveryError, sendEvent } from "./delivery";
 import { ApiError, v1, v1Collection } from "./v1";
+import type { EventPayload } from "../../../packages/offline/src/index.js";
 
 type Page<T> = { items: T[]; total: number };
 type TaskChoice = { id: string; title: string };
@@ -118,18 +120,17 @@ function SegmentDialog({ session, projectId, employeeId, shiftId, version, mode,
         try { sessionStorage.setItem(pendingKey, JSON.stringify(stored)); } catch { /* The open form still repeats this attempt. */ }
       }
       attempt.current = stored;
-      const result = await v1<{ results?: { outcome?: string; code?: string; result?: { version?: number } }[] }>(session, "/execution/events", stored!.body);
-      const row = result.results?.[0];
-      const failure = row?.outcome === "success" || row?.outcome === "duplicate" ? (row.result?.version ? "" : "Сервер не вернул версию интервала.") : segmentBatchError(row?.code ?? "event_rejected", 200);
-      if (failure) {
-        if (row?.code === "stale_version") { attempt.current = null; try { sessionStorage.removeItem(pendingKey); } catch { /* The next confirmation reads the fresh version. */ } }
-        throw new Error(failure);
+      const outcome = await sendEvent(stored!.body.events[0] as EventPayload);
+      if (outcome.state === "synced") {
+        try { sessionStorage.removeItem(pendingKey); } catch { /* The server answer is enough. */ }
+        attempt.current = null;
+        onDone("Сохранено сервером");
+        return;
       }
-      try { sessionStorage.removeItem(pendingKey); } catch { /* The server answer is enough. */ }
-      attempt.current = null;
-      onDone(row?.outcome === "duplicate" ? `Сервер уже записал интервал, версия ${row?.result?.version}.` : `Сервер записал интервал, версия ${row?.result?.version}.`);
+      if (outcome.state === "blocked" || outcome.state === "auth-required") throw new Error(segmentBatchError(outcome.code ?? "event_rejected", 200));
+      onDone("Ожидает отправки");
     } catch (failure) {
-      setError(failure instanceof ApiError ? "Нет подтверждения сервера. Повторите в этой форме, не закрывая её." : failure instanceof Error ? failure.message : "Нет подтверждения сервера. Повторите в этой форме, не закрывая её.");
+      setError(deliveryError(failure) ?? (failure instanceof Error ? failure.message : "Нет подтверждения сервера. Повторите в этой форме, не закрывая её."));
     } finally { lock.current = false; setBusy(false); }
   }
   const title = segmentActionLabel(current.mode, mode);

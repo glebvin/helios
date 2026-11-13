@@ -1,6 +1,7 @@
 import {JoinPage} from "./invitations";
 import { useEffect, useRef, useState } from "react";
 import { acceptReport, createTask, desk, loadSession, login, savePlace, saveSession, syncEvents, type Desk, type NewTask, type Session } from "./api";
+import { bindRemoteClose, closeDelivery, openDelivery } from "./delivery";
 import { DirectorDesk, type Section } from "./director";
 import { BookProvider } from "./book";
 import { WorkerPhone } from "./field";
@@ -71,6 +72,21 @@ export function App() {
 
   useEffect(() => {
     if (!session || joinCode) return;
+    let live = true;
+    void openDelivery(session).catch(() => { if (live) setError("Очередь на этом входе не открылась."); });
+    const unbind = bindRemoteClose(() => {
+      if (!live) return;
+      activeSession.current = null;
+      saveSession(null);
+      setSession(null);
+      setData(null);
+      setError("Сессия закончилась. Войдите снова.");
+    });
+    return () => { live = false; unbind(); };
+  }, [session, joinCode]);
+
+  useEffect(() => {
+    if (!session || joinCode) return;
     const update = () => { if (document.visibilityState === 'visible') void refresh(session).catch(() => {}); };
     window.addEventListener('focus', update);
     const timer = setInterval(update, 15000);
@@ -107,6 +123,7 @@ export function App() {
   }
 
   function expire() {
+    void closeDelivery();
     activeSession.current = null;
     saveSession(null);
     setSession(null);
@@ -120,6 +137,7 @@ export function App() {
     const previous = session;
     setData(null);
     try {
+      await closeDelivery();
       const next = await login(email, password);
       activeSession.current = next;
       const chosen = homeView(next.role);
@@ -129,7 +147,10 @@ export function App() {
       setError("");
     } catch (reason) {
       setError(explain(reason instanceof Error ? reason.message : "Не удалось войти"));
-      if (previous) void refresh(previous).catch(() => {});
+      if (previous) {
+        void openDelivery(previous).catch(() => {});
+        void refresh(previous).catch(() => {});
+      }
     } finally { setEntering(false); }
   }
 
@@ -142,7 +163,9 @@ export function App() {
 
   async function logout() {
     if (!session) return;
+    const current = session;
     try {
+      await closeDelivery();
       await fetch("/api/v1/auth/logout", {
         method: "POST",
         headers: { authorization: `Bearer ${session.token}`, "x-tenant-id": session.tenantId },
@@ -150,6 +173,7 @@ export function App() {
         if (!response.ok && response.status !== 401 && response.status !== 403) throw new Error((await response.json()).error ?? "logout_failed");
       });
     } catch (reason) {
+      void openDelivery(current).catch(() => {});
       setError(explain(reason instanceof Error ? reason.message : "Сервер не подтвердил выход"));
       return;
     }

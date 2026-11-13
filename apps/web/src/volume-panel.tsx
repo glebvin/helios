@@ -4,7 +4,9 @@ import { Dialog } from "./dialog";
 import { EvidenceFiles } from "./evidence-panel";
 import { NoteMark } from "./note-mark";
 import { segmentListPath } from "./segment";
+import { deliveryError, sendEvent } from "./delivery";
 import { ApiError, v1, v1Collection } from "./v1";
+import type { EventPayload } from "../../../packages/offline/src/index.js";
 import { dayReadPath, type DayReading } from "./worker-day";
 import { positiveWork, reportListPath, reportsForTask, volumeBatchError, volumeEventBody, volumeNeedsReason, volumeOccurredAt, volumeProblem, volumeQuantity, volumeShift, type ClosedShift, type VolumeBatchRow, type VolumeReport, type VolumeSegment, type VolumeShiftRow } from "./volume";
 
@@ -152,19 +154,17 @@ function VolumeDialog({ session, projectId, employeeId, shift, version, task, ne
         try { sessionStorage.setItem(pendingKey, JSON.stringify(stored)); } catch { /* The open form still repeats this attempt. */ }
       }
       attempt.current = stored;
-      const result = await v1<{ results?: VolumeBatchRow[] }>(session, "/execution/events", stored!.body);
-      const row = result.results?.[0];
-      const failure = volumeBatchError(row, 200);
-      if (failure) {
-        if (row?.code === "stale_version") { attempt.current = null; try { sessionStorage.removeItem(pendingKey); } catch { /* The next confirmation reads the fresh version. */ } }
-        throw new Error(failure);
+      const outcome = await sendEvent(stored!.body.events[0] as EventPayload);
+      if (outcome.state === "synced") {
+        try { sessionStorage.removeItem(pendingKey); } catch { /* The server answer is enough. */ }
+        attempt.current = null;
+        onDone("Сохранено сервером. Это ещё не приёмка.");
+        return;
       }
-      try { sessionStorage.removeItem(pendingKey); } catch { /* The server answer is enough. */ }
-      const amount = row?.result?.submittedQuantity;
-      attempt.current = null;
-      onDone(row?.outcome === "duplicate" ? `Сервер уже записал объём ${amount}, версия ${row?.result?.version}. Это ещё не приёмка.` : `Сервер записал объём ${amount}, версия ${row?.result?.version}. Это ещё не приёмка.`);
+      if (outcome.state === "blocked" || outcome.state === "auth-required") throw new Error(volumeBatchError({ outcome: "error", code: outcome.code ?? "" }, 200));
+      onDone("Ожидает отправки");
     } catch (failure) {
-      setError(failure instanceof ApiError ? "Нет подтверждения сервера. Повторите в этой форме, не закрывая её." : failure instanceof Error ? failure.message : "Нет подтверждения сервера. Повторите в этой форме, не закрывая её.");
+      setError(deliveryError(failure) ?? (failure instanceof Error ? failure.message : "Нет подтверждения сервера. Повторите в этой форме, не закрывая её."));
     } finally { lock.current = false; setBusy(false); }
   }
   return <Dialog title="Сдать объём" onClose={() => { if (!lock.current) onClose(); }}>

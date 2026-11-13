@@ -46,7 +46,7 @@ test("a segment command has one instant, no coordinates and no client status", (
 });
 
 test("a version conflict stays different from a missing network answer", () => {
-  assert.match(segmentProblem({ online: false, mode: "break", taskId: "", reason: "", comment: "", behalf: "", needsBehalf: false }), /не копится/);
+  assert.equal(segmentProblem({ online: false, mode: "break", taskId: "", reason: "", comment: "", behalf: "", needsBehalf: false }), "");
   assert.match(segmentProblem({ online: true, mode: "downtime", taskId: "task-1", reason: "weather", comment: " ", behalf: "", needsBehalf: false }), /остановило/);
   assert.equal(segmentProblem({ online: true, mode: "break", taskId: "", reason: "", comment: "", behalf: "", needsBehalf: false }), "");
   assert.match(segmentBatchError("stale_version", 200), /уже другая/);
