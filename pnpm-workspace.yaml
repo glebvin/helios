@@ -7,3 +7,6 @@ allowBuilds:
   '@embedded-postgres/linux-x64@18.6.0-beta.19': true
   embedded-postgres: true
   esbuild: true
+
+overrides:
+  multer: 2.5.0

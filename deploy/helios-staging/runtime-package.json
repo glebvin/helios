@@ -13,5 +13,8 @@
     "write-excel-file": "4.1.1",
     "@helios/domain": "file:packages/domain",
     "@helios/api": "file:apps/api"
+  },
+  "overrides": {
+    "multer": "2.5.0"
   }
 }
