@@ -50,7 +50,7 @@ export function CrewPanel({ session, projectId }: { session: Session; projectId:
         const [crewPage, assignmentPage, people] = await Promise.all([
           v1Collection<Crew>(session, `/projects/${projectId}/crews?limit=100&offset=0`),
           v1Collection<CrewAssignment>(session, `/projects/${projectId}/assignments?limit=100&offset=0`),
-          v1Collection<{ id: string; fullName: string }>(session, `/employees?projectId=${projectId}&limit=100&offset=0`),
+          v1Collection<{ id: string; fullName: string }>(session, `/employees?limit=100&offset=0`),
         ]);
         if (!live) return;
         setCrews(crewPage.items);

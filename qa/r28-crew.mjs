@@ -145,6 +145,13 @@ try {
   await call(directorHeaders, 'PUT', `/projects/${projectId}/assignments/${worker.employeeId}`, command({ expectedVersion: assignment.version, status: 'revoked' }));
   const blocked = await call(directorHeaders, 'POST', `/projects/${projectId}/tasks/${task.id}/publish`, command({ expectedVersion: task.version }), 422);
   assert.equal(blocked.error, 'task_not_ready');
+  await first.reload();
+  await first.getByLabel('Объект', {exact:true}).selectOption(projectId);
+  await openCrews(first);
+  await first.getByRole('row').filter({hasText:'Бригада дня'}).click();
+  await first.getByText(worker.name, {exact:true}).waitFor();
+  assert.equal(await first.getByText('Имя не пришло', {exact:true}).count(), 0);
+  await first.screenshot({path:`${out}/history-after-assignment-revoked.png`,fullPage:true});
   console.log(JSON.stringify({ ok: true, crew: 'removed member stays visible', publish: 422 }));
 } catch (error) {
   if (current) {
