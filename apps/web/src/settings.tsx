@@ -1,3 +1,4 @@
+import {RouteConfigPanel} from "./route-config-panel";
 import { AdmissionTemplatePanel } from "./admission-template-panel";
 import { FrontTemplatePanel } from "./front-template-panel";
 import type { Desk, Session } from "./api";
@@ -28,9 +29,10 @@ export function Settings({
     <section className="page">
       <div>
         <h1>Настройки</h1>
-        <p className="sub">{slim ? viewHint : "Шаблон допуска этого объекта и входы сотрудников."}</p>
+        <p className="sub">{slim ? viewHint : session.role === "admin" ? "Маршруты согласования и входы сотрудников этого объекта." : "Шаблон допуска этого объекта и входы сотрудников."}</p>
       </div>
       <div className="settings-layout">
+          {!slim && session.role === "admin" ? <RouteConfigPanel key={`routes:${session.token}:${session.tenantId}:${projectId}`} session={session} projectId={projectId}/> : null}
           {canTemplate ? <div className="person-column">
             <AdmissionTemplatePanel key={`${session.token}:${session.tenantId}:${projectId}`} session={session} projectId={projectId} />
             <FrontTemplatePanel key={`front:${session.token}:${session.tenantId}:${projectId}`} session={session} projectId={projectId} writable={session.role === "director"} />
