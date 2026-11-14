@@ -7914,6 +7914,117 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{id}/tasks/{task}/route": {
+      "get": {
+        "operationId": "readDailyTaskRoute",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "task",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current holder, immutable attempt and transition history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyTaskRoute"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -10901,6 +11012,14 @@
           },
           "publishedAt": {
             "type": "string"
+          },
+          "routeAttemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "routeConfigurationVersion": {
+            "type": "integer",
+            "minimum": 1
           }
         },
         "required": [
@@ -14377,6 +14496,421 @@
           },
           "configuration": {
             "$ref": "#/components/schemas/RouteConfiguration"
+          }
+        }
+      },
+      "DailyTaskRoute": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "configured",
+          "allowedActions",
+          "route",
+          "taskVersion"
+        ],
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "allowedActions": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "submit",
+                "publish",
+                "reject",
+                "reopen",
+                "cancel"
+              ]
+            }
+          },
+          "route": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "attempt",
+              "currentConfigurationVersion",
+              "holder",
+              "dueAt",
+              "deadlineState",
+              "nextStep",
+              "history"
+            ],
+            "properties": {
+              "attempt": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "number",
+                  "configurationVersion",
+                  "planRevision",
+                  "snapshot"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "number": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "configurationVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "planRevision": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "snapshot": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "schemaVersion",
+                      "configurationVersion",
+                      "route",
+                      "preparer",
+                      "responsible",
+                      "approver"
+                    ],
+                    "properties": {
+                      "schemaVersion": {
+                        "type": "integer",
+                        "enum": [
+                          1
+                        ]
+                      },
+                      "configurationVersion": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "route": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "documentType",
+                          "preparers",
+                          "responsibles",
+                          "reviewers",
+                          "approvers",
+                          "observers",
+                          "dataProviders"
+                        ],
+                        "properties": {
+                          "documentType": {
+                            "type": "string",
+                            "enum": [
+                              "daily-task",
+                              "front-readiness",
+                              "employee-admission",
+                              "internal-inspection",
+                              "external-inspection",
+                              "inspection-correction",
+                              "incoming-materials",
+                              "hidden-works-act",
+                              "documentation-register",
+                              "day-close",
+                              "consolidated-timesheet",
+                              "inspection-template",
+                              "documentation-list",
+                              "ks2-readiness"
+                            ]
+                          },
+                          "preparers": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/RouteAssignment"
+                            }
+                          },
+                          "responsibles": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/RouteAssignment"
+                            },
+                            "minItems": 1,
+                            "maxItems": 1
+                          },
+                          "reviewers": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/RouteAssignment"
+                            },
+                            "maxItems": 3
+                          },
+                          "approvers": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/RouteAssignment"
+                            },
+                            "maxItems": 1
+                          },
+                          "observers": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/RouteAssignment"
+                            }
+                          },
+                          "dataProviders": {
+                            "type": "array",
+                            "items": {
+                              "$ref": "#/components/schemas/RouteAssignment"
+                            }
+                          }
+                        }
+                      },
+                      "preparer": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "userId",
+                          "role",
+                          "name"
+                        ],
+                        "properties": {
+                          "userId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "director",
+                              "master",
+                              "worker",
+                              "pto",
+                              "gd",
+                              "ds",
+                              "zds-sso",
+                              "zds-soso",
+                              "supply",
+                              "safety",
+                              "hr",
+                              "admin",
+                              "customer",
+                              "brigadier",
+                              "engineer-pto",
+                              "cost",
+                              "subcontractor",
+                              "peo",
+                              "gb",
+                              "uo"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "responsible": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "userId",
+                          "role",
+                          "name"
+                        ],
+                        "properties": {
+                          "userId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "director",
+                              "master",
+                              "worker",
+                              "pto",
+                              "gd",
+                              "ds",
+                              "zds-sso",
+                              "zds-soso",
+                              "supply",
+                              "safety",
+                              "hr",
+                              "admin",
+                              "customer",
+                              "brigadier",
+                              "engineer-pto",
+                              "cost",
+                              "subcontractor",
+                              "peo",
+                              "gb",
+                              "uo"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "approver": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "userId",
+                          "role",
+                          "name"
+                        ],
+                        "properties": {
+                          "userId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "role": {
+                            "type": "string",
+                            "enum": [
+                              "director",
+                              "master",
+                              "worker",
+                              "pto",
+                              "gd",
+                              "ds",
+                              "zds-sso",
+                              "zds-soso",
+                              "supply",
+                              "safety",
+                              "hr",
+                              "admin",
+                              "customer",
+                              "brigadier",
+                              "engineer-pto",
+                              "cost",
+                              "subcontractor",
+                              "peo",
+                              "gb",
+                              "uo"
+                            ]
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "nullable": true
+              },
+              "currentConfigurationVersion": {
+                "type": "integer",
+                "minimum": 1,
+                "nullable": true
+              },
+              "holder": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "userId",
+                  "name"
+                ],
+                "properties": {
+                  "userId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "nullable": true
+              },
+              "dueAt": {
+                "type": "string",
+                "format": "date-time",
+                "nullable": true
+              },
+              "deadlineState": {
+                "type": "string",
+                "enum": [
+                  "not-configured"
+                ]
+              },
+              "nextStep": {
+                "type": "string",
+                "enum": [
+                  "approve-or-return",
+                  "reopen-and-submit",
+                  "prepare-and-submit",
+                  "execute",
+                  "none"
+                ]
+              },
+              "history": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "attemptId",
+                    "taskVersion",
+                    "action",
+                    "fromStatus",
+                    "toStatus",
+                    "actorUserId",
+                    "actorName",
+                    "reason",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "attemptId": {
+                      "type": "string",
+                      "format": "uuid",
+                      "nullable": true
+                    },
+                    "taskVersion": {
+                      "type": "integer",
+                      "minimum": 1
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "submit",
+                        "publish",
+                        "reject",
+                        "reopen",
+                        "cancel"
+                      ]
+                    },
+                    "fromStatus": {
+                      "type": "string"
+                    },
+                    "toStatus": {
+                      "type": "string"
+                    },
+                    "actorUserId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "actorName": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "createdAt": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            },
+            "nullable": true
+          },
+          "taskVersion": {
+            "type": "integer",
+            "minimum": 1
           }
         }
       }

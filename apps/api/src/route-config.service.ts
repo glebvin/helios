@@ -10,9 +10,9 @@ import {defaultRouteConfiguration,routeDefinitions,routeConfigCommand,type Route
 
 export class RouteConfigService {
   constructor(private readonly pool:Pool){}
-  private async scope(c:PoolClient,a:Actor,projectId:string){
-    const membership=(await c.query(`SELECT role FROM memberships WHERE user_id=$1 AND status='active' FOR SHARE`,[a.userId])).rows[0];
-    const project=(await c.query(`SELECT project_id FROM project_memberships WHERE project_id=$1 AND user_id=$2 AND status='active' FOR SHARE`,[projectId,a.userId])).rows[0];
+  private async scope(c:PoolClient,a:Actor,projectId:string,lock=false){
+    const membership=(await c.query(`SELECT role FROM memberships WHERE user_id=$1 AND status='active' ${lock?'FOR SHARE':''}`,[a.userId])).rows[0];
+    const project=(await c.query(`SELECT project_id FROM project_memberships WHERE project_id=$1 AND user_id=$2 AND status='active' ${lock?'FOR SHARE':''}`,[projectId,a.userId])).rows[0];
     if(!roleContractAllows({role:membership?.role,tenantId:a.tenantId,projectIds:project?[project.project_id]:[]},'routes.configure',{tenantId:a.tenantId,projectId}))throw httpError(403,'role_denied');
   }
   private async read(c:PoolClient,p:string,version?:number){
@@ -35,9 +35,11 @@ export class RouteConfigService {
     return withTenant(this.pool,a.tenantId,a.userId,async c=>{
       await this.scope(c,a,p);
       const {inserted,hash}=await reserveCommand(c,a,`POST /projects/${p}/route-config`,b);
-      if(!inserted)return replayCommand(c,a,b.requestId,hash);
       // Lock a stable parent even when there is no first configuration yet.
       await c.query('SELECT id FROM projects WHERE id=$1 FOR NO KEY UPDATE',[p]);
+      // Match task-command order: project before memberships; recheck after any wait.
+      await this.scope(c,a,p,true);
+      if(!inserted)return replayCommand(c,a,b.requestId,hash);
       const before=await this.read(c,p);
       if(before.version!==b.expectedVersion)throw httpError(409,'stale_version');
       await this.assignments(c,p,b.configuration);
