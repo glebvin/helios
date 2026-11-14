@@ -230,6 +230,8 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
+      - name: Защита временных файлов и назначения восстановления
+        run: python3 qa/r46-safety.test.py
       - name: Учебные контуры 54502/54512 и настоящий pg_restore
         run: python3 qa/r46-restore.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

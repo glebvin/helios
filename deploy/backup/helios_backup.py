@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import time
 from pathlib import Path
 
@@ -139,11 +140,10 @@ def pg_lib(config: dict) -> str | None:
 
 
 def child_env(item: dict, password: str, library: str | None, database: str) -> tuple[dict, Path]:
-    directory = Path(os.environ.get('TMPDIR', '/tmp')) / f'helios-backup-{os.getpid()}'
-    directory.mkdir(mode=0o700, exist_ok=True)
+    directory = Path(tempfile.mkdtemp(prefix='helios-backup-', dir=os.environ.get('TMPDIR', '/tmp')))
     pgpass = directory / 'pgpass'
     escaped = password.replace('\\', '\\\\').replace(':', '\\:')
-    fd = os.open(pgpass, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    fd = os.open(pgpass, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, 'w') as handle:
         handle.write(f"{item['host']}:{item['port']}:*:{item['user']}:{escaped}\n")
     env = {
@@ -257,6 +257,8 @@ def snapshot(config: dict, output: Path) -> dict:
             raise Refusal('injected copy failure after the database dump and before the success marker')
         archive = output / 'files.tar'
         entries = archive_files(source['files'], archive)
+        durable(dump)
+        durable(archive)
         manifest = {
             'format': FORMAT,
             'tool': 'helios-backup',
@@ -303,7 +305,7 @@ def require_archive(manifest: dict, backup: Path) -> None:
 
 
 def extract_files(archive: Path, dest: Path, entries: list[dict]) -> None:
-    dest.mkdir(mode=0o700)
+    # The caller has exclusively reserved this directory before creating the database.
     expected = {item['path']: item for item in entries}
     with tarfile.open(archive, 'r:') as handle:
         members = handle.getmembers()
@@ -335,14 +337,17 @@ def restore(config: dict, backup: Path) -> dict:
     manifest = json.loads((backup / 'manifest.json').read_text())
     require_archive(manifest, backup)
     recorded = manifest.get('source') or {}
-    recorded_files = Path(str(recorded.get('files', ''))).resolve()
+    if not isinstance(recorded.get('files'), str) or not Path(recorded['files']).is_absolute():
+        raise Refusal('manifest source catalog must be an absolute path')
+    recorded_files = Path(recorded['files']).resolve()
     if destination['database'] in RESERVED_DATABASES:
         raise Refusal('destination database is reserved')
     if (destination['host'], destination['port'], destination['database']) == (
         recorded.get('host'), recorded.get('port'), recorded.get('database')
     ) or same_database(source, destination):
         raise Refusal('destination database is the source contour; restore does not overwrite it')
-    if destination['files'] == recorded_files or nested(destination['files'], source['files']) or nested(source['files'], destination['files']):
+    if any(nested(destination['files'], protected) or nested(protected, destination['files'])
+           for protected in (source['files'], recorded_files)):
         raise Refusal('destination files overlap the source catalog; restore does not overwrite it')
     password = secret(destination)
     exists = psql(binary, destination, password, library, 'postgres',
@@ -352,7 +357,14 @@ def restore(config: dict, backup: Path) -> dict:
     if destination['files'].exists():
         raise Refusal('destination files path already exists; restore does not replace it')
     created_database = False
+    created_files = None
     try:
+        try:
+            destination['files'].mkdir(mode=0o700)
+        except FileExistsError:
+            raise Refusal('destination files path already exists; restore does not replace it')
+        directory_stat = destination['files'].lstat()
+        created_files = (directory_stat.st_dev, directory_stat.st_ino)
         psql(binary, destination, password, library, 'postgres',
              f"CREATE DATABASE {destination['database']} OWNER {destination['user']}")
         created_database = True
@@ -369,11 +381,15 @@ def restore(config: dict, backup: Path) -> dict:
             shutil.rmtree(directory, ignore_errors=True)
         extract_files(backup / 'files.tar', destination['files'], manifest['files']['entries'])
     except Exception:
-        if created_database:
-            psql(binary, destination, password, library, 'postgres',
-                 f"DROP DATABASE IF EXISTS {destination['database']}")
-        if destination['files'].exists():
-            shutil.rmtree(destination['files'])
+        try:
+            if created_database:
+                psql(binary, destination, password, library, 'postgres',
+                     f"DROP DATABASE IF EXISTS {destination['database']}")
+        finally:
+            if created_files is not None and destination['files'].exists():
+                directory_stat = destination['files'].lstat()
+                if not destination['files'].is_symlink() and (directory_stat.st_dev, directory_stat.st_ino) == created_files:
+                    shutil.rmtree(destination['files'])
         raise
     return {
         'restored_database': destination['database'],
