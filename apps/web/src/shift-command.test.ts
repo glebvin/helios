@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
 import { canWriteShift, shiftBatchError, shiftEventBody, shiftNeedsReason, shiftProblem } from "./shift-command.ts";
 
 const base = {
@@ -7,13 +8,22 @@ const base = {
   expectedVersion: 4, occurredAt: "2026-11-12T05:00:00.000Z", kind: "shift_start" as const,
 };
 
-test("a refused position is omitted and never replaced with a zero point", () => {
-  const body = shiftEventBody({ ...base, geo: null });
-  assert.equal("geo" in body.events[0], false);
-  assert.equal(JSON.stringify(body).includes("0,0"), false);
-  assert.equal(JSON.stringify(body).includes('"latitude"'), false);
-  const withGeo = shiftEventBody({ ...base, geo: { latitude: 55.75, longitude: 37.62, accuracyMeters: 12, capturedAt: base.occurredAt } });
-  assert.equal(withGeo.events[0].geo && (withGeo.events[0].geo as { latitude: number }).latitude, 55.75);
+test("new shift commands omit coordinates even if an old-shaped caller supplies them", () => {
+  const oldInput = { ...base, geo: { latitude: 55.75, longitude: 37.62, accuracyMeters: 12, capturedAt: base.occurredAt } };
+  for (const kind of ["shift_start", "shift_end"] as const) {
+    const body = shiftEventBody({ ...oldInput, kind });
+    assert.equal("geo" in body.events[0], false);
+    assert.equal(JSON.stringify(body).includes('"latitude"'), false);
+    assert.equal(body.events[0].requestId, base.requestId);
+    assert.equal(body.events[0].occurredAt, base.occurredAt);
+  }
+});
+
+test("the web app does not introduce browser location collection APIs", () => {
+  const root = new URL("./", import.meta.url);
+  for (const name of readdirSync(root).filter(name => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name))) {
+    assert.doesNotMatch(readFileSync(new URL(name, root), "utf8"), /\b(?:geolocation|getCurrentPosition|watchPosition)\b/, name);
+  }
 });
 
 test("the same command keeps its version, and a master reason is not a status", () => {

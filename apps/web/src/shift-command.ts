@@ -1,12 +1,5 @@
 export type ShiftKind = "shift_start" | "shift_end";
 
-export type ShiftGeo = {
-  latitude: number;
-  longitude: number;
-  accuracyMeters: number;
-  capturedAt: string;
-};
-
 export function canWriteShift(role: string) {
   return role === "worker" || role === "master";
 }
@@ -33,7 +26,6 @@ export function shiftEventBody(input: {
   kind: ShiftKind;
   previousEventId?: string;
   onBehalfReason?: string;
-  geo?: ShiftGeo | null;
 }) {
   const event: Record<string, unknown> = {
     kind: input.kind,
@@ -47,7 +39,6 @@ export function shiftEventBody(input: {
   if (input.previousEventId) event.previousEventId = input.previousEventId;
   const reason = input.onBehalfReason?.trim();
   if (reason) event.onBehalfReason = reason;
-  if (input.geo) event.geo = input.geo;
   return { events: [event] };
 }
 
