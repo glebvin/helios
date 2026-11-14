@@ -1,0 +1,21 @@
+{
+  "consistency": "writers-stopped",
+  "pg_bin": "/absolute/path/to/postgresql/bin",
+  "pg_lib": "/absolute/path/to/postgresql/lib",
+  "source": {
+    "host": "127.0.0.1",
+    "port": 54502,
+    "database": "helios_r46",
+    "user": "helios",
+    "password_env": "HELIOS_R46_SOURCE_PASSWORD",
+    "files": "/absolute/path/to/source-files"
+  },
+  "destination": {
+    "host": "127.0.0.1",
+    "port": 54512,
+    "database": "helios_r46",
+    "user": "helios",
+    "password_env": "HELIOS_R46_DEST_PASSWORD",
+    "files": "/absolute/path/to/restored-files"
+  }
+}
