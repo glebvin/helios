@@ -9,6 +9,7 @@ import {pathToFileURL} from 'node:url';
 import {setTimeout as delay} from 'node:timers/promises';
 import {DEMO_USERS,PROJECT_A,ORG_A} from '../packages/domain/src/ids.ts';
 import {routeConfigUiSmoke} from './route-config-ci.mjs';
+import {dailyRouteCi} from './daily-route-ci.mjs';
 const {chromium}=await import(process.env.PLAYWRIGHT_MODULE??'playwright');
 const root=resolve(import.meta.dirname,'..');
 const base='http://127.0.0.1:5207',api='http://127.0.0.1:4327';
@@ -92,6 +93,8 @@ try{
  check('expired session returns to login and clears local session');assert.deepEqual(errors,[]);
  await routeConfigUiSmoke(browser,base,out,DEMO_USERS.find(u=>u.role==='director'&&u.email!=='other@foreign.helios'));
  check('route configuration: admin UI save/reload, lost acknowledgement stable requestId and390px');
+ await dailyRouteCi(browser,base,out);
+ check('daily route: master submit,RP return/resubmit,approval409,lost acknowledgement and390px');
 }catch(error){
  for(const [index,context] of contexts.entries())for(const [tab,page] of context.pages().entries()){
   await page.screenshot({path:resolve(out,`failure-${index}-${tab}.png`),fullPage:true}).catch(()=>{});
