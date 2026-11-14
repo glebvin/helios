@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkPassword, hashPassword, hashPasswordCurrent, passwordHashInFlight, verifyPassword } from "../src/password.js";
+import { checkPassword, hashPassword, hashPasswordCurrent, passwordBusy, passwordHashInFlight, passwordWorkWaiting, verifyPassword } from "../src/password.js";
 
 test("старый хеш принимается и помечается к замене", async () => {
   const stored = hashPassword("old-password-value");
@@ -25,4 +25,17 @@ test("вычисления ограничены настройкой, цикл �
   await Promise.all(pending);
   clearInterval(timer);
   assert.ok(ticks >= 1);
+});
+
+test("ожидание дорогого scrypt не копится сверх границы и не содержит пароль", async () => {
+  const limit = Number(process.env.HELIOS_PASSWORD_HASH_CONCURRENCY ?? 2);
+  const jobs = Array.from({ length: limit + 8 + 1 }, (_, index) => hashPasswordCurrent(`queue-${index}-password`).then(() => "ok", (error: unknown) => error));
+  assert.equal(passwordHashInFlight(), limit);
+  assert.equal(passwordWorkWaiting(), 8);
+  const settled = await Promise.all(jobs);
+  const busy = settled.filter((item) => item instanceof Error);
+  assert.equal(busy.length, 1);
+  assert.equal(passwordBusy(busy[0]), true);
+  assert.equal(String(busy[0]).includes("queue-"), false);
+  assert.equal(passwordWorkWaiting(), 0);
 });

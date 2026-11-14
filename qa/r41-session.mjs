@@ -40,14 +40,15 @@ try {
   let limited = null;
   let accepted = 1;
   while (accepted < 40) {
-    const attempt = await login(first.email, password);
+    const attempt = await login(accepted % 2 === 0 ? first.email : first.email.toUpperCase(), password);
     assert.equal(attempt.status, 201);
     accepted += 1;
   }
-  limited = await login(first.email, `${password}-no`);
+  limited = await login(first.email.toUpperCase(), `${password}-no`);
   assert.equal(limited.status, 429);
   assert.equal(limited.body.error, 'auth_rate_limited');
-  const other = await login(second.email, password);
+  assert.ok(Number(limited.retryAfter) > 0);
+  const other = await login(second.email, password, { 'x-forwarded-for': '203.0.113.9' });
   assert.equal(other.status, 201);
   const still = await db.query('SELECT count(*)::int AS n FROM users WHERE id = ANY($1)', [[first.id, second.id]]);
   assert.equal(still.rows[0].n, 2);
@@ -60,12 +61,12 @@ try {
   await db.end();
 }
 
-async function login(email, value) {
+async function login(email, value, headers = {}) {
   const response = await fetch(`${api}/api/v1/auth/login`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...headers },
     body: JSON.stringify({ email, password: value }),
   });
   const body = await response.json();
-  return { status: response.status, body };
+  return { status: response.status, body, retryAfter: response.headers.get('retry-after') };
 }

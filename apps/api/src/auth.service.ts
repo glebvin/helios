@@ -2,11 +2,11 @@ import { Inject, Injectable, type CanActivate, type ExecutionContext } from "@ne
 import type { Pool } from "pg";
 import { withTenant } from "./db.js";
 import { httpError } from "./errors.js";
-import { checkPassword, hashPasswordCurrent, hashToken, newToken } from "./password.js";
+import { checkPassword, hashPasswordCurrent, hashToken, newToken, passwordBusy } from "./password.js";
 import type { Actor } from "./workforce.service.js";
 import { uuid } from "./api-input.js";
 import { readOnlyCabinetRoles } from "./cabinet-roles.js";
-import { consumeLogin } from "./auth-protection.js";
+import { consumeLogin, loginLimited } from "./auth-protection.js";
 
 @Injectable()
 export class AuthService {
@@ -17,20 +17,31 @@ export class AuthService {
     const { email, password } = body as Record<string, unknown>;
     if (typeof email !== "string" || !email.trim() || email.length > 320 ||
         typeof password !== "string" || !password || password.length > 1024) throw httpError(400, "invalid_login");
-    if (consumeLogin(email)) throw httpError(429, "auth_rate_limited");
+    const retryAfter = consumeLogin(email);
+    if (retryAfter) throw loginLimited(retryAfter);
     const user = await this.pool.query(
       `SELECT id, email, name, password_hash FROM users WHERE lower(email) = $1`,
       [email.trim().toLowerCase()],
     );
     const row = user.rows[0];
-    const verdict = row ? await checkPassword(password, row.password_hash) : { ok: false, stale: false };
+    let verdict = { ok: false, stale: false };
+    try {
+      if (row) verdict = await checkPassword(password, row.password_hash);
+    } catch (error) {
+      if (passwordBusy(error)) throw loginLimited(1);
+      throw error;
+    }
     if (!row || !verdict.ok) throw httpError(401, "unauthorized");
     if (verdict.stale) {
-      const nextHash = await hashPasswordCurrent(password);
-      await this.pool.query(
-        `UPDATE users SET password_hash = $1 WHERE id = $2 AND password_hash = $3`,
-        [nextHash, row.id, row.password_hash],
-      );
+      try {
+        const nextHash = await hashPasswordCurrent(password);
+        await this.pool.query(
+          `UPDATE users SET password_hash = $1 WHERE id = $2 AND password_hash = $3`,
+          [nextHash, row.id, row.password_hash],
+        );
+      } catch (error) {
+        if (!passwordBusy(error)) throw error;
+      }
     }
     const token = newToken();
     await this.pool.query(
