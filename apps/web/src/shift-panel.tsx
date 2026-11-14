@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Session } from "./api";
 import { Dialog } from "./dialog";
 import { Flash } from "./flash";
-import { canWriteShift, shiftBatchError, shiftEventBody, shiftNeedsReason, shiftProblem, type ShiftGeo, type ShiftKind } from "./shift-command";
+import { canWriteShift, shiftBatchError, shiftEventBody, shiftNeedsReason, shiftProblem, type ShiftKind } from "./shift-command";
 import { deliveryError, deliveryPredecessor, sendEvent } from "./delivery";
 import { ApiError, v1, v1Collection } from "./v1";
 import type { EventPayload } from "../../../packages/offline/src/index.js";
@@ -89,7 +89,6 @@ export function ShiftDialog({ session, projectId, employeeId, kind, day, shiftId
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [geoNote, setGeoNote] = useState("");
   const lock = useRef(false);
   const alertRef = useRef<HTMLParagraphElement>(null);
   const attempt = useRef<{ body: ReturnType<typeof shiftEventBody> } | null>(null);
@@ -121,12 +120,10 @@ export function ShiftDialog({ session, projectId, employeeId, kind, day, shiftId
       const event = stored?.body.events[0];
       const same = event?.kind === kind && event.projectId === projectId && event.employeeId === employeeId && (kind !== "shift_end" || event.shiftId === shiftId) && (attempt.current !== null || event.expectedVersion === expectedVersion) && (event.onBehalfReason ?? "") === trimmed;
       if (!same) {
-        const geo = await readGeo();
-        setGeoNote(geo ? "" : "Геопозиция не записана.");
         stored = { body: shiftEventBody({
           requestId: crypto.randomUUID(), employeeId, projectId, shiftId: shiftId || crypto.randomUUID(), expectedVersion,
           occurredAt: new Date().toISOString(), kind, previousEventId: await deliveryPredecessor(employeeId, projectId, expectedVersion) ?? (kind === "shift_end" && previousEventId ? previousEventId : undefined),
-          onBehalfReason: trimmed || undefined, geo,
+          onBehalfReason: trimmed || undefined,
         }) };
         try { sessionStorage.setItem(pendingKey, JSON.stringify(stored)); } catch { /* The open form still repeats this attempt. */ }
       }
@@ -148,22 +145,9 @@ export function ShiftDialog({ session, projectId, employeeId, kind, day, shiftId
     <form onSubmit={(event) => { event.preventDefault(); void submit().then((message) => { if (message) onDone(message); }); }}>
       {error ? <p ref={alertRef} tabIndex={-1} role="alert">{error}</p> : null}
       {needsReason ? <label className="field"><span>Почему за работника</span><input required maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} /></label> : <p className="quiet">Запись уйдёт на сервер один раз. Повтор этой кнопки отправляет тот же запрос.</p>}
-      {geoNote ? <p className="quiet">{geoNote}</p> : null}
       {problem ? <p className="quiet">{problem}</p> : null}
       <button className="ghost desk-action" type="button" disabled={busy} onClick={onClose}>Отмена</button>
       <button className="fill desk-action" type="submit" disabled={busy || !!problem}>{busy ? "Записываем…" : kind === "shift_start" ? "Начать смену" : "Закончить смену"}</button>
     </form>
   </Dialog>;
-}
-
-function readGeo(): Promise<ShiftGeo | undefined> {
-  if (typeof navigator === "undefined" || !navigator.geolocation) return Promise.resolve(undefined);
-  return new Promise((resolve) => {
-    navigator.geolocation.getCurrentPosition((position) => {
-      const { latitude, longitude, accuracy } = position.coords;
-      const captured = new Date(position.timestamp);
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || !Number.isFinite(accuracy) || !Number.isFinite(captured.valueOf()) || captured.getUTCFullYear() < 2000 || captured.getUTCFullYear() > 2100) { resolve(undefined); return; }
-      resolve({ latitude, longitude, accuracyMeters: accuracy, capturedAt: captured.toISOString() });
-    }, () => resolve(undefined), { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
-  });
 }
