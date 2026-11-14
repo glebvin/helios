@@ -9,7 +9,7 @@ export type ContractPermission =
   | 'summary.company.read' | 'summary.project.read'
   | 'personnel.company.read' | 'personnel.project.read' | 'personnel.employer.read'
   | 'tasks.self.read' | 'tasks.employer.read' | 'crew.volume.report'
-  | 'routes.configure' | 'confirmed.production.edit';
+  | 'routes.configure' | 'orders.manage' | 'confirmed.production.edit';
 export type AuthorizedScope = {
   tenantId: string; role: string; employeeId?: string;
   projectIds?: readonly string[]; employerIds?: readonly string[]; crewIds?: readonly string[];
@@ -53,6 +53,11 @@ export function roleContractAllows(actor: AuthorizedScope, permission: ContractP
       return actor.role === 'brigadier' && project && employer && listed(actor.crewIds, resource.crewId);
     case 'routes.configure':
       return actor.role === 'admin' && project;
+    case 'orders.manage':
+      if (actor.role !== 'hr' || !same(actor.tenantId, resource.tenantId)) return false;
+      if (resource.projectId && !project) return false;
+      if (resource.employerId && !employer) return false;
+      return true;
     case 'confirmed.production.edit':
     default:
       return false; // Corrections use their own future operation, never a blanket editor.

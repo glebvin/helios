@@ -42,6 +42,8 @@ import {InvitationsController} from "./invitations.controller.js";
 
 import {RouteConfigService} from "./route-config.service.js";
 import {RouteConfigController} from "./route-config.controller.js";
+import {ResponsibilityOrdersService} from "./responsibility-orders.service.js";
+import {ResponsibilityOrdersController} from "./responsibility-orders.controller.js";
 
 export const APP_POOL = "APP_POOL";
 export const BOSS = "BOSS";
@@ -152,7 +154,7 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
   providers: [
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
@@ -172,6 +174,7 @@ class WorkforceController {
     {provide:EvidenceService,useFactory:(pool:Pool,storage:EvidenceStorage)=>new EvidenceService(pool,storage),inject:[APP_POOL,EvidenceStorage]},
     {provide:InvitationsService,useFactory:(pool:Pool)=>new InvitationsService(pool),inject:[APP_POOL]},
     {provide:RouteConfigService,useFactory:(pool:Pool)=>new RouteConfigService(pool),inject:[APP_POOL]},
+    {provide:ResponsibilityOrdersService,useFactory:(pool:Pool)=>new ResponsibilityOrdersService(pool),inject:[APP_POOL]},
     TenantGuard,
   ],
 })
