@@ -51,7 +51,7 @@ CI использует внутренний и внешний порт 54339 и
 
 ## Браузерный и offline CI
 
-В workflow `Проверки HELIOS` четыре прежних job запускаются независимо: `project-checks`, `server-tests`, `browser-smoke`, `offline-checks`. У каждого job своя VM, а у интеграционных — свой PostgreSQL; одинаковые loopback-порты между VM не конфликтуют. Их состав, команды, версии и предохранители БД сохранены. Дополнительный job [резерва](../deploy/backup/README.md) их не заменяет: полный результат требует успеха этих четырёх и job `backup-restore`.
+В workflow `Проверки HELIOS` четыре прежних job запускаются независимо: `project-checks`, `server-tests`, `browser-smoke`, `offline-checks`. У каждого job своя VM, а у интеграционных — свой PostgreSQL; одинаковые loopback-порты между VM не конфликтуют. Их состав, команды, версии и предохранители БД сохранены. Дополнительные job [резерва](../deploy/backup/README.md) и [учебного S3](../deploy/evidence/README.md) их не заменяют: полный результат требует успеха этих четырёх и job `backup-restore`, `s3-evidence`.
 
 Два браузерных job:
 
