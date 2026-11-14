@@ -6,6 +6,7 @@ import { checkPassword, hashPasswordCurrent, hashToken, newToken, passwordBusy }
 import type { Actor } from "./workforce.service.js";
 import { uuid } from "./api-input.js";
 import { readOnlyCabinetRoles } from "./cabinet-roles.js";
+import { isKnownRole, isExistingRuntimeRole } from "./role-catalog.js";
 import { consumeLogin, loginLimited } from "./auth-protection.js";
 
 @Injectable()
@@ -104,6 +105,10 @@ export class TenantGuard implements CanActivate {
     const token = header.slice(7);
     const actor = await this.auth.actor(token, tenantId);
     if (!actor) throw httpError(403, "tenant_denied");
+    if (!isKnownRole(actor.role)) throw httpError(403, "role_denied");
+    const identityRoute = (["GET", "HEAD"].includes(request.method ?? "") && request.path === "/api/v1/me") ||
+      (request.method === "POST" && request.path === "/api/v1/auth/logout");
+    if (!isExistingRuntimeRole(actor.role) && !identityRoute) throw httpError(403, "role_denied");
     if (readOnlyCabinetRoles.has(actor.role) &&
         !["GET", "HEAD"].includes(request.method ?? "") && request.path !== "/api/v1/auth/logout") {
       throw httpError(403, "role_denied");

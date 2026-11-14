@@ -7790,8 +7790,24 @@
             "enum": [
               "director",
               "master",
+              "worker",
               "pto",
-              "worker"
+              "gd",
+              "ds",
+              "zds-sso",
+              "zds-soso",
+              "supply",
+              "safety",
+              "hr",
+              "admin",
+              "customer",
+              "brigadier",
+              "engineer-pto",
+              "cost",
+              "subcontractor",
+              "peo",
+              "gb",
+              "uo"
             ]
           },
           "name": {
@@ -8699,9 +8715,25 @@
             "type": "string",
             "enum": [
               "director",
-              "worker",
               "master",
-              "pto"
+              "worker",
+              "pto",
+              "gd",
+              "ds",
+              "zds-sso",
+              "zds-soso",
+              "supply",
+              "safety",
+              "hr",
+              "admin",
+              "customer",
+              "brigadier",
+              "engineer-pto",
+              "cost",
+              "subcontractor",
+              "peo",
+              "gb",
+              "uo"
             ]
           },
           "status": {
@@ -13251,12 +13283,7 @@
           },
           "status": {
             "type": "string",
-            "enum": [
-              "unapproved",
-              "current",
-              "stale",
-              "revoked"
-            ]
+            "enum": ["unapproved", "current", "stale", "revoked"]
           }
         },
         "required": [
