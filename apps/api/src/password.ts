@@ -10,6 +10,15 @@ if (!Number.isInteger(workLimit) || workLimit < 1 || workLimit > 2) throw new Er
 
 let active = 0;
 const waiting: Array<() => void> = [];
+const waitLimit = 8;
+
+export function passwordWorkWaiting(): number {
+  return waiting.length;
+}
+
+export function passwordBusy(error: unknown): boolean {
+  return typeof error === "object" && !!error && (error as { passwordBusy?: unknown }).passwordBusy === true;
+}
 
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString("hex");
@@ -94,6 +103,11 @@ function take(): Promise<void> {
   if (active < workLimit) {
     active += 1;
     return Promise.resolve();
+  }
+  if (waiting.length >= waitLimit) {
+    const error = new Error("password_busy") as Error & { passwordBusy: boolean };
+    error.passwordBusy = true;
+    return Promise.reject(error);
   }
   return new Promise((resolve) => {
     waiting.push(() => {
