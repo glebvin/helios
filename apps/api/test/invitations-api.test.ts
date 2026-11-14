@@ -119,8 +119,9 @@ test('unknown codes, malformed data and role injection fail without consuming in
 test('audit does not contain passwords or bearer codes',async()=>{
   const rows=await admin.query(`SELECT * FROM audit_log WHERE tenant_id=$1 AND object_type='invitation'`,[tenant]);assert.ok(rows.rowCount!>0);const s=JSON.stringify(rows.rows);assert.equal(s.includes('test-password'),false);assert.equal(s.includes('token'),false);
 });
-test('public auth limiter covers login, invitation lookup and redemption and no-store',()=>{
-  const middleware=authProtection();for(const [path,method,limit] of [['/api/v1/auth/login','POST',40],['/api/v1/join/AAAAAAAAAAAA','POST',40],['/api/v1/join/AAAAAAAAAAAA','GET',200]] as const){let calls=0;const headers:any={};let status=0;const res:any={setHeader:(k:string,v:any)=>headers[k]=v,status:(n:number)=>{status=n;return res;},json:()=>{}};for(let n=0;n<limit+1;n++)middleware({path,method},res,()=>calls++);assert.equal(calls,limit);assert.equal(status,429);assert.equal(headers['Cache-Control'],'no-store');assert.ok(headers['Retry-After']>0);}
+test('public auth limiter covers invitation lookup and redemption and no-store',()=>{
+  const middleware=authProtection({install:false});for(const [path,method,limit] of [['/api/v1/join/AAAAAAAAAAAA','POST',40],['/api/v1/join/AAAAAAAAAAAA','GET',200]] as const){let calls=0;const headers:any={};let status=0;const res:any={setHeader:(k:string,v:any)=>headers[k]=v,status:(n:number)=>{status=n;return res;},json:()=>{}};for(let n=0;n<limit+1;n++)middleware({path,method},res,()=>calls++);assert.equal(calls,limit);assert.equal(status,429);assert.equal(headers['Cache-Control'],'no-store');assert.ok(headers['Retry-After']>0);}
+  let loginCalls=0;for(let n=0;n<41;n++)middleware({path:'/api/v1/auth/login',method:'POST',headers:{'x-forwarded-for':'203.0.113.8'}},{setHeader:()=>undefined,status:()=>({json:()=>undefined})},()=>{loginCalls+=1;});assert.equal(loginCalls,41);
 });
 
 test('failed audit rolls back account, employee, session and consumption together',async()=>{

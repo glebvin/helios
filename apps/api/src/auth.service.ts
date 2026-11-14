@@ -2,10 +2,11 @@ import { Inject, Injectable, type CanActivate, type ExecutionContext } from "@ne
 import type { Pool } from "pg";
 import { withTenant } from "./db.js";
 import { httpError } from "./errors.js";
-import { checkPassword, hashPasswordCurrent, hashToken, newToken } from "./password.js";
+import { checkPassword, hashPasswordCurrent, hashToken, newToken, passwordBusy } from "./password.js";
 import type { Actor } from "./workforce.service.js";
 import { uuid } from "./api-input.js";
 import { readOnlyCabinetRoles } from "./cabinet-roles.js";
+import { consumeLogin, loginLimited } from "./auth-protection.js";
 
 @Injectable()
 export class AuthService {
@@ -21,14 +22,26 @@ export class AuthService {
       [email.trim().toLowerCase()],
     );
     const row = user.rows[0];
-    const verdict = row ? await checkPassword(password, row.password_hash) : { ok: false, stale: false };
+    const retryAfter = consumeLogin(email, !!row);
+    if (retryAfter) throw loginLimited(retryAfter);
+    let verdict = { ok: false, stale: false };
+    try {
+      if (row) verdict = await checkPassword(password, row.password_hash);
+    } catch (error) {
+      if (passwordBusy(error)) throw loginLimited(1);
+      throw error;
+    }
     if (!row || !verdict.ok) throw httpError(401, "unauthorized");
     if (verdict.stale) {
-      const nextHash = await hashPasswordCurrent(password);
-      await this.pool.query(
-        `UPDATE users SET password_hash = $1 WHERE id = $2 AND password_hash = $3`,
-        [nextHash, row.id, row.password_hash],
-      );
+      try {
+        const nextHash = await hashPasswordCurrent(password);
+        await this.pool.query(
+          `UPDATE users SET password_hash = $1 WHERE id = $2 AND password_hash = $3`,
+          [nextHash, row.id, row.password_hash],
+        );
+      } catch (error) {
+        if (!passwordBusy(error)) throw error;
+      }
     }
     const token = newToken();
     await this.pool.query(
