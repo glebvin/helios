@@ -7692,6 +7692,228 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{projectId}/route-config": {
+      "get": {
+        "operationId": "readRouteConfiguration",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Versioned route configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteConfigRead"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "saveRouteConfiguration",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteConfigCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Versioned route configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteConfigSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation, authorization, conflict or assignment refusal",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -13590,6 +13812,571 @@
                 }
               }
             }
+          }
+        }
+      },
+      "RouteAssignment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "role",
+          "userId"
+        ],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "director",
+              "master",
+              "worker",
+              "pto",
+              "gd",
+              "ds",
+              "zds-sso",
+              "zds-soso",
+              "supply",
+              "safety",
+              "hr",
+              "admin",
+              "customer",
+              "brigadier",
+              "engineer-pto",
+              "cost",
+              "subcontractor",
+              "peo",
+              "gb",
+              "uo"
+            ]
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        }
+      },
+      "RouteConfiguration": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "schemaVersion",
+          "routes"
+        ],
+        "properties": {
+          "schemaVersion": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "routes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "documentType",
+                "preparers",
+                "responsibles",
+                "reviewers",
+                "approvers",
+                "observers",
+                "dataProviders"
+              ],
+              "properties": {
+                "documentType": {
+                  "type": "string",
+                  "enum": [
+                    "daily-task",
+                    "front-readiness",
+                    "employee-admission",
+                    "internal-inspection",
+                    "external-inspection",
+                    "inspection-correction",
+                    "incoming-materials",
+                    "hidden-works-act",
+                    "documentation-register",
+                    "day-close",
+                    "consolidated-timesheet",
+                    "inspection-template",
+                    "documentation-list",
+                    "ks2-readiness"
+                  ]
+                },
+                "preparers": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RouteAssignment"
+                  }
+                },
+                "responsibles": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RouteAssignment"
+                  },
+                  "minItems": 1,
+                  "maxItems": 1
+                },
+                "reviewers": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RouteAssignment"
+                  },
+                  "maxItems": 3
+                },
+                "approvers": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RouteAssignment"
+                  },
+                  "maxItems": 1
+                },
+                "observers": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RouteAssignment"
+                  }
+                },
+                "dataProviders": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RouteAssignment"
+                  }
+                }
+              }
+            },
+            "minItems": 14,
+            "maxItems": 14
+          }
+        }
+      },
+      "RouteConfigSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projectId",
+          "version",
+          "schemaVersion",
+          "configuration",
+          "createdBy",
+          "createdAt"
+        ],
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "configuration": {
+            "$ref": "#/components/schemas/RouteConfiguration"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "RouteConfigRead": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projectId",
+          "version",
+          "schemaVersion",
+          "configuration",
+          "createdBy",
+          "createdAt",
+          "documents",
+          "roles",
+          "people",
+          "history"
+        ],
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "schemaVersion": {
+            "type": "integer",
+            "enum": [
+              1
+            ]
+          },
+          "configuration": {
+            "$ref": "#/components/schemas/RouteConfiguration"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "documents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "code",
+                "title",
+                "prepare",
+                "responsible",
+                "review",
+                "approve",
+                "observe",
+                "data",
+                "external"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "enum": [
+                    "daily-task",
+                    "front-readiness",
+                    "employee-admission",
+                    "internal-inspection",
+                    "external-inspection",
+                    "inspection-correction",
+                    "incoming-materials",
+                    "hidden-works-act",
+                    "documentation-register",
+                    "day-close",
+                    "consolidated-timesheet",
+                    "inspection-template",
+                    "documentation-list",
+                    "ks2-readiness"
+                  ]
+                },
+                "title": {
+                  "type": "string"
+                },
+                "prepare": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "director",
+                      "master",
+                      "worker",
+                      "pto",
+                      "gd",
+                      "ds",
+                      "zds-sso",
+                      "zds-soso",
+                      "supply",
+                      "safety",
+                      "hr",
+                      "admin",
+                      "customer",
+                      "brigadier",
+                      "engineer-pto",
+                      "cost",
+                      "subcontractor",
+                      "peo",
+                      "gb",
+                      "uo"
+                    ]
+                  }
+                },
+                "responsible": {
+                  "type": "string",
+                  "enum": [
+                    "director",
+                    "master",
+                    "worker",
+                    "pto",
+                    "gd",
+                    "ds",
+                    "zds-sso",
+                    "zds-soso",
+                    "supply",
+                    "safety",
+                    "hr",
+                    "admin",
+                    "customer",
+                    "brigadier",
+                    "engineer-pto",
+                    "cost",
+                    "subcontractor",
+                    "peo",
+                    "gb",
+                    "uo"
+                  ]
+                },
+                "review": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "director",
+                      "master",
+                      "worker",
+                      "pto",
+                      "gd",
+                      "ds",
+                      "zds-sso",
+                      "zds-soso",
+                      "supply",
+                      "safety",
+                      "hr",
+                      "admin",
+                      "customer",
+                      "brigadier",
+                      "engineer-pto",
+                      "cost",
+                      "subcontractor",
+                      "peo",
+                      "gb",
+                      "uo"
+                    ]
+                  }
+                },
+                "approve": {
+                  "type": "string",
+                  "enum": [
+                    "director",
+                    "master",
+                    "worker",
+                    "pto",
+                    "gd",
+                    "ds",
+                    "zds-sso",
+                    "zds-soso",
+                    "supply",
+                    "safety",
+                    "hr",
+                    "admin",
+                    "customer",
+                    "brigadier",
+                    "engineer-pto",
+                    "cost",
+                    "subcontractor",
+                    "peo",
+                    "gb",
+                    "uo"
+                  ],
+                  "nullable": true
+                },
+                "observe": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "director",
+                      "master",
+                      "worker",
+                      "pto",
+                      "gd",
+                      "ds",
+                      "zds-sso",
+                      "zds-soso",
+                      "supply",
+                      "safety",
+                      "hr",
+                      "admin",
+                      "customer",
+                      "brigadier",
+                      "engineer-pto",
+                      "cost",
+                      "subcontractor",
+                      "peo",
+                      "gb",
+                      "uo"
+                    ]
+                  }
+                },
+                "data": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "director",
+                      "master",
+                      "worker",
+                      "pto",
+                      "gd",
+                      "ds",
+                      "zds-sso",
+                      "zds-soso",
+                      "supply",
+                      "safety",
+                      "hr",
+                      "admin",
+                      "customer",
+                      "brigadier",
+                      "engineer-pto",
+                      "cost",
+                      "subcontractor",
+                      "peo",
+                      "gb",
+                      "uo"
+                    ]
+                  }
+                },
+                "external": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "code",
+                "label"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "enum": [
+                    "director",
+                    "master",
+                    "worker",
+                    "pto",
+                    "gd",
+                    "ds",
+                    "zds-sso",
+                    "zds-soso",
+                    "supply",
+                    "safety",
+                    "hr",
+                    "admin",
+                    "customer",
+                    "brigadier",
+                    "engineer-pto",
+                    "cost",
+                    "subcontractor",
+                    "peo",
+                    "gb",
+                    "uo"
+                  ]
+                },
+                "label": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "userId",
+                "role",
+                "name"
+              ],
+              "properties": {
+                "userId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "director",
+                    "master",
+                    "worker",
+                    "pto",
+                    "gd",
+                    "ds",
+                    "zds-sso",
+                    "zds-soso",
+                    "supply",
+                    "safety",
+                    "hr",
+                    "admin",
+                    "customer",
+                    "brigadier",
+                    "engineer-pto",
+                    "cost",
+                    "subcontractor",
+                    "peo",
+                    "gb",
+                    "uo"
+                  ]
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "version",
+                "createdAt"
+              ],
+              "properties": {
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          }
+        }
+      },
+      "RouteConfigCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "expectedVersion",
+          "configuration"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "configuration": {
+            "$ref": "#/components/schemas/RouteConfiguration"
           }
         }
       }
