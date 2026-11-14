@@ -221,3 +221,22 @@ jobs:
           retention-days: 7
           include-hidden-files: true
           if-no-files-found: warn
+
+  backup-restore:
+    name: Резерв и восстановление
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Учебные контуры 54502/54512 и настоящий pg_restore
+        run: python3 qa/r46-restore.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: backup-restore-${{ github.sha }}
+          path: .data/r46/result.json
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: warn
