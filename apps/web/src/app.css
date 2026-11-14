@@ -1216,6 +1216,14 @@ h1, h2, h3, p { margin: 0; }
 }
 .documents-top .access-actions .template-bar { justify-content: flex-end; gap: 8px; margin: 0; }
 .documents-top .qualification-row b { font-size: 14px; font-weight: 500; }
+.import-preview { display: grid; gap: 10px; margin: 4px 0 12px; }
+.import-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.import-preview h2 { font-size: 16px; font-weight: 500; }
+.import-preview > div > p { margin: 4px 0 0; color: var(--muted); }
+.import-rows { display: grid; gap: 8px; margin-top: 10px; }
+.import-row { padding: 12px 14px; }
+.import-row p { margin: 2px 0 0; }
+.import-warn { color: var(--warn); }
 
 .access-actions:has(.access-feedback) { flex-wrap: wrap; }
 .access-feedback { flex-basis: 100%; font-size: 13px; line-height: 1.5; }
