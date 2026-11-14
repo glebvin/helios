@@ -13,6 +13,7 @@ paths = [root / p for p in [
     'docs/qa/offline-release-r23-r25.md',
     'docs/qa/repository-setup-2026-11-11.md']]
 paths += sorted((root / 'docs/roadmap/steps').glob('R*.md'))
+paths += sorted((root / 'docs/requirements').glob('*.md'))
 errors=[]
 for path in paths:
     if not path.exists():
@@ -38,6 +39,12 @@ for s in steps:
         if not s.get(field, '').strip(): errors.append(f'Missing TZ {field} in {s["id"]}')
     if card.exists() and '## Связь с ТЗ заказчика' not in card.read_text():
         errors.append(f'Missing visible TZ reference in {s["id"]}')
+    if s.get('source_version') != '1.0' or not s.get('legacy_source_4_0'):
+        errors.append(f'Missing current TZ version or historical reference in {s["id"]}')
+    if card.exists() and f'Источник: **ТЗ v1.0 {s["source"]}**' not in card.read_text():
+        errors.append(f'Card/metadata TZ source drift in {s["id"]}')
+    if not s.get('v1_note') or (card.exists() and s['v1_note'] not in card.read_text()):
+        errors.append(f'Card/metadata v1 requirement drift in {s["id"]}')
     if s['depends']!='—':
         for dep in s['depends'].split(','):
             if 'R'+dep not in ids: errors.append(f'Unknown dependency {dep}')
@@ -60,6 +67,13 @@ if {i['step'] for i in mapping}!=ids or len(mapping)!=len(ids):
 coverage=(root/'docs/roadmap/PILOT-19.2.md').read_text()
 for n in range(1,11):
     if f'| 19.2.{n} |' not in coverage: errors.append(f'Missing pilot coverage row 19.2.{n}')
+trace=(root/'docs/requirements/EXECUTION-v1.md').read_text()
+tests=re.findall(r'^\| (T-\d{2}) \|',trace,re.M)
+if sorted(tests)!=[f'T-{n:02}' for n in range(1,25)]:
+    errors.append('Current TZ must trace T-01 through T-24 exactly once')
+decisions=re.findall(r'^\| (D-\d{2}) \|',(root/'docs/requirements/TZ-v1-baseline.md').read_text(),re.M)
+if sorted(decisions)!=[f'D-{n:02}' for n in range(1,7)]:
+    errors.append('Owner decisions D-01 through D-06 must remain traceable')
 if errors:
     print('\n'.join(errors))
     sys.exit(1)
