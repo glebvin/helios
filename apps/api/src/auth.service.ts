@@ -17,13 +17,13 @@ export class AuthService {
     const { email, password } = body as Record<string, unknown>;
     if (typeof email !== "string" || !email.trim() || email.length > 320 ||
         typeof password !== "string" || !password || password.length > 1024) throw httpError(400, "invalid_login");
-    const retryAfter = consumeLogin(email);
-    if (retryAfter) throw loginLimited(retryAfter);
     const user = await this.pool.query(
       `SELECT id, email, name, password_hash FROM users WHERE lower(email) = $1`,
       [email.trim().toLowerCase()],
     );
     const row = user.rows[0];
+    const retryAfter = consumeLogin(email, !!row);
+    if (retryAfter) throw loginLimited(retryAfter);
     let verdict = { ok: false, stale: false };
     try {
       if (row) verdict = await checkPassword(password, row.password_hash);

@@ -1,28 +1,29 @@
 // The login limit is per normalized email after the body is parsed.
 // X-Forwarded-For is not a client key: there is no trusted-proxy contract.
-// A flood of unseen emails shares one overflow bucket and cannot grow the table without a bound.
+// Unknown accounts share a separate bucket, so invented emails cannot fill the known-account table.
 import { httpError } from "./errors.js";
 
 const windowMs = 60_000;
 const accountLimit = 40;
-const maxLoginBuckets = 128;
+// Above the specified 2,000-profile scale; only database-confirmed accounts allocate entries.
+const maxLoginBuckets = 4096;
 
 type Bucket = { count: number; until: number };
 type Reply = { setHeader: (name: string, value: string) => void; status: (code: number) => { json: (body: unknown) => void } };
 export type Protection = ((req: any, res: any, next: () => void) => void) & {
-  takeLogin: (email: string) => number | null;
+  takeLogin: (email: string, knownAccount?: boolean) => number | null;
   bucketCount: () => number;
 };
 
-const unbound = { takeLogin: (_email: string): number | null => null };
-let active: { takeLogin: (email: string) => number | null } = unbound;
+const unbound = { takeLogin: (_email: string, _knownAccount?: boolean): number | null => null };
+let active: { takeLogin: (email: string, knownAccount?: boolean) => number | null } = unbound;
 
-export function bindAuthProtection(protection: { takeLogin: (email: string) => number | null }) {
+export function bindAuthProtection(protection: { takeLogin: (email: string, knownAccount?: boolean) => number | null }) {
   active = protection;
 }
 
-export function consumeLogin(email: string) {
-  return active.takeLogin(email);
+export function consumeLogin(email: string, knownAccount: boolean) {
+  return active.takeLogin(email, knownAccount);
 }
 
 export function loginLimited(retryAfter: number) {
@@ -42,10 +43,11 @@ export function authProtection(options?: { install?: boolean; now?: () => number
     if (bucket && charge(buckets, bucket, bucket === "inspect" ? 200 : 40, res, now())) return;
     next();
   }) as Protection;
-  middleware.takeLogin = (email: string) => {
+  middleware.takeLogin = (email: string, knownAccount = true) => {
     const current = now();
     forgetExpired(buckets, current);
     if (overflow && overflow.until <= current) overflow = null;
+    if (!knownAccount) return charge(buckets, "unknown", accountLimit, null, current);
     const normalized = email.trim().toLowerCase();
     const key = !normalized || normalized.length > 320 ? "login" : `login:${normalized}`;
     if (buckets.has(key) || countLoginBuckets(buckets) < maxLoginBuckets) return charge(buckets, key, accountLimit, null, current);
