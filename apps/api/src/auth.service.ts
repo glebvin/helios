@@ -6,6 +6,7 @@ import { checkPassword, hashPasswordCurrent, hashToken, newToken } from "./passw
 import type { Actor } from "./workforce.service.js";
 import { uuid } from "./api-input.js";
 import { readOnlyCabinetRoles } from "./cabinet-roles.js";
+import { consumeLogin } from "./auth-protection.js";
 
 @Injectable()
 export class AuthService {
@@ -16,6 +17,7 @@ export class AuthService {
     const { email, password } = body as Record<string, unknown>;
     if (typeof email !== "string" || !email.trim() || email.length > 320 ||
         typeof password !== "string" || !password || password.length > 1024) throw httpError(400, "invalid_login");
+    if (consumeLogin(email)) throw httpError(429, "auth_rate_limited");
     const user = await this.pool.query(
       `SELECT id, email, name, password_hash FROM users WHERE lower(email) = $1`,
       [email.trim().toLowerCase()],
