@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { NoteMark } from "./note-mark";
-import { previewStaffImport, staffImportColumns, staffImportExample, staffImportMaxBytes, type StaffImportPreview } from "./staff-import";
+import { collectBounded, currentPreview, previewStaffImport, staffImportColumns, staffImportExample, staffImportMaxBytes, type StaffImportPreview } from "./staff-import";
 
 export function StaffImportPanel() {
   const reduce = useReducedMotion();
   const input = useRef<HTMLInputElement>(null);
   const summary = useRef<HTMLDivElement>(null);
+  const readToken = useRef(0);
   const [preview, setPreview] = useState<StaffImportPreview | null>(null);
   const [reading, setReading] = useState(false);
 
@@ -16,15 +17,22 @@ export function StaffImportPanel() {
 
   async function open(file: File | undefined) {
     if (!file) return;
+    const token = ++readToken.current;
     setReading(true);
-    if (file.size > staffImportMaxBytes) {
-      setPreview({ fileError: "Файл больше 1 МБ. Предпросмотр его не читает.", rows: [], saved: false });
-      setReading(false);
-      return;
+    setPreview(null);
+    try {
+      if (file.size > staffImportMaxBytes) {
+        setPreview({ fileError: "Файл больше 1 МБ. Предпросмотр его не читает.", rows: [], saved: false });
+        return;
+      }
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const next = currentPreview(token, readToken.current, await previewStaffImport(bytes, inflateRaw));
+      if (next) setPreview(next);
+    } catch {
+      if (readToken.current === token) setPreview({ fileError: "Файл не читается как книга Excel.", rows: [], saved: false });
+    } finally {
+      if (readToken.current === token) setReading(false);
     }
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    setPreview(await previewStaffImport(bytes, inflateRaw));
-    setReading(false);
   }
 
   const problems = preview?.rows.reduce((sum, row) => sum + row.errors.length, 0) ?? 0;
@@ -71,7 +79,8 @@ function downloadExample() {
   URL.revokeObjectURL(url);
 }
 
-async function inflateRaw(data: Uint8Array) {
+async function inflateRaw(data: Uint8Array, limit: number) {
   const stream = new Blob([Uint8Array.from(data)]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
+  const reader = stream.getReader();
+  return collectBounded(reader, limit);
 }

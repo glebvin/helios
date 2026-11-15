@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import test from "node:test";
 import { deflateRawSync, inflateRawSync } from "node:zlib";
-import { previewStaffImport, staffImportColumns, staffImportExample, staffImportMaxBytes, staffImportMaxRows } from "./staff-import.ts";
+import { collectBounded, currentPreview, previewStaffImport, staffImportColumns, staffImportExample, staffImportMaxBytes, staffImportMaxRows } from "./staff-import.ts";
 
 const inflate = (data: Uint8Array) => inflateRawSync(data);
 
@@ -82,6 +82,93 @@ test("книга, записанная текущим writer, читается �
   assert.deepEqual(preview.rows, [{ row: 2, key: "010", fullName: "Сидоров", phone: "", errors: [] }]);
 });
 
+test("первый лист берётся из workbook, даже если связь второго листа записана раньше", async () => {
+  const preview = await previewStaffImport(sheets({
+    order: ["rId1", "rId2"],
+    rels: [["rId2", "worksheets/sheet2.xml"], ["rId1", "worksheets/sheet1.xml"]],
+    sheets: { "xl/worksheets/sheet1.xml": "Первый лист", "xl/worksheets/sheet2.xml": "Второй лист" },
+  }), inflate);
+  assert.equal(preview.fileError, "");
+  assert.equal(preview.rows[0]?.fullName, "Первый лист");
+  assert.equal(JSON.stringify(preview).includes("Второй лист"), false);
+});
+
+test("скрытый и неподдерживаемый первый лист не подменяются следующим", async () => {
+  const hidden = await previewStaffImport(sheets({
+    order: ["rId1", "rId2"],
+    hidden: true,
+    rels: [["rId1", "worksheets/sheet1.xml"], ["rId2", "worksheets/sheet2.xml"]],
+    sheets: { "xl/worksheets/sheet1.xml": "Скрытый", "xl/worksheets/sheet2.xml": "Видимый" },
+  }), inflate);
+  assert.match(hidden.fileError, /скрыт или не поддерживается/);
+  assert.equal(hidden.rows.length, 0);
+  const chart = await previewStaffImport(sheets({
+    order: ["rId1", "rId2"],
+    rels: [["rId1", "charts/chart1.xml", "chart"], ["rId2", "worksheets/sheet2.xml"]],
+    sheets: { "xl/charts/chart1.xml": "Диаграмма", "xl/worksheets/sheet2.xml": "Видимый" },
+  }), inflate);
+  assert.match(chart.fileError, /скрыт или не поддерживается/);
+  assert.equal(JSON.stringify(chart).includes("Видимый"), false);
+});
+
+test("битая числовая ссылка XML даёт ошибку файла и не оставляет старый результат", async () => {
+  await assert.doesNotReject(async () => {
+    const broken = await previewStaffImport(workbook([
+      [...staffImportColumns],
+      ["001", "&#999999999;", ""],
+    ]), inflate);
+    assert.match(broken.fileError, /не читается/);
+    assert.equal(broken.rows.length, 0);
+  });
+  let latest = 1;
+  const stale = currentPreview(1, latest, { fileError: "", rows: [{ fullName: "Старый" }], saved: false as const });
+  latest = 2;
+  assert.equal(currentPreview(1, latest, stale), null);
+  assert.equal(currentPreview(2, latest, { fileError: "Файл не читается как книга Excel.", rows: [], saved: false as const })?.fileError, "Файл не читается как книга Excel.");
+});
+
+test("распаковка прекращается на границе и не дочитывает раздутую запись", async () => {
+  let reads = 0;
+  let cancelled = false;
+  const chunk = 64 * 1024;
+  await assert.rejects(collectBounded({
+    read: async () => {
+      reads += 1;
+      return { done: false, value: new Uint8Array(chunk) };
+    },
+    cancel: () => { cancelled = true; },
+  }, chunk));
+  assert.equal(cancelled, true);
+  assert.equal(reads, 2);
+  let chunks = 0;
+  const bomb = await previewStaffImport(sheets({
+    order: ["rId1"],
+    rels: [["rId1", "worksheets/sheet1.xml"]],
+    sheets: { "xl/worksheets/sheet1.xml": "x" },
+    claimed: 100,
+  }), async (_data, limit) => collectBounded({
+    read: async () => {
+      chunks += 1;
+      return { done: false, value: new Uint8Array(64) };
+    },
+    cancel: () => { cancelled = true; },
+  }, limit));
+  assert.match(bomb.fileError, /не читается/);
+  assert.equal(chunks, 2);
+  let opened = 0;
+  const crowded = await previewStaffImport(sheets({
+    order: ["rId1"],
+    rels: [["rId1", "worksheets/sheet1.xml"]],
+    sheets: { "xl/worksheets/sheet1.xml": "Один" },
+    claimed: 1024 * 1024,
+  }), async (_data, limit) => {
+    opened += 1;
+    return new Uint8Array(limit);
+  });
+  assert.match(crowded.fileError, /не читается/);
+  assert.equal(opened, 2);
+});
+
 type Cell = string | { formula: string; cached: string };
 
 function workbook(rows: Cell[][]) {
@@ -109,6 +196,24 @@ function workbook(rows: Cell[][]) {
     ["xl/sharedStrings.xml", deflateRawSync(Buffer.from(shared))],
     ["xl/worksheets/sheet1.xml", deflateRawSync(Buffer.from(sheet))],
   ], [rels, shared, sheet].map((xml) => Buffer.byteLength(xml)));
+}
+
+function sheets(input: { order: string[]; hidden?: boolean; rels: [string, string, string?][]; sheets: Record<string, string>; claimed?: number }) {
+  const files: [string, Buffer][] = [];
+  const sizes: number[] = [];
+  const add = (name: string, xml: string) => {
+    const raw = Buffer.from(xml);
+    files.push([name, deflateRawSync(raw)]);
+    sizes.push(input.claimed ?? raw.length);
+  };
+  add("xl/workbook.xml", `<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${input.order.map((id, index) => `<sheet name="s${index}" sheetId="${index + 1}" r:id="${id}"${input.hidden && index === 0 ? ' state="hidden"' : ""}/>`).join("")}</sheets></workbook>`);
+  add("xl/_rels/workbook.xml.rels", `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${input.rels.map(([id, target, kind]) => `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/${kind ?? "worksheet"}" Target="${target}"/>`).join("")}</Relationships>`);
+  for (const [name, person] of Object.entries(input.sheets)) {
+    const titles = staffImportColumns.map((title, column) => `<c r="${String.fromCharCode(65 + column)}1" t="inlineStr"><is><t>${title}</t></is></c>`).join("");
+    const row = `<c r="A2" t="inlineStr"><is><t>001</t></is></c><c r="B2" t="inlineStr"><is><t>${person}</t></is></c>`;
+    add(name, `<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1">${titles}</row><row r="2">${row}</row></sheetData></worksheet>`);
+  }
+  return storedZip(files, sizes);
 }
 
 function storedZip(files: [string, Buffer][], sizes: number[]) {

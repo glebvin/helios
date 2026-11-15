@@ -38,6 +38,7 @@ try {
   await page.getByText('Это проверка только этого файла. Совпадения внутри него не означают, что такая запись уже есть в базе.', { exact: true }).waitFor();
   await page.getByLabel('Файл сотрудников Excel').setInputFiles(broken);
   await page.getByText(/табельный номер «А-1» повторяется в этом файле/).waitFor();
+  assert.equal(await page.getByText('Иванов Иван Иванович', { exact: true }).count(), 0);
   await page.getByText('Это не проверка базы.').first().waitFor();
   await page.getByText('Строка 4: нет поля «ФИО».').waitFor();
   assert.deepEqual(writes, []);

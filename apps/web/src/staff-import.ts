@@ -2,6 +2,10 @@
 // A repeated name is not an identity. Formulas are rejected, never calculated.
 export const staffImportColumns = ["Табельный номер", "ФИО", "Телефон"] as const;
 export const staffImportMaxBytes = 1024 * 1024;
+
+export function currentPreview<T>(token: number, latest: number, value: T): T | null {
+  return token === latest ? value : null;
+}
 export const staffImportMaxRows = 200;
 const maxEntries = 40;
 const maxEntryBytes = 2 * 1024 * 1024;
@@ -11,19 +15,40 @@ export type StaffImportPreview = { fileError: string; rows: StaffImportRow[]; sa
 
 type ZipEntry = { name: string; method: number; compressed: Uint8Array; size: number };
 
-export async function previewStaffImport(bytes: Uint8Array, inflate: (data: Uint8Array) => Promise<Uint8Array> | Uint8Array): Promise<StaffImportPreview> {
+export async function previewStaffImport(bytes: Uint8Array, inflate: (data: Uint8Array, limit: number) => Promise<Uint8Array> | Uint8Array): Promise<StaffImportPreview> {
   if (bytes.length > staffImportMaxBytes) return empty("Файл больше 1 МБ. Предпросмотр его не читает.");
-  let files: Map<string, Uint8Array>;
   try {
-    files = await readZip(bytes, inflate);
-  } catch {
+    const files = await readZip(bytes, inflate);
+    const sheetName = firstSheet(files);
+    const sheet = sheetName ? files.get(sheetName) : undefined;
+    if (!sheet) return empty("В книге нет первого листа.");
+    const strings = files.has("xl/sharedStrings.xml") ? sharedStrings(textOf(files.get("xl/sharedStrings.xml")!)) : [];
+    return readSheet(textOf(sheet), strings);
+  } catch (error) {
+    if (error instanceof Error && error.message === "sheet") return empty("Первый лист скрыт или не поддерживается.");
     return empty("Файл не читается как книга Excel.");
   }
-  const sheetName = firstSheet(files);
-  const sheet = sheetName ? files.get(sheetName) : undefined;
-  if (!sheet) return empty("В книге нет первого листа.");
-  const strings = files.has("xl/sharedStrings.xml") ? sharedStrings(textOf(files.get("xl/sharedStrings.xml")!)) : [];
-  return readSheet(textOf(sheet), strings);
+}
+
+/** Copies inflated chunks until `limit`. A larger chunk cancels the reader and is not kept. */
+export async function collectBounded(reader: { read: () => Promise<{ done: boolean; value?: Uint8Array }>; cancel: () => Promise<void> | void }, limit: number) {
+  const parts: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) break;
+    const chunk = next.value ?? new Uint8Array();
+    if (chunk.length > limit - total) {
+      await reader.cancel();
+      throw new Error("inflate");
+    }
+    parts.push(chunk);
+    total += chunk.length;
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const part of parts) { out.set(part, offset); offset += part.length; }
+  return out;
 }
 
 export function staffImportExample(): Uint8Array {
@@ -133,15 +158,25 @@ function sharedStrings(xml: string) {
 }
 
 function firstSheet(files: Map<string, Uint8Array>) {
+  const workbook = files.get("xl/workbook.xml");
+  if (!workbook) return files.has("xl/worksheets/sheet1.xml") ? "xl/worksheets/sheet1.xml" : "";
   const rels = files.get("xl/_rels/workbook.xml.rels");
-  if (!rels) return files.has("xl/worksheets/sheet1.xml") ? "xl/worksheets/sheet1.xml" : "";
-  const match = textOf(rels).match(/Type="[^"]*\/worksheet"[^>]*Target="([^"]+)"|Target="([^"]+)"[^>]*Type="[^"]*\/worksheet"/);
-  const target = match?.[1] || match?.[2] || "";
-  if (!target || target.includes("..") || target.startsWith("/") || /^[a-z]+:/i.test(target)) return "";
-  return `xl/${target.replace(/^\.\//, "")}`;
+  const sheet = /<sheet\b[^>]*\/?>/.exec(textOf(workbook));
+  if (!sheet || !rels) throw new Error("sheet");
+  const tag = sheet[0];
+  const state = attr(tag, "state");
+  if (state && state !== "visible") throw new Error("sheet");
+  const id = attr(tag, "r:id");
+  const rel = [...textOf(rels).matchAll(/<Relationship\b[^>]*\/?>/g)].find((item) => attr(item[0], "Id") === id);
+  const type = rel ? attr(rel[0], "Type") : "";
+  const target = rel ? attr(rel[0], "Target") : "";
+  if (!id || !type.endsWith("/worksheet") || !target || target.includes("..") || target.startsWith("/") || /^[a-z]+:/i.test(target)) throw new Error("sheet");
+  const name = `xl/${target.replace(/^\.\//, "")}`;
+  if (!files.has(name)) throw new Error("sheet");
+  return name;
 }
 
-async function readZip(bytes: Uint8Array, inflate: (data: Uint8Array) => Promise<Uint8Array> | Uint8Array) {
+async function readZip(bytes: Uint8Array, inflate: (data: Uint8Array, limit: number) => Promise<Uint8Array> | Uint8Array) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let end = -1;
   for (let offset = bytes.length - 22; offset >= Math.max(0, bytes.length - 22 - 65535); offset -= 1) {
@@ -153,6 +188,7 @@ async function readZip(bytes: Uint8Array, inflate: (data: Uint8Array) => Promise
   const centralOffset = view.getUint32(end + 16, true);
   if (count > maxEntries || centralOffset + centralSize > bytes.length) throw new Error("central");
   const entries: ZipEntry[] = [];
+  let used = 0;
   let cursor = centralOffset;
   for (let index = 0; index < count; index += 1) {
     if (view.getUint32(cursor, true) !== 0x02014b50) throw new Error("central-entry");
@@ -166,12 +202,15 @@ async function readZip(bytes: Uint8Array, inflate: (data: Uint8Array) => Promise
     const name = new TextDecoder().decode(bytes.subarray(cursor + 46, cursor + 46 + nameLength));
     if (view.getUint16(cursor + 8, true) & 1) throw new Error("encrypted");
     if (size > maxEntryBytes || compressedSize > maxEntryBytes) throw new Error("entry");
+    const room = maxEntryBytes - used;
+    if (room <= 0 || size > room) throw new Error("inflate");
     const localName = view.getUint16(localOffset + 26, true);
     const localExtra = view.getUint16(localOffset + 28, true);
     const dataStart = localOffset + 30 + localName + localExtra;
     const compressed = bytes.subarray(dataStart, dataStart + compressedSize);
-    const data = method === 0 ? compressed : method === 8 ? await inflate(compressed) : null;
-    if (!data || data.length !== size || data.length > maxEntryBytes) throw new Error("inflate");
+    const data = method === 0 ? (compressed.length > size ? null : compressed) : method === 8 ? await inflate(compressed, size) : null;
+    if (!data || data.length !== size || data.length > room) throw new Error("inflate");
+    used += data.length;
     entries.push({ name: name.replaceAll("\\", "/"), method, compressed: data, size });
     cursor += 46 + nameLength + extraLength + commentLength;
   }
@@ -267,7 +306,8 @@ function decodeXml(value: string) {
     if (entity === "apos") return "'";
     if (entity.startsWith("#")) {
       const code = entity[1] === "x" || entity[1] === "X" ? Number.parseInt(entity.slice(2), 16) : Number.parseInt(entity.slice(1), 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : all;
+      if (!Number.isInteger(code) || code < 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) throw new Error("xml");
+      return String.fromCodePoint(code);
     }
     return all;
   });
