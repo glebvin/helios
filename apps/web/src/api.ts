@@ -83,6 +83,33 @@ export async function login(email: string, password: string): Promise<Session> {
   return session;
 }
 
+export async function requestPhoneCode(phone: string) {
+  await request("/api/v1/auth/phone/challenge", null, {
+    method: "POST",
+    body: JSON.stringify({ phone, requestId: crypto.randomUUID() }),
+  });
+}
+
+export async function loginByPhone(phone: string, code: string): Promise<Session> {
+  const body = await request<{
+    token: string;
+    user: { id: string; name: string; email: string | null };
+    memberships: { tenant_id: string; role: string; status?: string }[];
+  }>("/api/v1/auth/phone/login", null, { method: "POST", body: JSON.stringify({ phone, code }) });
+  const membership = body.memberships.find((item) => !("status" in item) || item.status === "active") ?? body.memberships[0];
+  if (!membership) throw new Error("tenant_denied");
+  const session = {
+    token: body.token,
+    userId: body.user.id,
+    name: body.user.name,
+    email: body.user.email ?? "",
+    tenantId: membership.tenant_id,
+    role: membership.role,
+  };
+  saveSession(session);
+  return session;
+}
+
 export const desk = (session: Session) => request<Desk>("/api/desk", session);
 export type NewTask = {
   title: string;

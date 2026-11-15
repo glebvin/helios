@@ -13,6 +13,8 @@ export class InvitationsController {
   refresh(@Req() req:ActorRequest,@Param('id') id:string,@Body() body:unknown){return this.invitations.refresh(actorOf(req),id,body);}
   @Get('join/:code')
   inspect(@Param('code') code:string){return this.invitations.inspect(code);}
+  @Post('join/:code/challenge')
+  challenge(@Param('code') code:string,@Body() body:unknown){return this.invitations.challenge(code,body);}
   @Post('join/:code')
   accept(@Param('code') code:string,@Body() body:unknown){return this.invitations.accept(code,body);}
 }
