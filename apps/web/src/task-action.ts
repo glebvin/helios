@@ -47,6 +47,8 @@ export function taskActionError(status: number | null, code = "") {
   if (status === 409 && code === "assignment_overlap") return "Время пересекается с другим опубликованным заданием этого исполнителя.";
   if (status === 409 && code === "template_changed") return "Шаблон фронта изменился. Публикация не выполнена.";
   if (status === 409 && code === "idempotency_payload_mismatch") return "Номер попытки относится к другому переходу. Прочитайте актуальную версию.";
+  if(status===409&&code==='route_snapshot_required')return 'Это задание отправлено до настройки маршрута. Мастер должен вернуть его в черновик и отправить РП заново.';
+  if(status===422&&['route_not_configured','route_participant_inactive'].includes(code))return 'Маршрут не настроен: администратор должен назначить активных мастера и РП этого объекта.';
   if (status === 422 && code === "task_not_ready") return "Сервер не опубликовал задание: допуск, фронт или обязательный модуль ещё блокируют.";
   if (status === 422) return "Сервер не разрешил этот переход.";
   if (status === 409) return "Конфликт данных. Статус не изменён.";

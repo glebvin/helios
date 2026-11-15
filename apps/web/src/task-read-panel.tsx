@@ -260,7 +260,7 @@ function TaskDetail({ compact, session, projectId, taskId, names, canEdit, onEdi
           </section>
         </div>
       </div>
-      {task.workflowKind === "managed02b" ? <TaskActionPanel session={session} projectId={projectId} task={task} onDone={() => { setPass((value) => value + 1); onChanged(); }} /> : null}
+      {task.workflowKind === "managed02b" ? <TaskActionPanel session={session} projectId={projectId} task={task} timezone={timezone} onDone={() => { setPass((value) => value + 1); onChanged(); }} /> : null}
       {task.workflowKind === "managed02b" ? <FrontCheckPanel session={session} projectId={projectId} taskId={task.id} taskVersion={task.version} status={status} onRecorded={() => setPass((value) => value + 1)} /> : null}
     </motion.div> : null}
   </>;
