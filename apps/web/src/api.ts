@@ -83,10 +83,12 @@ export async function login(email: string, password: string): Promise<Session> {
   return session;
 }
 
-export async function requestPhoneCode(phone: string) {
+export const phoneLoginEnabled = import.meta.env.VITE_HELIOS_PHONE_LOGIN === "true";
+
+export async function requestPhoneCode(phone: string, requestId: string) {
   await request("/api/v1/auth/phone/challenge", null, {
     method: "POST",
-    body: JSON.stringify({ phone, requestId: crypto.randomUUID() }),
+    body: JSON.stringify({ phone, requestId }),
   });
 }
 

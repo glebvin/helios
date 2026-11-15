@@ -1,20 +1,22 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync, mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import pg from "pg";
 import { hashPassword } from "../apps/api/src/password.ts";
 
-const dbPort = 54571;
-const apiPort = 4397;
-const webPort = 5268;
+const phoneMode=process.env.HELIOS_PHONE_QA_MODE!=="default";
+const dbPort = Number(process.env.HELIOS_PHONE_QA_DB_PORT ?? 54571);
+assert.ok([54571,54575].includes(dbPort));
+const apiPort = dbPort===54575?4399:4397;
+const webPort = dbPort===54575?5269:5268;
 const root = fileURLToPath(new URL("..", import.meta.url));
 const qaDir = path.join(root, ".data/phone-qa");
 const password = "phone-browser-password";
 const email = `director-${randomUUID()}@invite.test`;
-const phone = "+79005550067";
+const phone = "+79"+String(Math.floor(Math.random()*1e9)).padStart(9,"0");
 const children = [];
 
 function run(command, args, env) {
@@ -34,8 +36,11 @@ async function waitFor(read, needle) {
   }
 }
 
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? "playwright");
-const browser = await chromium.launch({ headless: true });
+const engines = await import(process.env.PLAYWRIGHT_MODULE ?? "playwright");
+const engine=process.env.HELIOS_QA_BROWSER??"chromium";assert.ok(["chromium","webkit"].includes(engine));
+const browser = await engines[engine].launch({ headless: true });
+const out=path.join(root,".data/phone-browser-review");mkdirSync(out,{recursive:true});
+const pageErrors=[];browser.on("disconnected",()=>{});let fixture=null;
 try {
   const db = run("node", ["scripts/db.mjs", "up"], { HELIOS_DB_PORT: String(dbPort) });
   await waitFor(db.output, "postgres");
@@ -43,7 +48,7 @@ try {
   await admin.connect();
   const placed = await admin.query("SELECT inet_server_port() AS port, current_setting('data_directory') AS dir");
   assert.equal(Number(placed.rows[0].port), dbPort);
-  assert.equal(placed.rows[0].dir.endsWith(`.data/pg-${dbPort}`), true);
+  assert.equal(realpathSync(placed.rows[0].dir),realpathSync(path.join(root,`.data/pg-${dbPort}`)));
   await admin.end();
   const migrate = spawn("corepack", ["pnpm", "--filter", "@helios/api", "migrate"], {
     cwd: root,
@@ -62,6 +67,7 @@ try {
   const org = randomUUID();
   const project = randomUUID();
   const director = randomUUID();
+  fixture={tenant,org,project,director};
   await seed.query("INSERT INTO tenants(id,name) VALUES($1,'Phone QA')", [tenant]);
   await seed.query("INSERT INTO organizations(tenant_id,id,kind,name) VALUES($1,$2,'own','Phone QA')", [tenant, org]);
   await seed.query("INSERT INTO projects(tenant_id,id,name) VALUES($1,$2,'Объект телефона')", [tenant, project]);
@@ -73,32 +79,36 @@ try {
     HELIOS_DB_PORT: String(dbPort),
     DATABASE_URL: `postgres://helios_app:helios_app@127.0.0.1:${dbPort}/helios`,
     ADMIN_DATABASE_URL: `postgres://helios:helios@127.0.0.1:${dbPort}/helios`,
-    HELIOS_PHONE_PROVIDER: "synthetic",
+    HELIOS_PHONE_PROVIDER: phoneMode?"synthetic":"disabled",
     HELIOS_PHONE_CODE_SECRET: "qa-phone-secret-0123456789abcdef",
     HELIOS_PHONE_QA_DIR: qaDir,
   });
   await waitFor(api.output, "api http");
-  const web = run("corepack", ["pnpm", "--filter", "@helios/web", "dev"], {
+  const dist=path.join(root,".data/phone-browser-dist");
+  const build=spawn("corepack",["pnpm","--config.verifyDepsBeforeRun=false","--filter","@helios/web","exec","vite","build","--outDir",dist],{cwd:root,env:{...process.env,VITE_HELIOS_PHONE_LOGIN:phoneMode?"true":"false"},stdio:"pipe"});
+  await new Promise((resolve,reject)=>{build.on("error",reject);build.on("exit",c=>c===0?resolve():reject(new Error("phone preview build failed")));});
+  const web = run("corepack", ["pnpm", "--config.verifyDepsBeforeRun=false", "--filter", "@helios/web", "exec","vite","preview","--outDir",dist,"--host","127.0.0.1","--strictPort"], {
     HELIOS_WEB_PORT: String(webPort),
     HELIOS_API_ORIGIN: `http://127.0.0.1:${apiPort}`,
   });
   await waitFor(web.output, "Local:");
-  const base = `http://localhost:${webPort}`;
+  const base = `http://127.0.0.1:${webPort}`;
   const desktop = await browser.newContext({ viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
   const directorPage = await desktop.newPage();
   directorPage.setDefaultTimeout(15000);
   await directorPage.goto(base);
+  assert.equal(await directorPage.getByRole("button",{name:"Войти по телефону",exact:true}).count(),phoneMode?1:0);
   await directorPage.getByLabel("Логин", { exact: true }).fill(email);
   await directorPage.getByLabel("Пароль", { exact: true }).fill(password);
   await directorPage.getByRole("button", { name: "Войти", exact: true }).click();
   await directorPage.getByRole("button", { name: "Люди", exact: true }).click();
   await directorPage.getByRole("button", { name: "Пригласить работника", exact: true }).click();
   const dialog = directorPage.getByRole("dialog");
-  await dialog.getByLabel("Телефон", { exact: true }).fill(phone);
+  if(phoneMode)await dialog.getByLabel("Телефон", { exact: true }).fill(phone);else assert.equal(await dialog.getByLabel("Телефон",{exact:true}).count(),0);
   await dialog.getByRole("button", { name: "Создать ссылку", exact: true }).click();
   const link = await dialog.getByLabel("Ссылка приглашения").inputValue();
   assert.equal(link.startsWith(`${base}/join/`), true);
-  await dialog.getByText("+7 ··· 67").waitFor();
+  if(phoneMode)await dialog.getByText("+7 ··· "+phone.slice(-2)).waitFor();
   await dialog.getByRole("button", { name: "Закрыть", exact: true }).click();
   await directorPage.getByRole("button", { name: "QD", exact: true }).click();
   await directorPage.getByRole("menuitem", { name: "Выйти", exact: true }).click();
@@ -106,10 +116,25 @@ try {
   const narrow = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "block" });
   const join = await narrow.newPage();
   join.setDefaultTimeout(15000);
+  join.on("pageerror",e=>pageErrors.push(e.message));
   await join.goto(link);
+  if(!phoneMode){
+    await join.getByLabel("Имя и фамилия").fill("Учебный работник");
+    await join.getByLabel("Электронная почта",{exact:true}).fill(`worker-${randomUUID()}@invite.test`);
+    await join.getByLabel("Пароль",{exact:true}).fill(password);
+    assert.equal(await join.getByRole("button",{name:"Получить код",exact:true}).count(),0);
+    await join.getByRole("button",{name:"Войти",exact:true}).click();await join.getByRole("heading",{name:"Моя смена",exact:true}).waitFor();await join.reload();await join.getByRole("heading",{name:"Моя смена",exact:true}).waitFor();
+    const closed=await join.request.post(base+"/api/v1/auth/phone/challenge",{data:{phone,requestId:randomUUID()}});assert.equal(closed.status(),503);assert.equal((await closed.json()).error,"internal");
+    const untouched=new pg.Client({connectionString:`postgres://helios:helios@127.0.0.1:${dbPort}/helios`});await untouched.connect();assert.equal((await untouched.query("SELECT count(*)::int n FROM phone_challenges WHERE phone=$1",[phone])).rows[0].n,0);await untouched.end();
+  }else{
+  const joinIds=[];let loseJoin=true;
+  await join.route("**/api/v1/join/*/challenge",async route=>{joinIds.push(route.request().postDataJSON().requestId);if(loseJoin){loseJoin=false;await route.fetch();await route.abort("failed");}else await route.continue();});
   await join.getByLabel("Имя и фамилия").fill("Иван Петров");
   await join.getByRole("button", { name: "Получить код", exact: true }).click();
-  await join.getByLabel("Код из сообщения").waitFor();
+  await join.getByRole("alert").waitFor();
+  await join.getByRole("button", { name: "Получить код", exact: true }).click();
+  await join.getByLabel("Код из сообщения").waitFor();assert.equal(joinIds.length,2);assert.equal(joinIds[0],joinIds[1]);
+  await join.screenshot({path:path.join(out,engine+"-join390.png"),fullPage:true});
   const code = JSON.parse(readFileSync(`${qaDir}/codes.json`, "utf8"))[phone];
   assert.equal(/^\d{6}$/.test(code), true);
   await join.getByLabel("Код из сообщения").fill(code);
@@ -128,16 +153,22 @@ try {
   await clock.connect();
   await clock.query("UPDATE phone_challenges SET created_at = now() - interval '2 minutes' WHERE phone = $1", [phone]);
   await clock.end();
+  const loginIds=[];let loseLogin=true;
+  await join.route("**/api/v1/auth/phone/challenge",async route=>{loginIds.push(route.request().postDataJSON().requestId);if(loseLogin){loseLogin=false;await route.fetch();await route.abort("failed");}else await route.continue();});
   await join.getByRole("button", { name: "Войти по телефону", exact: true }).click();
   await join.getByLabel("Телефон", { exact: true }).fill(phone);
   await join.getByRole("button", { name: "Получить код", exact: true }).click();
-  await join.getByLabel("Код", { exact: true }).waitFor();
+  await join.getByRole("alert").waitFor();
+  await join.getByRole("button", { name: "Получить код", exact: true }).click();
+  await join.getByLabel("Код", { exact: true }).waitFor();assert.equal(loginIds.length,2);assert.equal(loginIds[0],loginIds[1]);
   const next = JSON.parse(readFileSync(`${qaDir}/codes.json`, "utf8"))[phone];
   assert.equal(next === code, false);
   await join.getByLabel("Код", { exact: true }).fill(next);
   await join.getByRole("button", { name: "Войти", exact: true }).click();
   await join.getByRole("heading", { name: "Моя смена", exact: true }).waitFor();
   assert.equal((await join.locator("body").innerText()).includes(next), false);
+  }
+  await join.screenshot({path:path.join(out,engine+(phoneMode?"-worker390.png":"-default-worker390.png")),fullPage:true});
   await desktop.close();
   await narrow.close();
   const passwordPage = await (await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "block" })).newPage();
@@ -148,10 +179,20 @@ try {
   await passwordPage.getByRole("button", { name: "Люди", exact: true }).waitFor();
   const loginFit = await passwordPage.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1);
   assert.equal(loginFit, true);
-  console.log("phone login browser: invite, join, reopen, phone login, password login, 390px");
+  assert.deepEqual(pageErrors,[]);
+  writeFileSync(path.join(out,engine+(phoneMode?".json":"-default.json")),JSON.stringify({engine,width:390,productionPreview:true,mode:phoneMode?"synthetic-phone":"default-email",invite:true,joinLostAckSameRequestId:phoneMode,laterLoginLostAckSameRequestId:phoneMode,reload:true,passwordLogin:true,noOverflow:true,errors:pageErrors}));
+  console.log(engine+(phoneMode?": production phone invite/join/reload/login, both lost-ack retries, old password login,390px passed":": default production email invite/register/reload, phone UI off, provider503, old password login passed"));
 } finally {
   await browser.close().catch(() => undefined);
   for (const child of children) {
-    try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }
+    if(child.exitCode===null&&child.signalCode===null){try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }}
+  }
+  if(fixture){
+    const clean=new pg.Client({connectionString:`postgres://helios:helios@127.0.0.1:${dbPort}/helios`});await clean.connect();
+    const created=(await clean.query("SELECT consumed_by FROM invitations WHERE tenant_id=$1 AND consumed_by IS NOT NULL",[fixture.tenant])).rows.map(r=>r.consumed_by);const ids=[fixture.director,...created];
+    await clean.query("DELETE FROM phone_challenges WHERE phone=$1",[phone]);await clean.query("DELETE FROM phone_identities WHERE user_id=ANY($1::uuid[])",[ids]);
+    await clean.query("DELETE FROM invitation_locator WHERE tenant_id=$1",[fixture.tenant]);
+    for(const table of ["invitations","audit_log","project_memberships","employees","memberships","projects","organizations"])await clean.query(`DELETE FROM ${table} WHERE tenant_id=$1`,[fixture.tenant]);
+    await clean.query("DELETE FROM sessions WHERE user_id=ANY($1::uuid[])",[ids]);await clean.query("DELETE FROM users WHERE id=ANY($1::uuid[])",[ids]);await clean.query("DELETE FROM tenants WHERE id=$1",[fixture.tenant]);await clean.end();
   }
 }

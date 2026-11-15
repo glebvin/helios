@@ -99,7 +99,12 @@ export class AuthService {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      await takePhoneCode(client, phone, "login", null, value.code);
+      const failure = await takePhoneCode(client, phone, "login", null, value.code);
+      if (failure) {
+        await settlePhoneFailure(client, failure);
+        await client.query("COMMIT");
+        throw failure;
+      }
       const identity = (await client.query(`SELECT user_id FROM phone_identities WHERE phone = $1`, [phone])).rows[0];
       if (!identity) {
         await client.query("COMMIT");
@@ -116,7 +121,6 @@ export class AuthService {
       return { token, user: { id: user.id, email: user.email, name: user.name }, memberships: memberships.rows };
     } catch (error) {
       await client.query("ROLLBACK").catch(() => undefined);
-      await settlePhoneFailure(this.pool, error);
       throw error;
     } finally { client.release(); }
   }

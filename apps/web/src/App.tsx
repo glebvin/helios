@@ -1,6 +1,6 @@
 import {JoinPage} from "./invitations";
 import { useEffect, useRef, useState } from "react";
-import { acceptReport, createTask, desk, loadSession, login, loginByPhone, requestPhoneCode, savePlace, saveSession, syncEvents, type Desk, type NewTask, type Session } from "./api";
+import { acceptReport, createTask, desk, loadSession, login, loginByPhone, phoneLoginEnabled, requestPhoneCode, savePlace, saveSession, syncEvents, type Desk, type NewTask, type Session } from "./api";
 import { bindRemoteClose, closeDelivery, openDelivery } from "./delivery";
 import { clearShiftSnapshot, readShiftSnapshot, type ShiftSnapshot } from "./shift-snapshot";
 import { DirectorDesk, type Section } from "./director";
@@ -67,6 +67,7 @@ export function App() {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [codeSent, setCodeSent] = useState(false);
+  const phoneRequest = useRef<{phone:string;id:string}|null>(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -169,6 +170,7 @@ export function App() {
       invalid_code: "Код состоит из шести цифр.",
       phone_rate_limited: "Подождите минуту и запросите код снова.",
       delivery_unavailable: "Отправка кода сейчас недоступна.",
+      internal: "Отправка кода сейчас недоступна. Попробуйте позже.",
       invalid_input: "Проверьте телефон и код.",
     };
     return text[code] ?? explain(code);
@@ -179,7 +181,9 @@ export function App() {
     setEntering(true);
     setError("");
     try {
-      await requestPhoneCode(phone);
+      if (!phoneRequest.current || phoneRequest.current.phone !== phone) phoneRequest.current = {phone,id:crypto.randomUUID()};
+      await requestPhoneCode(phone, phoneRequest.current.id);
+      phoneRequest.current = null;
       setCodeSent(true);
     } catch (reason) {
       setError(phoneExplain(reason instanceof Error ? reason.message : "Не удалось отправить код"));
@@ -289,7 +293,7 @@ export function App() {
           )) : null}
           {byPhone ? (
             <>
-              <label className="field"><span>Телефон</span><input value={phone} required autoComplete="tel" onChange={(event) => setPhone(event.target.value)} /></label>
+              <label className="field"><span>Телефон</span><input value={phone} disabled={entering} required autoComplete="tel" onChange={(event) => { setPhone(event.target.value); setCodeSent(false); setOtp(""); }} /></label>
               {codeSent ? <label className="field"><span>Код</span><input value={otp} required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} onChange={(event) => setOtp(event.target.value)} /></label> : null}
             </>
           ) : (
@@ -301,7 +305,7 @@ export function App() {
           {error ? <div className="alert" role="alert">{error}</div> : null}
           <button className="fill" type="submit" disabled={entering}>{entering ? "Входим…" : byPhone ? (codeSent ? "Войти" : "Получить код") : "Войти"}</button>
           {byPhone && codeSent ? <button className="ghost" type="button" disabled={entering} onClick={() => { setOtp(""); void sendPhone(); }}>Запросить ещё раз</button> : null}
-          <button className="ghost" type="button" onClick={() => { setByPhone((value) => !value); setError(""); setCodeSent(false); }}>{byPhone ? "Войти по паролю" : "Войти по телефону"}</button>
+          {phoneLoginEnabled ? <button className="ghost" type="button" disabled={entering} onClick={() => { setByPhone((value) => !value); setError(""); setCodeSent(false); }}>{byPhone ? "Войти по паролю" : "Войти по телефону"}</button> : null}
           <button className="ghost" type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? "Светлая тема" : "Тёмная тема"}</button>
         </form>
       </main>

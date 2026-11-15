@@ -1,6 +1,6 @@
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import type { Pool, PoolClient } from "pg";
+import type { PoolClient } from "pg";
 import { httpError } from "./errors.js";
 
 export function normalizePhone(value: unknown): string {
@@ -86,18 +86,18 @@ function phoneFailure(purpose: "join" | "login", message: string, challengeId: s
   return error;
 }
 
-/** A wrong or dead code records its bookkeeping after the caller's transaction rolls back. */
-export async function settlePhoneFailure(pool: Pool, error: unknown) {
+/** Commit failure bookkeeping while the caller still holds the challenge row lock. */
+export async function settlePhoneFailure(client: PoolClient, error: unknown) {
   const failure = error as { challengeId?: string; phoneFailure?: string };
   if (!failure.challengeId) return;
   if (failure.phoneFailure === "attempt") {
-    await pool.query(
+    await client.query(
       `UPDATE phone_challenges SET attempts = attempts + 1, consumed_at = CASE WHEN attempts + 1 >= 5 THEN now() ELSE consumed_at END WHERE id = $1 AND consumed_at IS NULL`,
       [failure.challengeId],
     );
   }
   if (failure.phoneFailure === "consume") {
-    await pool.query(`UPDATE phone_challenges SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL`, [failure.challengeId]);
+    await client.query(`UPDATE phone_challenges SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL`, [failure.challengeId]);
   }
 }
 
@@ -111,10 +111,11 @@ export async function takePhoneCode(client: PoolClient, phone: string, purpose: 
   )).rows[0];
   if (!row) throw httpError(401, purpose === "login" ? "unauthorized" : "code_invalid");
   if (row.consumed_at) throw httpError(401, purpose === "login" ? "unauthorized" : "code_used");
-  if (row.expired) throw phoneFailure(purpose, "code_expired", row.id, "consume");
-  if (row.attempts >= 5) throw phoneFailure(purpose, "code_locked", row.id, "consume");
+  if (row.expired) return phoneFailure(purpose, "code_expired", row.id, "consume");
+  if (row.attempts >= 5) return phoneFailure(purpose, "code_locked", row.id, "consume");
   const ok = sameHash(hashPhoneCode(phone, purpose, invitationId, code), row.code_hash);
-  if (!ok) throw phoneFailure(purpose, "code_invalid", row.id, "attempt");
+  if (!ok) return phoneFailure(purpose, "code_invalid", row.id, "attempt");
   const taken = await client.query(`UPDATE phone_challenges SET consumed_at = now() WHERE id = $1 AND consumed_at IS NULL RETURNING id`, [row.id]);
   if (!taken.rowCount) throw httpError(401, purpose === "login" ? "unauthorized" : "code_used");
+  return null;
 }

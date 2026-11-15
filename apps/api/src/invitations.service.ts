@@ -74,6 +74,7 @@ export class InvitationsService {
         if(employee.user_id) throw httpError(409,'employee_linked');
         if(employee.phone){let card=employee.phone;try{card=normalizePhone(employee.phone);}catch{throw httpError(422,'employee_phone');}if(card!==phone)throw httpError(422,'employee_phone');}
       }
+      if(phone) await c.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`,[`invitation-phone:${a.tenantId}:${phone}`]);
       if(phone && (await c.query(`SELECT 1 FROM invitations WHERE phone=$1 AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at>now()`,[phone])).rowCount) throw httpError(409,'invitation_active');
       return view(await this.insert(c,a,{role:b.role,projectId,organizationId,requestId,phone,employeeId}));
     });
@@ -104,6 +105,10 @@ export class InvitationsService {
       }
       if(old.consumed_at)throw httpError(410,'invitation_used');
       if(old.revoked_at)throw httpError(410,'invitation_revoked');
+      if(old.phone){
+        await c.query(`SELECT pg_advisory_xact_lock(hashtextextended($1,0))`,[`invitation-phone:${a.tenantId}:${old.phone}`]);
+        if((await c.query(`SELECT 1 FROM invitations WHERE phone=$1 AND id<>$2 AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at>now()`,[old.phone,old.id])).rowCount)throw httpError(409,'invitation_active');
+      }
       const next=await this.insert(c,a,{role:old.role,projectId:old.project_id,organizationId:old.organization_id,requestId,phone:old.phone,employeeId:old.employee_id});
       await c.query(`UPDATE invitations SET revoked_at=now() WHERE id=$1`,[id]);
       await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'invitation.rotated','invitation',$3,'ok',$4)`,[a.tenantId,a.userId,id,JSON.stringify({replacementId:next.id})]);
@@ -177,12 +182,13 @@ export class InvitationsService {
     if(typeof value.code!=='string') throw httpError(400,'invalid_code');
     const entered=value.code;
     try {
-      return await withTenant(this.pool,tenant,null,async c=>{
+      const result = await withTenant(this.pool,tenant,null,async c=>{
         const row=(await c.query(`SELECT * FROM invitations WHERE code=$1 FOR UPDATE`,[code])).rows[0];
         if(!row)throw httpError(404,'invitation_not_found');live(row);
         if(!row.phone)throw httpError(400,'invalid_input');
         await this.authority(c,row.issued_by,row.project_id,row.role);
-        await takePhoneCode(c,row.phone,'join',row.id,entered);
+        const failure=await takePhoneCode(c,row.phone,'join',row.id,entered);
+        if(failure){await settlePhoneFailure(c,failure);return {phoneFailure:failure};}
         const existing=(await c.query(`SELECT user_id FROM phone_identities WHERE phone=$1`,[row.phone])).rows[0];
         const userId=existing?.user_id ?? randomUUID();
         if(!existing) await c.query(`INSERT INTO users(id,email,name,password_hash) VALUES($1,NULL,$2,NULL)`,[userId,name]);
@@ -192,8 +198,11 @@ export class InvitationsService {
         if(!member) await c.query(`INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,$3)`,[tenant,userId,row.role]);
         if(!existing) await c.query(`INSERT INTO phone_identities(phone,user_id) VALUES($1,$2)`,[row.phone,userId]);
         if(row.employee_id){
-          const linked=await c.query(`UPDATE employees SET user_id=$1, phone=$2, full_name=$3 WHERE id=$4 AND user_id IS NULL AND organization_id=$5 AND status='active' RETURNING id`,[userId,row.phone,name,row.employee_id,row.organization_id]);
-          if(!linked.rowCount) throw httpError(409,'employee_linked');
+          const card=(await c.query(`SELECT user_id,phone,organization_id,status FROM employees WHERE id=$1 FOR UPDATE`,[row.employee_id])).rows[0];
+          if(!card || card.user_id)throw httpError(409,'employee_linked');
+          if(card.organization_id!==row.organization_id || card.status!=='active')throw httpError(422,'employee_denied');
+          if(card.phone){let phone=card.phone;try{phone=normalizePhone(card.phone);}catch{throw httpError(422,'employee_phone');}if(phone!==row.phone)throw httpError(422,'employee_phone');}
+          await c.query(`UPDATE employees SET user_id=$1,phone=COALESCE(NULLIF(btrim(phone),''),$2) WHERE id=$3`,[userId,row.phone,row.employee_id]);
         } else if(!(await c.query(`SELECT 1 FROM employees WHERE user_id=$1 AND organization_id=$2`,[userId,row.organization_id])).rowCount) {
           await c.query(`INSERT INTO employees(tenant_id,id,organization_id,user_id,full_name,phone) VALUES($1,$2,$3,$4,$5,$6)`,[tenant,randomUUID(),row.organization_id,userId,name,row.phone]);
         }
@@ -207,8 +216,9 @@ export class InvitationsService {
         const account=(await c.query(`SELECT email FROM users WHERE id=$1`,[userId])).rows[0];
         return {token,user:{id:userId,email:account.email,name},memberships:[{tenant_id:tenant,role:row.role,status:'active'}]};
       });
+      if('phoneFailure' in result)throw result.phoneFailure;
+      return result;
     }catch(error:any){
-      await settlePhoneFailure(this.pool,error);
       if(error.code==='23505')throw httpError(409,String(error.constraint??'').includes('phone')?'phone_taken':'email_registered');
       throw error;
     }

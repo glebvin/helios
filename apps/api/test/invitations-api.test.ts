@@ -238,6 +238,14 @@ test('phone invitation keeps employee cards, rights and the previous password lo
   const accepted=await req(`/join/${linked.code}`,{name:'QA Новый человек',code:qaCode(cardPhone)});assert.equal(accepted.status,201,accepted.body.error);
   const cards=await admin.query(`SELECT id,user_id FROM employees WHERE tenant_id=$1 AND phone=$2`,[tenant,cardPhone]);
   assert.equal(cards.rowCount,1);assert.equal(cards.rows[0].id,card);assert.equal(cards.rows[0].user_id,accepted.body.user.id);
+  assert.equal((await admin.query('SELECT full_name FROM employees WHERE id=$1',[card])).rows[0].full_name,'Существующая карточка','registration must preserve the HR name');
+  const changedPhone=mobile(),changedCard=id(),newPhone=mobile();
+  await admin.query(`INSERT INTO employees(tenant_id,id,organization_id,full_name,phone) VALUES($1,$2,$3,'Кадровое имя',$4)`,[tenant,changedCard,org,changedPhone]);
+  const changedInvite=await issue('worker',director,{phone:changedPhone,employeeId:changedCard});await req(`/join/${changedInvite.code}/challenge`,{requestId:id()});
+  await admin.query(`UPDATE employees SET phone=$2 WHERE id=$1`,[changedCard,newPhone]);
+  const changedResult=await req(`/join/${changedInvite.code}`,{name:'Введённое имя',code:qaCode(changedPhone)});assert.equal(changedResult.status,422);assert.equal(changedResult.body.error,'employee_phone');
+  const unchanged=(await admin.query(`SELECT user_id,full_name,phone FROM employees WHERE id=$1`,[changedCard])).rows[0];assert.deepEqual(unchanged,{user_id:null,full_name:'Кадровое имя',phone:newPhone});
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM phone_identities WHERE phone=$1`,[changedPhone])).rows[0].n,0);assert.equal((await req(`/join/${changedInvite.code}`)).status,200);
   const taken=mobile(),takenCard=id();
   await admin.query(`INSERT INTO employees(tenant_id,id,organization_id,user_id,full_name,phone) VALUES($1,$2,$3,$4,'Занятая карточка',$5)`,[tenant,takenCard,org,worker,taken]);
   assert.equal((await req('/invitations',{role:'worker',projectId:project,organizationId:org,requestId:id(),phone:taken,employeeId:takenCard})).body.error,'employee_linked');
