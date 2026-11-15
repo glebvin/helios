@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "tsx --test src/rules.test.ts src/contract-price.test.ts"
+    "test": "tsx --test src/rules.test.ts src/contract-price.test.ts src/volume-import.test.ts"
   },
   "devDependencies": {
     "tsx": "^4.20.6",
