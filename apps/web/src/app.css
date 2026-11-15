@@ -1288,6 +1288,18 @@ h1, h2, h3, p { margin: 0; }
 .route-config-external { margin-bottom: 20px; }
 @media (max-width: 1000px) { .route-config-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .route-config-slots { grid-template-columns: minmax(0, 1fr); } }
+.orders-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(280px, .9fr); gap: 12px; min-height: 320px; align-items: start; }
+.orders-list, .orders-detail { min-width: 0; }
+.orders-list { display: grid; gap: 8px; align-content: start; }
+.orders-list .order-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; width: 100%; text-align: left; border: 0; background: transparent; padding: 8px 10px; border-radius: 12px; }
+.orders-list .order-row.is-on { background: var(--soft); }
+.orders-list form, .orders-detail form { display: grid; gap: 8px; }
+.orders-screen label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.orders-screen input { height: 32px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); padding: 0 10px; font-size: 13px; }
+.order-types { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.order-types label { display: flex; align-items: center; gap: 6px; }
+.orders-warn { color: var(--warn); }
+@media (max-width: 800px) { .orders-layout { grid-template-columns: minmax(0, 1fr); } }
 .daily-route-facts { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 16px; margin: 20px 0; }
 .daily-route-facts > div { display: grid; gap: 6px; align-content: start; }
 .daily-route-facts > p { grid-column: 1 / -1; margin: 0; }

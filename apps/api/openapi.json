@@ -7973,6 +7973,65 @@
         }
       }
     },
+    "/api/v1/responsibility-orders": {
+      "get": {"operationId":"listResponsibilityOrders","security":[{"bearerAuth":[]}],"parameters":[{"name":"x-tenant-id","in":"header","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"projectId","in":"query","required":false,"schema":{"type":"string","format":"uuid"}}],"responses":{
+          "200": {"description":"Orders of one object","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ResponsibilityOrderList"}}}},
+          "400": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "401": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "403": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "409": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "422": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}
+      }},
+      "post": {"operationId":"createResponsibilityOrder","security":[{"bearerAuth":[]}],"parameters":[{"name":"x-tenant-id","in":"header","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{
+          "201": {"description":"Created order","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ResponsibilityOrderDetail"}}}},
+          "400": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "401": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "403": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "409": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "422": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}
+      }}
+    },
+    "/api/v1/responsibility-orders/applicability": {
+      "get": {"operationId":"checkResponsibilityOrder","security":[{"bearerAuth":[]}],"parameters":[{"name":"x-tenant-id","in":"header","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"employeeId","in":"query","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"organizationId","in":"query","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"projectId","in":"query","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"documentType","in":"query","required":true,"schema":{"type":"string"}},{"name":"on","in":"query","required":true,"schema":{"type":"string","format":"date"}}],"responses":{
+          "200": {"description":"Applicability without signing","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ResponsibilityApplicability"}}}},
+          "400": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "401": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "403": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "409": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "422": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}
+      }}
+    },
+    "/api/v1/responsibility-orders/{id}": {
+      "get": {"operationId":"readResponsibilityOrder","security":[{"bearerAuth":[]}],"parameters":[{"name":"x-tenant-id","in":"header","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{
+          "200": {"description":"Order and history","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ResponsibilityOrderDetail"}}}},
+          "404": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "400": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "401": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "403": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "409": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "422": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}
+      }},
+      "post": {"operationId":"correctResponsibilityOrder","security":[{"bearerAuth":[]}],"parameters":[{"name":"x-tenant-id","in":"header","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{
+          "201": {"description":"Corrected order","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ResponsibilityOrderDetail"}}}},
+          "404": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "400": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "401": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "403": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "409": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "422": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}
+      }}
+    },
+    "/api/v1/responsibility-orders/{id}/revoke": {
+      "post": {"operationId":"revokeResponsibilityOrder","security":[{"bearerAuth":[]}],"parameters":[{"name":"x-tenant-id","in":"header","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{
+          "201": {"description":"Revoked order","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ResponsibilityOrderDetail"}}}},
+          "404": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "400": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "401": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "403": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "409": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
+          "422": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}
+      }}
+    },
     "/api/v1/projects/{id}/tasks/{task}/route": {
       "get": {
         "operationId": "readDailyTaskRoute",
@@ -8152,6 +8211,55 @@
           "error"
         ],
         "additionalProperties": false
+      },
+      "ResponsibilityOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id","employeeId","employeeName","organizationId","organizationName","projectId","projectName","documentTypes","orderNumber","orderDate","validFrom","validUntil","status","revocationReason","version","expiringWithin30Days"],
+        "properties": {
+          "id": {"type":"string","format":"uuid"}, "employeeId": {"type":"string","format":"uuid"}, "employeeName": {"type":"string"},
+          "organizationId": {"type":"string","format":"uuid"}, "organizationName": {"type":"string"},
+          "projectId": {"type":"string","format":"uuid"}, "projectName": {"type":"string"},
+          "documentTypes": {"type":"array","minItems":1,"items":{"type":"string"}},
+          "orderNumber": {"type":"string"}, "orderDate": {"type":"string","format":"date"}, "validFrom": {"type":"string","format":"date"}, "validUntil": {"type":"string","format":"date"},
+          "status": {"type":"string","enum":["active","revoked"]}, "revocationReason": {"type":"string","nullable":true},
+          "version": {"type":"integer","minimum":1}, "expiringWithin30Days": {"type":"boolean"}
+        }
+      },
+      "ResponsibilityOrderDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id","employeeId","employeeName","organizationId","organizationName","projectId","projectName","documentTypes","orderNumber","orderDate","validFrom","validUntil","status","revocationReason","version","expiringWithin30Days","history"],
+        "properties": {
+          "id": {"type":"string","format":"uuid"}, "employeeId": {"type":"string","format":"uuid"}, "employeeName": {"type":"string"},
+          "organizationId": {"type":"string","format":"uuid"}, "organizationName": {"type":"string"},
+          "projectId": {"type":"string","format":"uuid"}, "projectName": {"type":"string"},
+          "documentTypes": {"type":"array","minItems":1,"items":{"type":"string"}},
+          "orderNumber": {"type":"string"}, "orderDate": {"type":"string","format":"date"}, "validFrom": {"type":"string","format":"date"}, "validUntil": {"type":"string","format":"date"},
+          "status": {"type":"string","enum":["active","revoked"]}, "revocationReason": {"type":"string","nullable":true},
+          "version": {"type":"integer","minimum":1}, "expiringWithin30Days": {"type":"boolean"},
+          "history": {"type":"array","items":{"type":"object","additionalProperties":false,"required":["version","action","createdAt"],"properties":{"version":{"type":"integer","minimum":1},"action":{"type":"string","enum":["created","corrected","revoked"]},"createdAt":{"type":"string","format":"date-time"}}}}
+        }
+      },
+      "ResponsibilityOrderList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["today","projectId","items","catalog"],
+        "properties": {
+          "today": {"type":"string","format":"date"}, "projectId": {"type":"string","format":"uuid","nullable":true},
+          "items": {"type":"array","items":{"$ref":"#/components/schemas/ResponsibilityOrder"}},
+          "catalog": {"type":"object","additionalProperties":false,"required":["employees","projects","documentTypes"],"properties":{
+            "employees": {"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","name","organizationId","organizationName"],"properties":{"id":{"type":"string","format":"uuid"},"name":{"type":"string"},"organizationId":{"type":"string","format":"uuid"},"organizationName":{"type":"string"}}}},
+            "projects": {"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","name"],"properties":{"id":{"type":"string","format":"uuid"},"name":{"type":"string"}}}},
+            "documentTypes": {"type":"array","items":{"type":"object","additionalProperties":false,"required":["code","title"],"properties":{"code":{"type":"string"},"title":{"type":"string"}}}}
+          }}
+        }
+      },
+      "ResponsibilityApplicability": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["applicable","reason","orderId"],
+        "properties": {"applicable":{"type":"boolean"},"reason":{"type":"string","enum":["active","revoked","expired","not_started","type","object","company","person"]},"orderId":{"type":"string","format":"uuid","nullable":true}}
       },
       "Ok": {
         "type": "object",
