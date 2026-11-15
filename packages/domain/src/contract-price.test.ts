@@ -60,6 +60,14 @@ test("пересекающиеся периоды и повтор версии �
   assert.equal(quoteContractReadiness([price(), duplicate], 1, volume).outcome, "version_conflict");
 });
 
+test("одна версия с двумя единицами — конфликт и для поиска, и для расчёта", () => {
+  const square = price();
+  const metre = price({ unit: "м", price: "900" });
+  assert.equal(conflictingPrices([square, metre])[0]?.reason, "version");
+  assert.equal(quoteContractReadiness([square, metre], 1, volume).outcome, "version_conflict");
+  assert.equal(quoteContractReadiness([square, metre], 1, { ...volume, unit: "м" }).outcome, "version_conflict");
+});
+
 test("новая цена не меняет результат уже выбранной версии", () => {
   const first = price();
   const before = quoteContractReadiness([first], 1, volume);

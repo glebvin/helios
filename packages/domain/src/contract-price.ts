@@ -62,15 +62,16 @@ export function validateContractPrice(price: ContractPrice): PriceIssue | null {
   return null;
 }
 
+/** Одна версия вида работ на объекте имеет одну единицу. Другая единица той же версии — конфликт, и расчёт сумму не выдаёт. */
 export function conflictingPrices(prices: readonly ContractPrice[]): PriceConflict[] {
   const conflicts: PriceConflict[] = [];
   for (let left = 0; left < prices.length; left += 1) {
     for (let right = left + 1; right < prices.length; right += 1) {
       const a = prices[left];
       const b = prices[right];
-      if (a.projectId !== b.projectId || a.workTypeId !== b.workTypeId || a.unit !== b.unit) continue;
+      if (a.projectId !== b.projectId || a.workTypeId !== b.workTypeId) continue;
       if (a.version === b.version) conflicts.push({ left: a, right: b, reason: "version" });
-      else if (a.start <= b.end && b.start <= a.end) conflicts.push({ left: a, right: b, reason: "period" });
+      else if (a.unit === b.unit && a.start <= b.end && b.start <= a.end) conflicts.push({ left: a, right: b, reason: "period" });
     }
   }
   return conflicts;
