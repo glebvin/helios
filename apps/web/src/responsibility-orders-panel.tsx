@@ -45,8 +45,9 @@ export function ResponsibilityOrders({ session, projectId }: { session: Session;
   const generation = useRef(0);
   const checkPass = useRef(0);
   const writable = session.role === "hr";
-  const rows = (list?.items ?? []).filter((row) => filter === "all" || (filter === "soon" ? row.expiringWithin30Days : row.status === "revoked"));
-  const selected = detail?.id === selectedId ? detail : rows.find((row) => row.id === selectedId) ?? null;
+  const currentList = list?.projectId === objectId ? list : null;
+  const rows = (currentList?.items ?? []).filter((row) => filter === "all" || (filter === "soon" ? row.expiringWithin30Days : row.status === "revoked"));
+  const selected = currentList && detail?.id === selectedId ? detail : rows.find((row) => row.id === selectedId) ?? null;
   useEffect(() => { setEditedUntil(selected?.status === "active" ? selected.validUntil : ""); }, [selected?.id, selected?.version, selected?.validUntil, selected?.status]);
   async function read(nextId = selectedId) {
     const pass = ++generation.current;
@@ -58,7 +59,9 @@ export function ResponsibilityOrders({ session, projectId }: { session: Session;
       setList(next);
       const id = next.items.some((row) => row.id === nextId) ? nextId : next.items[0]?.id ?? "";
       setSelectedId(id);
-      setDetail(id ? await v1<Order>(session, `/responsibility-orders/${id}`) : null);
+      const nextDetail = id ? await v1<Order>(session, `/responsibility-orders/${id}`) : null;
+      if (pass !== generation.current) return;
+      setDetail(nextDetail);
       if (!orderDate) { setOrderDate(next.today); setValidFrom(next.today); }
     } catch (cause) { if (pass === generation.current) setError(problem(cause)); }
     finally { if (pass === generation.current) setReading(false); }
@@ -76,8 +79,8 @@ export function ResponsibilityOrders({ session, projectId }: { session: Session;
     return saved;
   }
   async function create() {
-    if (!writable || busy || !list) return;
-    const employee = list.catalog.employees.find((item) => item.id === employeeId);
+    if (!writable || busy || !currentList) return;
+    const employee = currentList.catalog.employees.find((item) => item.id === employeeId);
     if (!employee || !number.trim() || !orderDate || !validFrom || !createdUntil || !types.length) { setError("Укажите человека, номер, даты и хотя бы один тип документа."); return; }
     setBusy(true); setError("");
     const body = { employeeId: employee.id, organizationId: employee.organizationId, projectId: objectId, documentTypes: types, orderNumber: number.trim(), orderDate, validFrom, validUntil: createdUntil };
@@ -130,24 +133,24 @@ export function ResponsibilityOrders({ session, projectId }: { session: Session;
     <div className="documents-title"><h2>Приказы об ответственных</h2><NoteMark label="Что хранит реестр"><p>Запись связывает человека, его компанию и объект, разрешённые типы документов, номер и дату приказа и срок. Повтор той же команды не создаёт вторую запись.</p><p>Истечение в ближайшие 30 дней видно в списке. Письма не отправляются. Доверенности, электронная подпись и отметка П здесь не ставятся.</p></NoteMark></div>
     <p className="quiet">Объект для приказа выбирается здесь. Шапка по-прежнему показывает только назначения уже подключённых ролей.</p>
     <Flash message={message} pulse={pulse} />
-    <div className={reading && !list ? "orders-layout is-reading" : "orders-layout"}>
+    <div className={reading && !currentList ? "orders-layout is-reading" : "orders-layout"}>
       <div className="orders-list">
-        <label className="desk-select">Объект<select value={objectId} onChange={(event) => setObjectId(event.target.value)}>{list?.catalog.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+        <label className="desk-select">Объект<select value={objectId} onChange={(event) => setObjectId(event.target.value)}>{currentList?.catalog.projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
         <div className="roles" role="tablist" aria-label="Состояние приказов">
           {([["all", "Все"], ["soon", "Истекают"], ["revoked", "Отозванные"]] as const).map(([id, label]) => <button key={id} type="button" className={filter === id ? "is-on" : ""} aria-selected={filter === id} onClick={() => setFilter(id)}>{label}</button>)}
         </div>
-        {reading && !list ? <p className="quiet">Читаем приказы.</p> : null}
-        {!reading && list && !rows.length ? <p className="quiet">{filter === "all" ? "По этому объекту приказов ещё нет. Строка появится после ответа сервера." : "В этом состоянии записей нет."}</p> : null}
+        {reading && !currentList ? <p className="quiet">Читаем приказы.</p> : null}
+        {!reading && currentList && !rows.length ? <p className="quiet">{filter === "all" ? "По этому объекту приказов ещё нет. Строка появится после ответа сервера." : "В этом состоянии записей нет."}</p> : null}
         {rows.map((row) => <button key={row.id} type="button" className={row.id === selectedId ? "order-row is-on" : "order-row"} onClick={() => { setSelectedId(row.id); void v1<Order>(session, `/responsibility-orders/${row.id}`).then(setDetail).catch((cause) => setError(problem(cause))); }}>
           <b>{row.orderNumber}</b><span>{row.employeeName}</span>{row.expiringWithin30Days ? <small className="orders-warn">Истекает {row.validUntil}</small> : <small>{row.status === "revoked" ? "Отозван" : `до ${row.validUntil}`}</small>}
         </button>)}
         <form onSubmit={(event) => { event.preventDefault(); void create(); }}>
-          <label className="desk-select">Человек<select value={employeeId} onChange={(event) => setEmployeeId(event.target.value)}><option value="">Выберите</option>{list?.catalog.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name} · {employee.organizationName}</option>)}</select></label>
+          <label className="desk-select">Человек<select value={employeeId} onChange={(event) => setEmployeeId(event.target.value)}><option value="">Выберите</option>{currentList?.catalog.employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.name} · {employee.organizationName}</option>)}</select></label>
           <label>Номер<input value={number} onChange={(event) => setNumber(event.target.value)} /></label>
           <label>Дата приказа<input type="date" value={orderDate} onChange={(event) => setOrderDate(event.target.value)} /></label>
           <label>Действует с<input type="date" value={validFrom} onChange={(event) => setValidFrom(event.target.value)} /></label>
           <label>Действует по<input type="date" value={createdUntil} onChange={(event) => setCreatedUntil(event.target.value)} /></label>
-          <div className="order-types">{list?.catalog.documentTypes.map((type) => <label key={type.code}><input type="checkbox" checked={types.includes(type.code)} onChange={() => setTypes((current) => current.includes(type.code) ? current.filter((item) => item !== type.code) : [...current, type.code])} />{type.title}</label>)}</div>
+          <div className="order-types">{currentList?.catalog.documentTypes.map((type) => <label key={type.code}><input type="checkbox" checked={types.includes(type.code)} onChange={() => setTypes((current) => current.includes(type.code) ? current.filter((item) => item !== type.code) : [...current, type.code])} />{type.title}</label>)}</div>
           <button className="ghost desk-action" type="submit" disabled={busy || !objectId}>Записать приказ</button>
         </form>
       </div>

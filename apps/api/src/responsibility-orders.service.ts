@@ -28,7 +28,7 @@ type OrderRow = {
 export class ResponsibilityOrdersService {
   constructor(private readonly pool: Pool) {}
 
-  private async scope(c: PoolClient, a: Actor, projectId: string, organizationId?: string) {
+  private async scope(c: PoolClient, a: Actor, projectId?: string, organizationId?: string) {
     const membership = (await c.query(`SELECT role FROM memberships WHERE user_id=$1 AND status='active' FOR SHARE`, [a.userId])).rows[0];
     const projects = (await c.query(`SELECT id FROM projects ORDER BY id`)).rows.map((row) => row.id as string);
     const employers = (await c.query(`SELECT id FROM organizations ORDER BY id`)).rows.map((row) => row.id as string);
@@ -149,7 +149,9 @@ export class ResponsibilityOrdersService {
 
   private async command(a: Actor, operation: string, body: Record<string, unknown>, apply: (c: PoolClient) => Promise<Record<string, unknown>>) {
     return withTenant(this.pool, a.tenantId, a.userId, async (c) => {
+      await this.scope(c, a);
       const { inserted, hash } = await reserveCommand(c, a, operation, body);
+      await this.scope(c, a);
       if (!inserted) return replayCommand(c, a, String(body.requestId), hash);
       return completeCommand(c, a, String(body.requestId), 201, await apply(c));
     });

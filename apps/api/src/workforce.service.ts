@@ -23,7 +23,7 @@ export type Actor = {
   tenantId: string;
   role: string;
   name: string;
-  email: string;
+  email: string | null;
 };
 
 type ClientEvent = {

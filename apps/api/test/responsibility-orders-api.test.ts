@@ -12,6 +12,8 @@ import { hashPassword } from "../src/password.js";
 import { plusDays } from "../src/responsibility-orders.js";
 import { checkHttpContract } from "./contract-check.js";
 
+const qaPort = process.env.HELIOS_ORDERS_QA_DB_PORT ?? "54561";
+assert.ok(["54561", "54591"].includes(qaPort));
 const admin = createPool(adminUrl), application = createPool(appUrl);
 let fixture: Awaited<ReturnType<typeof build>>, app: any, base: string;
 const tokens = new Map<string, string>();
@@ -19,8 +21,8 @@ const tokens = new Map<string, string>();
 async function build(pool: Pool) {
   const url = new URL((pool.options as { connectionString: string }).connectionString);
   assert.equal(url.hostname, "127.0.0.1");
-  assert.equal(url.port, process.env.GITHUB_ACTIONS === "true" ? "54339" : "54561");
-  if (process.env.GITHUB_ACTIONS !== "true") assert.equal(realpathSync((await pool.query("SHOW data_directory")).rows[0].data_directory), realpathSync(fileURLToPath(new URL("../../../.data/pg-54561", import.meta.url))));
+  assert.equal(url.port, process.env.GITHUB_ACTIONS === "true" ? "54339" : qaPort);
+  if (process.env.GITHUB_ACTIONS !== "true") assert.equal(realpathSync((await pool.query("SHOW data_directory")).rows[0].data_directory), realpathSync(fileURLToPath(new URL(`../../../.data/pg-${qaPort}`, import.meta.url))));
   const tenantId = randomUUID(), foreignId = randomUUID(), projectId = randomUUID(), otherProjectId = randomUUID(), foreignProjectId = randomUUID();
   const ownId = randomUUID(), otherOrgId = randomUUID(), foreignOrgId = randomUUID(), personId = randomUUID(), otherPersonId = randomUUID();
   const users = ["hr", "hr", "director", "admin"].map((role) => ({ id: randomUUID(), role, email: `${randomUUID()}@orders.test`, password: "fixture-orders-2026", name: role }));
@@ -123,4 +125,17 @@ test("чужая компания и объект, запрещённые рол
   }
   assert.equal((await call(-1, "GET", `/api/v1/responsibility-orders?projectId=${fixture.projectId}`, undefined, fixture.foreignId)).status, 403);
   assert.equal((await withTenant(application, fixture.foreignId, fixture.foreignUser.id, (c) => c.query("SELECT id FROM responsibility_orders"))).rowCount, 0);
+});
+
+test("повтор команды не возвращает данные после снятия роли кадров", async () => {
+  const today = (await call(0)).body.today as string;
+  const body = draft(today, plusDays(today, 10));
+  const created = await call(0, "POST", "/api/v1/responsibility-orders", body);
+  assert.equal(created.status, 201);
+  await admin.query("UPDATE memberships SET role='director' WHERE tenant_id=$1 AND user_id=$2", [fixture.tenantId, fixture.users[0]!.id]);
+  try {
+    assert.equal((await call(0, "POST", "/api/v1/responsibility-orders", body)).status, 403);
+  } finally {
+    await admin.query("UPDATE memberships SET role='hr' WHERE tenant_id=$1 AND user_id=$2", [fixture.tenantId, fixture.users[0]!.id]);
+  }
 });

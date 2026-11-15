@@ -8,6 +8,7 @@ import { uuid } from "./api-input.js";
 import { readOnlyCabinetRoles } from "./cabinet-roles.js";
 import { isKnownRole, isExistingRuntimeRole } from "./role-catalog.js";
 import { consumeLogin, loginLimited } from "./auth-protection.js";
+import { issuePhoneCode, normalizePhone, settlePhoneFailure, takePhoneCode } from "./phone-code.js";
 
 @Injectable()
 export class AuthService {
@@ -73,6 +74,62 @@ export class AuthService {
       if (!row) return null;
       return { userId, tenantId, role: row.role as string, name: row.name as string, email: row.email as string };
     });
+  }
+
+  async phoneChallenge(body: unknown) {
+    const value = this.phoneBody(body, ["phone", "requestId"]);
+    const phone = normalizePhone(value.phone);
+    const requestId = uuid(value.requestId).toLowerCase();
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const sent = await issuePhoneCode(client, phone, "login", requestId, null);
+      await client.query("COMMIT");
+      return sent;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally { client.release(); }
+  }
+
+  async phoneLogin(body: unknown) {
+    const value = this.phoneBody(body, ["phone", "code"]);
+    const phone = normalizePhone(value.phone);
+    if (typeof value.code !== "string") throw httpError(400, "invalid_code");
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const failure = await takePhoneCode(client, phone, "login", null, value.code);
+      if (failure) {
+        await settlePhoneFailure(client, failure);
+        await client.query("COMMIT");
+        throw failure;
+      }
+      const identity = (await client.query(`SELECT user_id FROM phone_identities WHERE phone = $1`, [phone])).rows[0];
+      if (!identity) {
+        await client.query("COMMIT");
+        throw httpError(401, "unauthorized");
+      }
+      const user = (await client.query(`SELECT id, email, name FROM users WHERE id = $1`, [identity.user_id])).rows[0];
+      const token = newToken();
+      await client.query(
+        `INSERT INTO sessions (user_id, token_hash, expires_at) VALUES ($1, $2, now() + interval '12 hours')`,
+        [user.id, hashToken(token)],
+      );
+      await client.query("COMMIT");
+      const memberships = await this.pool.query(`SELECT tenant_id, role, status FROM memberships_for_login($1)`, [user.id]);
+      return { token, user: { id: user.id, email: user.email, name: user.name }, memberships: memberships.rows };
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally { client.release(); }
+  }
+
+  private phoneBody(body: unknown, keys: string[]) {
+    if (typeof body !== "object" || body === null || Array.isArray(body)) throw httpError(400, "invalid_input");
+    const value = body as Record<string, unknown>;
+    if (Object.keys(value).some((key) => !keys.includes(key))) throw httpError(400, "invalid_input");
+    return value;
   }
 
   async logout(token: string) {
