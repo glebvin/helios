@@ -41,6 +41,9 @@ import {createEvidenceStore} from './evidence-store.js';
 import {InvitationsService} from "./invitations.service.js";
 import {InvitationsController} from "./invitations.controller.js";
 
+import {RouteConfigService} from "./route-config.service.js";
+import {RouteConfigController} from "./route-config.controller.js";
+
 export const APP_POOL = "APP_POOL";
 export const BOSS = "BOSS";
 
@@ -150,7 +153,7 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
   providers: [
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
@@ -170,6 +173,7 @@ class WorkforceController {
     {provide:EvidenceStorage,useFactory:()=>createEvidenceStore()},
     {provide:EvidenceService,useFactory:(pool:Pool,storage:EvidenceBlobStore)=>new EvidenceService(pool,storage),inject:[APP_POOL,EvidenceStorage]},
     {provide:InvitationsService,useFactory:(pool:Pool)=>new InvitationsService(pool),inject:[APP_POOL]},
+    {provide:RouteConfigService,useFactory:(pool:Pool)=>new RouteConfigService(pool),inject:[APP_POOL]},
     TenantGuard,
   ],
 })

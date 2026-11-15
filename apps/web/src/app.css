@@ -1257,3 +1257,23 @@ h1, h2, h3, p { margin: 0; }
 /* Crew membership facts wrap within the existing panel on narrow screens. */
 .crew-member { flex-wrap: wrap; justify-content: flex-start; margin-block: 12px; }
 .crew-member > b { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.route-config-controls { display: flex; flex-wrap: wrap; gap: 16px; margin: 20px 0; }
+.route-config-controls .field { flex: 1 1 220px; min-width: 0; max-width: 440px; }
+.route-config-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 24px 0; }
+.route-config-slot { min-width: 0; }
+.route-config-slot h3 { font-size: 13px; margin: 0 0 12px; }
+.route-config-slot .field { margin-bottom: 12px; }
+.route-config select { max-width: 100%; text-overflow: ellipsis; }
+.route-config-external { margin-bottom: 20px; }
+@media (max-width: 1000px) { .route-config-slots { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .route-config-slots { grid-template-columns: minmax(0, 1fr); } }
+.daily-route-facts { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 16px; margin: 20px 0; }
+.daily-route-facts > div { display: grid; gap: 6px; align-content: start; }
+.daily-route-facts > p { grid-column: 1 / -1; margin: 0; }
+.daily-route-facts b { font-size: 14px; font-weight: 500; }
+.daily-route-history { margin-top: 20px; }
+.daily-route-history summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.daily-route-history ol { list-style: none; padding: 0; display: grid; gap: 16px; margin: 16px 0 0; }
+.daily-route-history li div { display: grid; gap: 4px; }
+.daily-route-history li p { margin: 8px 0 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .daily-route-facts { grid-template-columns: 1fr; } }

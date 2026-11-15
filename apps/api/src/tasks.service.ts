@@ -1,3 +1,4 @@
+import {dailyRouteHint,dailyRouteRead,recordDailyTransition,dailyRouteReplayScope} from './daily-task-route.js';
 import {randomUUID} from 'node:crypto';
 import type {Pool,PoolClient} from 'pg';
 import type {Actor} from './workforce.service.js';
@@ -31,13 +32,14 @@ export class TasksService {
     if(member.role!=='director' && !(await c.query(`SELECT 1 FROM project_memberships WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3 AND status='active'`,[a.tenantId,p,a.userId])).rowCount)throw httpError(404,'not_found');
     return member.role as string;
   }
-  private async command(a:Actor,p:string,operation:string,b:Row,status:number,directorOnly:boolean,lock:(c:PoolClient)=>Promise<unknown>,run:(c:PoolClient)=>Promise<Row>):Promise<CommandResult> {
+  private async command(a:Actor,p:string,operation:string,b:Row,status:number,directorOnly:boolean,lock:(c:PoolClient)=>Promise<unknown>,run:(c:PoolClient)=>Promise<Row>,replayAuthorize?:(c:PoolClient)=>Promise<void>):Promise<CommandResult> {
     try{return await this.with(a,async c=>{
       const receipt=await reserveCommand(c,a,operation,b);
       await this.projectLock(c,a,p);
       if(!receipt.inserted){
         // Replay never takes employee/task locks after memberships. Business invalidation must not replace the original result.
         await this.memberLocks(c,a,p,[a.userId]);await this.authorize(c,a,p,true,directorOnly);
+        await replayAuthorize?.(c);
         return replayCommand(c,a,b.requestId,receipt.hash);
       }
       await lock(c);
@@ -80,13 +82,13 @@ export class TasksService {
     });
   }
   // Project is locked before this hint; employee locks use only keys. A changed hint aborts rather than acquiring earlier-tier locks late.
-  private async planLocks(c:PoolClient,a:Actor,p:string,b:Row,id?:string) {
+  private async planLocks(c:PoolClient,a:Actor,p:string,b:Row,id?:string,extraMembers:string[]=[]) {
     const hint=id?(await c.query(`SELECT id,project_id,assignee_employee_id,responsible_user_id,version FROM daily_tasks WHERE tenant_id=$1 AND project_id=$2 AND id=$3`,[a.tenantId,p,id])).rows[0]:null;
     if(id && !hint)throw httpError(404,'not_found');
     const ids=[...new Set([hint?.assignee_employee_id,b.assigneeEmployeeId].filter(Boolean))].sort();
     await c.query(`SELECT id FROM employees WHERE tenant_id=$1 AND id=ANY($2::uuid[]) ORDER BY id FOR NO KEY UPDATE`,[a.tenantId,ids]);
     const employees=(await c.query(`SELECT id,user_id,status FROM employees WHERE tenant_id=$1 AND id=ANY($2::uuid[]) ORDER BY id`,[a.tenantId,ids])).rows;
-    await this.memberLocks(c,a,p,[a.userId,hint?.responsible_user_id,b.responsibleUserId,...employees.map(e=>e.user_id)]);
+    await this.memberLocks(c,a,p,[a.userId,hint?.responsible_user_id,b.responsibleUserId,...employees.map(e=>e.user_id),...extraMembers]);
     if(id){
       await c.query(`SELECT id FROM daily_tasks WHERE tenant_id=$1 AND project_id=$2 AND id=$3 FOR NO KEY UPDATE`,[a.tenantId,p,id]);
       const fresh=(await c.query(`SELECT assignee_employee_id,responsible_user_id,project_id,version FROM daily_tasks WHERE tenant_id=$1 AND project_id=$2 AND id=$3`,[a.tenantId,p,id])).rows[0];
@@ -243,12 +245,20 @@ export class TasksService {
       return {ready:r.ready,reasons:r.reasons,warnings:r.warnings};
     });
   }
+  taskRoute(a:Actor,p:string,id:string) {
+    return this.with(a,async c=>{
+      await this.api.projectExists(c,a,p);await this.authorize(c,a,p);
+      return dailyRouteRead(c,a,p,await this.taskRow(c,a,p,id));
+    });
+  }
   action(a:Actor,p:string,id:string,input:unknown,action:TaskAction) {
     const b:Row=taskActionInput(input,action);
-    return this.command(a,p,`POST /projects/${p}/tasks/${id}/${action}`,b,200,['reject','publish'].includes(action),c=>this.planLocks(c,a,p,b,id),async c=>{
+    let route:Awaited<ReturnType<typeof dailyRouteHint>>;
+    return this.command(a,p,`POST /projects/${p}/tasks/${id}/${action}`,b,200,['reject','publish'].includes(action),async c=>{route=await dailyRouteHint(c,a,p,id);await this.planLocks(c,a,p,b,id,route.memberIds);},async c=>{
       const before=await this.taskRow(c,a,p,id),role=await this.authorize(c,a,p,true);
       const allowed:Record<TaskAction,string[]>={submit:['draft'],reject:['pending_approval'],reopen:['pending_approval'],cancel:role==='director'?['draft','pending_approval','published']:['draft','pending_approval'],publish:['pending_approval']};
       if(!allowed[action].includes(before.status))throw httpError(409,'invalid_task_state');
+      await recordDailyTransition(c,a,p,before,action,b.requestId,b.reason,route);
       let snapshotId=before.publicationSnapshotId,readiness;
       if(action==='submit')await this.validatePlan(c,a,p,this.planOf(before));
       if(action==='publish'){
@@ -259,7 +269,7 @@ export class TasksService {
         if((await c.query(`SELECT 1 FROM daily_tasks WHERE tenant_id=$1 AND assignee_employee_id=$2 AND workflow_kind='managed02b' AND status='published' AND id<>$3 AND planned_start<$5::timestamptz AND planned_end>$4::timestamptz LIMIT 1`,[a.tenantId,before.assigneeEmployeeId,id,before.plannedStart,before.plannedEnd])).rowCount)throw httpError(409,'assignment_overlap');
         snapshotId=randomUUID();const publishedAt=(await c.query(`SELECT clock_timestamp()::text time`)).rows[0].time;
         const actorMembership=(await c.query(`SELECT role,status,version FROM memberships WHERE tenant_id=$1 AND user_id=$2`,[a.tenantId,a.userId])).rows[0];
-        const snapshot={id:snapshotId,taskId:id,projectId:p,plan:{...before,version:before.version+1,status:'published',publicationSnapshotId:snapshotId},tenantTimezone:r.timezone,employee:r.employee,linkedUserId:r.employee.user_id,linkedMembership:r.linkedMembership,employeeProjectMembership:r.employeeProjectMembership,assignment:r.assignment,admission:r.admission,admissionCheck:r.admissionCheck,front:r.front,zone:r.zone,workType:r.workType,responsible:r.responsible,responsibleProjectMembership:r.responsibleProjectMembership,actorMembership,publishedBy:a.userId,publishedAt};
+        const snapshot={id:snapshotId,taskId:id,projectId:p,plan:{...before,version:before.version+1,status:'published',publicationSnapshotId:snapshotId},tenantTimezone:r.timezone,employee:r.employee,linkedUserId:r.employee.user_id,linkedMembership:r.linkedMembership,employeeProjectMembership:r.employeeProjectMembership,assignment:r.assignment,admission:r.admission,admissionCheck:r.admissionCheck,front:r.front,zone:r.zone,workType:r.workType,responsible:r.responsible,responsibleProjectMembership:r.responsibleProjectMembership,actorMembership,publishedBy:a.userId,publishedAt,...(route.attempt?{routeAttemptId:route.attempt.id,routeConfigurationVersion:route.attempt.configVersion}:{})};
         await c.query(`INSERT INTO task_publication_snapshots(tenant_id,project_id,task_id,id,front_check_id,snapshot) VALUES($1,$2,$3,$4,$5,$6)`,[a.tenantId,p,id,snapshotId,r.front.id,JSON.stringify(snapshot)]);
         readiness={ready:true,reasons:[],warnings:r.warnings};
       }
@@ -267,6 +277,6 @@ export class TasksService {
       const after=(await c.query(`UPDATE daily_tasks t SET status=$4,version=version+1,publication_snapshot_id=$5 WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING ${taskFields}`,[a.tenantId,p,id,status,snapshotId])).rows[0];
       await this.audit(c,a,b.requestId,'daily_task',id,before,{...after,...(b.reason?{reason:b.reason}:{}),action});
       return {...after,...(readiness?{readiness}:{})};
-    });
+    },c=>dailyRouteReplayScope(c,a,p,id,b.requestId));
   }
 }

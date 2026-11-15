@@ -311,9 +311,9 @@ test('new table FORCE RLS/limited grants and composite tenant FKs; migration rer
   assert.deepEqual((await admin.query(`SELECT * FROM schema_migrations ORDER BY filename`)).rows,before);
   assert.ok(before.some(r=>r.filename==='003_people_admission.sql'));assert.ok(before.some(r=>r.filename==='004_admission_crews.sql'));
 });
-test('all named people schemas and paged HTTP responses match public75-operation OpenAPI',async()=>{
+test('all named people schemas and paged HTTP responses match public78-operation OpenAPI',async()=>{
   const spec=await (await fetch(`${base}/api/v1/openapi.json`)).json();
-  assert.equal(Object.values(spec.paths).reduce((n:number,p:any)=>n+Object.keys(p).length,0),75);
+  assert.equal(Object.values(spec.paths).reduce((n:number,p:any)=>n+Object.keys(p).length,0),78);
   function matches(value:any,schema:any,at:string):void {
     if(schema.$ref)return matches(value,spec.components.schemas[schema.$ref.split('/').pop()],at);
     if(value===null && schema.nullable)return;
