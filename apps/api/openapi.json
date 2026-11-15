@@ -70,6 +70,41 @@
         }
       }
     },
+    "/api/v1/auth/phone/challenge": {
+      "post": {
+        "operationId": "requestPhoneCode",
+        "summary": "Send a one-time phone code without revealing whether an account exists",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PhoneChallengeInput" } } }
+        },
+        "responses": {
+          "201": { "description": "Accepted for delivery", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PhoneChallengeResult" } } } },
+          "400": { "description": "Malformed input", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "The same command was reused with different parameters", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "429": { "description": "Too many sends", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "503": { "description": "Delivery is not configured", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/auth/phone/login": {
+      "post": {
+        "operationId": "loginByPhone",
+        "summary": "Open an existing session with a one-time phone code",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PhoneLoginInput" } } }
+        },
+        "responses": {
+          "201": { "description": "Success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Login" } } } },
+          "400": { "description": "Malformed input", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "The code was not accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "429": { "description": "Too many attempts", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
     "/api/v1/auth/logout": {
       "post": {
         "operationId": "logout",
@@ -7455,6 +7490,26 @@
         }
       }
     },
+    "/api/v1/join/{code}/challenge": {
+      "post": {
+        "operationId": "requestInvitationCode",
+        "summary": "Send a code to the phone stored on the invitation",
+        "security": [],
+        "parameters": [{ "name": "code", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[A-HJ-NP-Z2-9]{12}$" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["requestId"], "properties": { "requestId": { "type": "string", "format": "uuid" } } } } } },
+        "responses": {
+          "201": { "description": "Accepted for delivery", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PhoneChallengeResult" } } } },
+          "400": { "description": "Malformed input", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "The code was not accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "The inviter can no longer issue this invitation", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Unknown invitation", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Conflicting command", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "410": { "description": "Invitation is no longer active", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "429": { "description": "Too many sends", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "503": { "description": "Delivery is not configured", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
     "/api/v1/join/{code}": {
       "get": {
         "operationId": "inspectInvitation",
@@ -7686,7 +7741,10 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/InvitationRegistration"
+                "oneOf": [
+                  { "$ref": "#/components/schemas/InvitationRegistration" },
+                  { "$ref": "#/components/schemas/InvitationPhoneRegistration" }
+                ]
               }
             }
           }
@@ -8148,7 +8206,8 @@
           },
           "email": {
             "type": "string",
-            "format": "email"
+            "format": "email",
+            "nullable": true
           }
         },
         "required": [
@@ -8169,7 +8228,8 @@
           },
           "email": {
             "type": "string",
-            "format": "email"
+            "format": "email",
+            "nullable": true
           },
           "name": {
             "type": "string"
@@ -13778,7 +13838,9 @@
           },
           "role": {
             "$ref": "#/components/schemas/InvitationRole"
-          }
+          },
+          "phone": { "type": "string" },
+          "employeeId": { "type": "string", "format": "uuid" }
         }
       },
       "InvitationRefresh": {
@@ -13792,6 +13854,16 @@
             "type": "string",
             "format": "uuid"
           }
+        }
+      },
+      "InvitationPhoneRegistration": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "code"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+          "code": { "type": "string", "pattern": "^[0-9]{6}$" },
+          "requestId": { "type": "string", "format": "uuid" }
         }
       },
       "InvitationRegistration": {
@@ -13870,7 +13942,8 @@
           "acceptedName": {
             "type": "string",
             "nullable": true
-          }
+          },
+          "phoneMasked": { "type": "string" }
         }
       },
       "InvitationInfo": {
@@ -13891,8 +13964,33 @@
           "expiresAt": {
             "type": "string",
             "format": "date-time"
-          }
+          },
+          "phoneMasked": { "type": "string" }
         }
+      },
+      "PhoneChallengeInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phone", "requestId"],
+        "properties": {
+          "phone": { "type": "string" },
+          "requestId": { "type": "string", "format": "uuid" }
+        }
+      },
+      "PhoneLoginInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phone", "code"],
+        "properties": {
+          "phone": { "type": "string" },
+          "code": { "type": "string", "pattern": "^[0-9]{6}$" }
+        }
+      },
+      "PhoneChallengeResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sent"],
+        "properties": { "sent": { "type": "boolean" } }
       },
       "InvitationRoster": {
         "type": "object",
