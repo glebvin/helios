@@ -51,9 +51,17 @@ export async function collectBounded(reader: { read: () => Promise<{ done: boole
   return out;
 }
 
-export function staffImportExample(): Uint8Array {
-  const strings = [...staffImportColumns, "001", "Иванов Иван Иванович", "+7 900 000-00-01", "002", "Петрова Анна Сергеевна"];
-  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="C1" t="s"><v>2</v></c></row><row r="2"><c r="A2" t="s"><v>3</v></c><c r="B2" t="s"><v>4</v></c><c r="C2" t="s"><v>5</v></c></row><row r="3"><c r="A3" t="s"><v>6</v></c><c r="B3" t="s"><v>7</v></c></row></sheetData></worksheet>`;
+export function staffImportBook(rows: { key: string; fullName: string; phone?: string }[]): Uint8Array {
+  const strings: string[] = [...staffImportColumns];
+  const body = rows.map((row, index) => {
+    const line = index + 2;
+    const key = strings.push(row.key) - 1;
+    const name = strings.push(row.fullName) - 1;
+    const cells = [`<c r="A${line}" t="s"><v>${key}</v></c>`, `<c r="B${line}" t="s"><v>${name}</v></c>`];
+    if (row.phone) cells.push(`<c r="C${line}" t="s"><v>${strings.push(row.phone) - 1}</v></c>`);
+    return `<row r="${line}">${cells.join("")}</row>`;
+  }).join("");
+  const sheet = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c><c r="C1" t="s"><v>2</v></c></row>${body}</sheetData></worksheet>`;
   const shared = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${strings.length}" uniqueCount="${strings.length}">${strings.map((item) => `<si><t>${escapeXml(item)}</t></si>`).join("")}</sst>`;
   const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Сотрудники" sheetId="1" r:id="rId1"/></sheets></workbook>`;
   const rels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>`;
@@ -67,6 +75,13 @@ export function staffImportExample(): Uint8Array {
     ["xl/sharedStrings.xml", shared],
     ["xl/worksheets/sheet1.xml", sheet],
   ].map(([name, xml]) => ({ name, data: new TextEncoder().encode(xml) })));
+}
+
+export function staffImportExample(): Uint8Array {
+  return staffImportBook([
+    { key: "001", fullName: "Иванов Иван Иванович", phone: "+7 900 000-00-01" },
+    { key: "002", fullName: "Петрова Анна Сергеевна" },
+  ]);
 }
 
 function empty(fileError: string): StaffImportPreview {

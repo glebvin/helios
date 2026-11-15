@@ -10,7 +10,7 @@ import { ProjectAccessPanel } from "./project-access-panel";
 import { AdmissionChecksPanel } from "./admission-check-panel";
 import { QualificationsPanel } from "./qualifications-panel";
 import { EmployeeForm } from "./employee-form";
-import { canWriteStaff } from "./staff-form";
+import { canImportStaff, canWriteStaff } from "./staff-form";
 import { CrewPanel } from "./crew-panel";
 import { StaffImportPanel } from "./staff-import-panel";
 import { TimeSheet } from "./time-sheet";
@@ -66,7 +66,7 @@ export function People({
   const [inviting, setInviting] = useState(false);
   const [invitingForeman, setInvitingForeman] = useState(false);
   const [creating, setCreating] = useState(false);
-  const serverList = hasV1ProjectScope(session.role);
+  const serverList = hasV1ProjectScope(session.role) || session.role === "hr";
   const remote = useStaffList(session, serverList);
   const list = serverList ? remote : { ...remote, loading: false, error: "", offset: 0, limit: data.employees.length,
     total: data.employees.length, items: data.employees.map(item => ({ id: item.id, fullName: item.full_name,
@@ -130,7 +130,7 @@ export function People({
             { value: list.error ? "—" : String(onShift.size), label: "на смене на этой странице" },
             { value: list.error ? "—" : String(review.size), label: "проверка на этой странице" },
           ]} />
-          {canWriteStaff(session.role) ? <StaffImportPanel /> : null}
+          {canImportStaff(session.role) ? <StaffImportPanel session={session} organizations={data.organizations} onImported={() => list.reload()} /> : null}
           <input className="object-search" type="search" value={query} placeholder="Найти работника" aria-label="Найти работника" onChange={(event) => setQuery(event.target.value)} />
           {list.loading && list.items.length === 0 ? <p className="quiet">Читаем список сотрудников на сервере.</p> : null}
           {list.error ? <DeskEmpty title="Список не прочитан" description={list.error} /> : null}

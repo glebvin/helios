@@ -25,6 +25,8 @@ import { DirectorApiController, VersionedAuthController, ApiSpecController } fro
 import { DirectorApiService } from "./director-api.service.js";
 import { PeopleService } from "./people.service.js";
 import { PeopleController } from "./people.controller.js";
+import { StaffImportService } from "./staff-import.service.js";
+import { StaffImportController } from "./staff-import.controller.js";
 
 import {TasksService} from "./tasks.service.js";
 import {TasksController} from "./tasks.controller.js";
@@ -153,7 +155,7 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, StaffImportController, TasksController, ExecutionController, EvidenceController, TimeController],
   providers: [
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
@@ -162,6 +164,7 @@ class WorkforceController {
     { provide: DirectorApiService, useFactory: (pool: Pool) => new DirectorApiService(pool), inject: [APP_POOL] },
     { provide: TasksService, useFactory: (pool:Pool,api:DirectorApiService,people:PeopleService) => new TasksService(pool,api,people), inject:[APP_POOL,DirectorApiService,PeopleService] },
     { provide: PeopleService, useFactory: (pool: Pool, api: DirectorApiService) => new PeopleService(pool,api), inject: [APP_POOL,DirectorApiService] },
+    { provide: StaffImportService, useFactory: (pool: Pool) => new StaffImportService(pool), inject: [APP_POOL] },
     { provide: ExecutionService, useFactory: (pool:Pool,people:PeopleService) => new ExecutionService(pool,people), inject: [APP_POOL,PeopleService] },
     {
       provide: WorkforceService,

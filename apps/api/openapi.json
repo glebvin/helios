@@ -11,6 +11,58 @@
     }
   ],
   "paths": {
+    "/api/v1/staff-imports/checks": {
+      "post": {
+        "operationId": "checkStaffImport",
+        "summary": "checkStaffImport",
+        "description": "Re-reads the synthetic preview workbook for one employer. Compares personnel numbers and phones with existing cards. A full name is not an identity. Nothing is written.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StaffImportCheckRequest" } } } },
+        "responses": {
+          "200": { "description": "Server verdict. acceptable false writes nothing.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StaffImportCheck" } } } },
+          "400": { "description": "Malformed input", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing, invalid or expired session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role cannot import", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Employer is not in this company or the file is too large", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/staff-imports": {
+      "get": {
+        "operationId": "listStaffImports",
+        "summary": "listStaffImports",
+        "description": "Import results for the company: actor, time, created cards and rows that did not need creation.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "$ref": "#/components/parameters/Limit" },
+          { "$ref": "#/components/parameters/Offset" }
+        ],
+        "responses": {
+          "200": { "description": "Success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StaffImportList" } } } },
+          "400": { "description": "Malformed input", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing, invalid or expired session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role cannot read imports", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "operationId": "confirmStaffImport",
+        "summary": "confirmStaffImport",
+        "description": "Explicit confirm after checkStaffImport. One employer. Atomic: a rejected row writes no card. Same requestId replays the stored result. A new requestId does not overwrite an existing card. Personnel number is not stored as document_number. No account, role, invitation, admission or assignment is created. Director or HR only.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/TenantId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StaffImportConfirmRequest" } } } },
+        "responses": {
+          "201": { "description": "Created or replayed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/StaffImportResult" } } } },
+          "400": { "description": "Malformed input", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing, invalid or expired session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role cannot import", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "The check no longer matches the database, or the request id belongs to another payload", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "The package is rejected. No card from it is saved.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "operationId": "login",
@@ -8152,6 +8204,92 @@
           "error"
         ],
         "additionalProperties": false
+      },
+      "StaffImportCheckRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["organizationId", "fileBase64"],
+        "properties": {
+          "organizationId": { "type": "string", "format": "uuid" },
+          "fileBase64": { "type": "string" }
+        }
+      },
+      "StaffImportConfirmRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "organizationId", "fileBase64", "verdictHash"],
+        "properties": {
+          "requestId": { "type": "string", "format": "uuid" },
+          "organizationId": { "type": "string", "format": "uuid" },
+          "fileBase64": { "type": "string" },
+          "verdictHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      },
+      "StaffImportCheckedRow": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["row", "personnelNumber", "fullName", "phone", "disposition", "detail", "employeeId"],
+        "properties": {
+          "row": { "type": "integer", "minimum": 2 },
+          "personnelNumber": { "type": "string" },
+          "fullName": { "type": "string" },
+          "phone": { "type": "string" },
+          "disposition": { "type": "string", "enum": ["create", "present", "invalid", "conflict", "ambiguous", "foreign"] },
+          "detail": { "type": "string" },
+          "employeeId": { "type": "string", "format": "uuid", "nullable": true }
+        }
+      },
+      "StaffImportCheck": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["organizationId", "fileSha256", "verdictHash", "acceptable", "fileError", "rows"],
+        "properties": {
+          "organizationId": { "type": "string", "format": "uuid" },
+          "fileSha256": { "type": "string" },
+          "verdictHash": { "type": "string" },
+          "acceptable": { "type": "boolean" },
+          "fileError": { "type": "string" },
+          "rows": { "type": "array", "items": { "$ref": "#/components/schemas/StaffImportCheckedRow" } }
+        }
+      },
+      "StaffImportSavedRow": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["row", "personnelNumber", "fullName", "phone", "outcome", "employeeId"],
+        "properties": {
+          "row": { "type": "integer" },
+          "personnelNumber": { "type": "string" },
+          "fullName": { "type": "string" },
+          "phone": { "type": "string" },
+          "outcome": { "type": "string", "enum": ["created", "present"] },
+          "employeeId": { "type": "string", "format": "uuid" }
+        }
+      },
+      "StaffImportResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "organizationId", "actorUserId", "actorName", "createdAt", "createdCount", "presentCount", "rows"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "organizationId": { "type": "string", "format": "uuid" },
+          "actorUserId": { "type": "string", "format": "uuid" },
+          "actorName": { "type": "string" },
+          "createdAt": { "type": "string" },
+          "createdCount": { "type": "integer", "minimum": 0 },
+          "presentCount": { "type": "integer", "minimum": 0 },
+          "rows": { "type": "array", "items": { "$ref": "#/components/schemas/StaffImportSavedRow" } }
+        }
+      },
+      "StaffImportList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["items", "total", "limit", "offset"],
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/StaffImportResult" } },
+          "total": { "type": "integer", "minimum": 0 },
+          "limit": { "type": "integer" },
+          "offset": { "type": "integer" }
+        }
       },
       "Ok": {
         "type": "object",

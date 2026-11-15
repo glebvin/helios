@@ -1,11 +1,13 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
+import type { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module.js";
 import { AllExceptionsFilter } from "./http.js";
 
 import {authProtection, bindAuthProtection} from "./auth-protection.js";
 
-const app = await NestFactory.create(AppModule);
+const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+app.useBodyParser("json", { limit: "2mb" });
 const protection = authProtection();
 bindAuthProtection(protection);
 app.use(protection);

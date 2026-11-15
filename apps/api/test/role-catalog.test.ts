@@ -79,4 +79,9 @@ test('existing role guard behaviour remains unchanged',async()=>{
   for(const role of roleCatalog.filter(r=>isExistingRuntimeRole(r.code)))assert.equal(await guard(role.code,'GET','/api/desk'),true);
   assert.equal(await guard('director','POST','/api/tasks'),true);
   for(const role of ['gd','admin','hr','customer'])await assert.rejects(guard(role,'POST','/api/tasks'),{message:'role_denied'});
+  assert.equal(await guard('hr','POST','/api/v1/staff-imports'),true);
+  assert.equal(await guard('hr','POST','/api/v1/staff-imports/checks'),true);
+  assert.equal(await guard('hr','GET','/api/v1/staff-imports'),true);
+  await assert.rejects(guard('hr','POST','/api/v1/employees'),{message:'role_denied'});
+  await assert.rejects(guard('gd','POST','/api/v1/staff-imports'),{message:'role_denied'});
 });
