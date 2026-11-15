@@ -111,7 +111,11 @@ test('cost records an immutable contract price, keeps history, and refuses every
   assert.equal(read.status, 200);
   assert.equal(line.revisions.length, 2);
   assert.equal(line.revisions[0].price, '19.99');
-  assert.equal(line.revisions[1].price, '30.5');
+  const winner = saved.status === 201 ? next : stale;
+  assert.equal(outcomes[0].body.price, winner.price);
+  assert.equal(line.revisions[1].price, winner.price);
+  assert.equal(line.revisions[1].start, winner.start);
+  assert.equal(line.revisions[1].end, winner.end);
   assert.equal(line.headVersion, 2);
   const asOf = read.body.asOf as string;
   const zeroed = await req(path, command({ workTypeId: zero.id, price: '0', start: '2020-01-01', end: '2099-12-31', expectedVersion: 0 }));
@@ -138,4 +142,32 @@ test('cost records an immutable contract price, keeps history, and refuses every
   assert.equal((await req('/employees', undefined)).status, 403);
   assert.equal((await req('/projects', undefined)).status, 403);
   assert.equal((await req(`/projects/${project}/work-types`, undefined)).status, 403);
+});
+
+test('price command rechecks project access after a real database wait', async () => {
+  const before = await req(`/projects/${project}/contract-prices`, undefined);
+  const head = before.body.workTypes.find((item: {id: string}) => item.id === missing.id).headVersion;
+  const body = command({ workTypeId: missing.id, price: '2', start: '2030-01-01', end: '2030-01-02', expectedVersion: head });
+  const lock = await admin.connect();
+  await lock.query('BEGIN');
+  await lock.query('SELECT id FROM projects WHERE id=$1 FOR UPDATE', [project]);
+  const pending = req(`/projects/${project}/contract-prices`, body);
+  try {
+    let waiting = false;
+    for(let i=0;i<200;i++) {
+      const rows=await admin.query("SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE 'SELECT id FROM projects WHERE id=%'");
+      if(rows.rowCount) { waiting=true; break; }
+      await new Promise(resolve=>setTimeout(resolve,10));
+    }
+    assert.equal(waiting,true,'request must reach the project row lock');
+    await admin.query("UPDATE project_memberships SET status='revoked' WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3",[tenant,project,cost]);
+    await lock.query('COMMIT');
+    assert.equal((await pending).status,403);
+    assert.equal((await admin.query('SELECT count(*)::int n FROM people_command_receipts WHERE tenant_id=$1 AND request_id=$2',[tenant,body.requestId])).rows[0].n,0);
+    assert.equal((await admin.query('SELECT count(*)::int n FROM contract_price_revisions WHERE tenant_id=$1 AND work_type_id=$2',[tenant,missing.id])).rows[0].n,0);
+  } finally {
+    await lock.query('ROLLBACK'); lock.release();
+    await admin.query("UPDATE project_memberships SET status='active' WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3",[tenant,project,cost]);
+    await pending.catch(()=>{});
+  }
 });

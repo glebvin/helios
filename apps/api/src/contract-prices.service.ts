@@ -20,10 +20,10 @@ type Revision = { version: number; unit: string; price: string; start: string; e
 export class ContractPriceService {
   constructor(private readonly pool: Pool) {}
 
-  private async scope(c: PoolClient, actor: Actor, projectId?: string) {
-    const membership = (await c.query(`SELECT role FROM memberships WHERE user_id=$1 AND status='active'`, [actor.userId])).rows[0];
+  private async scope(c: PoolClient, actor: Actor, projectId?: string, lock = false) {
+    const membership = (await c.query(`SELECT role FROM memberships WHERE user_id=$1 AND status='active' ${lock ? 'FOR SHARE' : ''}`, [actor.userId])).rows[0];
     const project = projectId
-      ? (await c.query(`SELECT project_id FROM project_memberships WHERE project_id=$1 AND user_id=$2 AND status='active'`, [projectId, actor.userId])).rows[0]
+      ? (await c.query(`SELECT project_id FROM project_memberships WHERE project_id=$1 AND user_id=$2 AND status='active' ${lock ? 'FOR SHARE' : ''}`, [projectId, actor.userId])).rows[0]
       : undefined;
     const allowed = roleContractAllows(
       { role: membership?.role, tenantId: actor.tenantId, projectIds: project ? [project.project_id] : [] },
@@ -63,7 +63,7 @@ export class ContractPriceService {
       const { inserted, hash } = await reserveCommand(c, actor, operation, command);
       const locked = await c.query(`SELECT id FROM projects WHERE id=$1 FOR NO KEY UPDATE`, [project]);
       if (!locked.rowCount) throw httpError(404, 'not_found');
-      await this.scope(c, actor, project);
+      await this.scope(c, actor, project, true);
       if (!inserted) return replayCommand(c, actor, command.requestId, hash);
       const work = (await c.query(
         `SELECT id, unit, status FROM project_work_types WHERE project_id=$1 AND id=$2 FOR NO KEY UPDATE`,

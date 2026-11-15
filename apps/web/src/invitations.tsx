@@ -1,17 +1,24 @@
 import {useEffect,useRef,useState} from 'react';
-import {saveSession,type Session} from './api';
+import {phoneLoginEnabled,saveSession,type Session} from './api';
 import {Dialog} from './dialog';
 import {Mark} from './mark';
 
-export type Invitation={id:string;role:'worker'|'master';projectId:string;code:string|null;status:string;expiresAt:string;acceptedName:string|null};
+export type Invitation={id:string;role:'worker'|'master';projectId:string;code:string|null;status:string;expiresAt:string;acceptedName:string|null;phoneMasked?:string};
 const messages:Record<string,string>={
-  invitation_used:'Эта ссылка уже использована. Войдите с почтой и паролем, которые указали при регистрации.',
+  invitation_used:'Эта ссылка уже использована. Войдите прежним способом.',
   invitation_revoked:'Ссылка заменена. Попросите руководителя прислать новое приглашение.',
   invitation_expired:'Срок приглашения истёк. Попросите руководителя обновить код.',
   invitation_not_found:'Приглашение не найдено. Проверьте ссылку или запросите новую.',
   email_registered:'Эта почта уже зарегистрирована. Войдите в свой аккаунт или укажите другую почту.',
   invalid_name:'Введите имя — от 1 до 120 символов.',invalid_email:'Проверьте адрес электронной почты.',
   invalid_password:'Пароль должен содержать от 10 до 128 символов.',
+  invalid_phone:'Укажите телефон в международном виде.',invalid_code:'Код состоит из шести цифр.',
+  code_invalid:'Код не подошёл.',code_used:'Этот код уже использован.',code_expired:'Код истёк. Запросите новый.',
+  code_locked:'Слишком много попыток. Запросите новый код.',phone_rate_limited:'Подождите минуту и запросите код снова.',
+  delivery_unavailable:'Отправка кода сейчас недоступна.',invitation_active:'На этот телефон уже есть действующее приглашение.',
+  employee_linked:'Карточка сотрудника уже связана с другим входом.',employee_phone:'Телефон не совпадает с карточкой сотрудника.',
+  phone_taken:'Этот телефон уже закреплён за другой карточкой.',membership_revoked:'Доступ в эту компанию был закрыт.',
+  role_conflict:'В этой компании уже открыта другая роль.',
   role_denied:'Нет прав для этого приглашения. Обратитесь к руководителю.',project_denied:'Нет доступа к этому объекту.',
   unauthorized:'Сессия истекла. Войдите снова.',auth_rate_limited:'Слишком много попыток. Подождите минуту и повторите.',
 };
@@ -21,22 +28,24 @@ export async function inviteRequest<T>(path:string,session:Session|null,body?:un
   const value=await r.json();if(!r.ok)throw new Error(value.error??'request_failed');return value;
 }
 export function InvitationDialog({session,projectId,organizationId,role,onClose}:{session:Session;projectId:string;organizationId:string;role:'worker'|'master';onClose:()=>void}){
-  const [item,setItem]=useState<Invitation|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[copied,setCopied]=useState(false);
+  const phoneInvitation=role==='worker'&&phoneLoginEnabled;
+  const [item,setItem]=useState<Invitation|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[copied,setCopied]=useState(false),[phone,setPhone]=useState('');
   const createId=useRef(crypto.randomUUID()),refreshId=useRef(crypto.randomUUID());
   const link=item?.code?`${location.origin}/join/${item.code}`:'';
   async function issue(){
     if(busy)return;setBusy(true);setError('');setCopied(false);
     try{
-      const next=await inviteRequest<Invitation>(item?`/invitations/${item.id}/refresh`:'/invitations',session,item?{requestId:refreshId.current}:{requestId:createId.current,projectId,organizationId,role});
+      const next=await inviteRequest<Invitation>(item?`/invitations/${item.id}/refresh`:'/invitations',session,item?{requestId:refreshId.current}:{requestId:createId.current,projectId,organizationId,role,...(phoneInvitation?{phone}:{})});
       setItem(next);refreshId.current=crypto.randomUUID();
     }catch(e){setError(invitationError(e));}finally{setBusy(false);}
   }
   async function copy(){try{await navigator.clipboard.writeText(link);setCopied(true);}catch{setError('Не удалось скопировать автоматически. Выделите ссылку и скопируйте её.');}}
   return <Dialog title={role==='worker'?'Пригласить работника':'Пригласить прораба'} onClose={onClose}>
-    <p className="quiet">Отправьте личную ссылку одному человеку. Он укажет имя, почту и пароль и сразу получит доступ.</p>
-    {item?<><label className="field"><span>Ссылка приглашения</span><input readOnly value={link} onFocus={e=>e.target.select()}/></label><p>Код: <strong className="invite-code">{item.code}</strong></p><p className="quiet">Действует до {new Date(item.expiresAt).toLocaleString('ru-RU')}. Один вход по приглашению. Обновление отключит старую ссылку.</p><button className="fill" onClick={()=>void copy()}>{copied?'Скопировано':'Копировать'}</button></>:null}
+    <p className="quiet">{phoneInvitation?'Ссылка адресована одному телефону. Человек подтвердит код и укажет имя. Почта и пароль не нужны.':'Отправьте личную ссылку одному человеку. Он укажет имя, почту и пароль и сразу получит доступ.'}</p>
+    {phoneInvitation&&!item?<label className="field"><span>Телефон</span><input value={phone} autoComplete="tel" placeholder="+7 900 000-00-00" onChange={e=>setPhone(e.target.value)}/></label>:null}
+    {item?<><label className="field"><span>Ссылка приглашения</span><input readOnly value={link} onFocus={e=>e.target.select()}/></label>{item.phoneMasked?<p>Телефон: {item.phoneMasked}</p>:null}<p>Код: <strong className="invite-code">{item.code}</strong></p><p className="quiet">Действует до {new Date(item.expiresAt).toLocaleString('ru-RU')}. Один вход по приглашению. Обновление отключит старую ссылку.</p><button className="fill" onClick={()=>void copy()}>{copied?'Скопировано':'Копировать'}</button></>:null}
     {error?<p role="alert">{error}</p>:null}
-    <button className={item?'ghost':'fill'} disabled={busy||!projectId||!organizationId} onClick={()=>void issue()}>{busy?'Создаём…':item?'Обновить код':'Создать ссылку'}</button>
+    <button className={item?'ghost':'fill'} disabled={busy||!projectId||!organizationId||(phoneInvitation&&!item&&!phone.trim())} onClick={()=>void issue()}>{busy?'Создаём…':item?'Обновить код':'Создать ссылку'}</button>
     <button className="ghost" onClick={onClose}>Закрыть</button>
   </Dialog>;
 }
@@ -56,15 +65,18 @@ export function InvitationList({session,projectId,role}:{session:Session;project
   </section>;
 }
 export function JoinPage({code,onEntered}:{code:string;onEntered:(s:Session)=>void}){
-  const [info,setInfo]=useState<{role:string;projectName:string}|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[terminal,setTerminal]=useState(false);
-  const [name,setName]=useState(''),[email,setEmail]=useState(''),[password,setPassword]=useState('');
-  useEffect(()=>{let active=true;setLoading(true);void inviteRequest<{role:string;projectName:string}>(`/join/${encodeURIComponent(code)}`,null).then(v=>{if(active){setInfo(v);setError('');}}).catch(e=>{if(active){setError(invitationError(e));setTerminal(true);}}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[code]);
+  const [info,setInfo]=useState<{role:string;projectName:string;phoneMasked?:string}|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[terminal,setTerminal]=useState(false),[sent,setSent]=useState(false);
+  const [name,setName]=useState(''),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[otp,setOtp]=useState('');
+  const requestId=useRef(crypto.randomUUID());
+  useEffect(()=>{let active=true;setLoading(true);void inviteRequest<{role:string;projectName:string;phoneMasked?:string}>(`/join/${encodeURIComponent(code)}`,null).then(v=>{if(active){setInfo(v);setError('');}}).catch(e=>{if(active){setError(invitationError(e));setTerminal(true);}}).finally(()=>{if(active)setLoading(false);});return()=>{active=false;};},[code]);
+  async function sendCode(){if(busy)return;setBusy(true);setError('');try{await inviteRequest(`/join/${encodeURIComponent(code)}/challenge`,null,{requestId:requestId.current});requestId.current=crypto.randomUUID();setSent(true);}catch(e){setError(invitationError(e));}finally{setBusy(false);}}
   async function submit(){if(busy)return;setBusy(true);setError('');try{
-    const r=await inviteRequest<{token:string;user:{id:string;name:string;email:string};memberships:{tenant_id:string;role:string}[]}>(`/join/${encodeURIComponent(code)}`,null,{name,email,password});
-    const m=r.memberships[0];const s:Session={token:r.token,userId:r.user.id,name:r.user.name,email:r.user.email,tenantId:m.tenant_id,role:m.role};saveSession(s);history.replaceState(null,'','/');onEntered(s);
+    const r=await inviteRequest<{token:string;user:{id:string;name:string;email:string|null};memberships:{tenant_id:string;role:string}[]}>(`/join/${encodeURIComponent(code)}`,null,info?.phoneMasked?{name,code:otp}:{name,email,password});
+    const m=r.memberships[0];const s:Session={token:r.token,userId:r.user.id,name:r.user.name,email:r.user.email??'',tenantId:m.tenant_id,role:m.role};saveSession(s);history.replaceState(null,'','/');onEntered(s);
   }catch(e){setError(invitationError(e));if(e instanceof Error&&['invitation_used','invitation_revoked','invitation_expired'].includes(e.message))setTerminal(true);}finally{setBusy(false);}}
-  return <main className="login"><form onSubmit={e=>{e.preventDefault();void submit();}}><Mark/><h1>Добро пожаловать</h1>
-    {loading?<p role="status">Проверяем приглашение…</p>:info&&!terminal?<><p className="quiet">{info.projectName} · {info.role==='worker'?'Кабинет работника':'Кабинет прораба'}</p><label className="field"><span>Имя и фамилия</span><input autoComplete="name" required maxLength={120} value={name} onChange={e=>setName(e.target.value)}/></label><label className="field"><span>Электронная почта</span><input type="email" autoComplete="username" required maxLength={254} value={email} onChange={e=>setEmail(e.target.value)}/></label><label className="field"><span>Пароль</span><input type="password" autoComplete="new-password" required minLength={10} maxLength={128} value={password} onChange={e=>setPassword(e.target.value)}/></label><p className="quiet">Минимум 10 символов. Почта станет вашим логином; письмо не отправляется.</p><button className="fill" disabled={busy} type="submit">{busy?'Создаём аккаунт…':'Войти'}</button></>:null}
+  const phone=!!info?.phoneMasked;
+  return <main className="login"><form onSubmit={e=>{e.preventDefault();if(phone&&!sent)void sendCode();else void submit();}}><Mark/><h1>Добро пожаловать</h1>
+    {loading?<p role="status">Проверяем приглашение…</p>:info&&!terminal?<><p className="quiet">{info.projectName} · {info.role==='worker'?'Кабинет работника':'Кабинет прораба'}{info.phoneMasked?` · ${info.phoneMasked}`:''}</p><label className="field"><span>Имя и фамилия</span><input autoComplete="name" required maxLength={120} value={name} onChange={e=>setName(e.target.value)}/></label>{phone?<><p className="quiet">Телефон приглашения: {info.phoneMasked}. Сейчас доступна учебная проверка; реальные SMS не отправляются.</p>{sent?<label className="field"><span>Код из сообщения</span><input inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{6}" maxLength={6} value={otp} onChange={e=>setOtp(e.target.value)}/></label>:null}<button className="fill" disabled={busy} type="submit">{busy?'Отправляем…':sent?'Войти':'Получить код'}</button>{sent?<button className="ghost" type="button" disabled={busy} onClick={()=>void sendCode()}>Запросить ещё раз</button>:null}</>:<><label className="field"><span>Электронная почта</span><input type="email" autoComplete="username" required maxLength={254} value={email} onChange={e=>setEmail(e.target.value)}/></label><label className="field"><span>Пароль</span><input type="password" autoComplete="new-password" required minLength={10} maxLength={128} value={password} onChange={e=>setPassword(e.target.value)}/></label><p className="quiet">Минимум 10 символов. Почта станет вашим логином; письмо не отправляется.</p><button className="fill" disabled={busy} type="submit">{busy?'Создаём аккаунт…':'Войти'}</button></>}</>:null}
     {error?<p role="alert">{error}</p>:null}<a className="quiet" href="/">Уже есть аккаунт? Войти</a>
   </form></main>;
 }

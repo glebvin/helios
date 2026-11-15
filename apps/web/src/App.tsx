@@ -1,6 +1,6 @@
 import {JoinPage} from "./invitations";
 import { useEffect, useRef, useState } from "react";
-import { acceptReport, createTask, desk, loadSession, login, savePlace, saveSession, syncEvents, type Desk, type NewTask, type Session } from "./api";
+import { acceptReport, createTask, desk, loadSession, login, loginByPhone, phoneLoginEnabled, requestPhoneCode, savePlace, saveSession, syncEvents, type Desk, type NewTask, type Session } from "./api";
 import { bindRemoteClose, closeDelivery, openDelivery } from "./delivery";
 import { clearShiftSnapshot, readShiftSnapshot, type ShiftSnapshot } from "./shift-snapshot";
 import { DirectorDesk, type Section } from "./director";
@@ -33,7 +33,7 @@ function explain(code: string) {
 
 function offlineDesk(session: Session, saved: ShiftSnapshot): Desk {
   return {
-    actor: { role: session.role, name: session.email },
+    actor: { role: session.role, name: session.name || session.email },
     projectId: saved.projectId,
     cabinet: { name: saved.projectName },
     organizations: [],
@@ -64,6 +64,11 @@ export function App() {
   const [section, setSection] = useState<Section>("overview");
   const [view, setView] = useState<View>(() => homeView(loadSession()?.role ?? "director"));
   const [theme, setTheme] = useState<"light" | "dark">(loadTheme);
+  const [byPhone, setByPhone] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [otp, setOtp] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const phoneRequest = useRef<{phone:string;id:string}|null>(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -159,6 +164,56 @@ export function App() {
     setError("Сессия закончилась. Войдите снова.");
   }
 
+  function phoneExplain(code: string) {
+    const text: Record<string, string> = {
+      unauthorized: "Код не подошёл.",
+      invalid_phone: "Укажите телефон в международном виде.",
+      invalid_code: "Код состоит из шести цифр.",
+      phone_rate_limited: "Подождите минуту и запросите код снова.",
+      delivery_unavailable: "Отправка кода сейчас недоступна.",
+      internal: "Отправка кода сейчас недоступна. Попробуйте позже.",
+      invalid_input: "Проверьте телефон и код.",
+    };
+    return text[code] ?? explain(code);
+  }
+
+  async function sendPhone() {
+    if (entering) return;
+    setEntering(true);
+    setError("");
+    try {
+      if (!phoneRequest.current || phoneRequest.current.phone !== phone) phoneRequest.current = {phone,id:crypto.randomUUID()};
+      await requestPhoneCode(phone, phoneRequest.current.id);
+      phoneRequest.current = null;
+      setCodeSent(true);
+    } catch (reason) {
+      setError(phoneExplain(reason instanceof Error ? reason.message : "Не удалось отправить код"));
+    } finally { setEntering(false); }
+  }
+
+  async function enterPhone() {
+    if (entering) return;
+    setEntering(true);
+    const previous = session;
+    setData(null);
+    try {
+      await closeDelivery();
+      const next = await loginByPhone(phone, otp);
+      activeSession.current = next;
+      const chosen = homeView(next.role);
+      setSession(next);
+      setView(chosen);
+      setSection(accessOf(chosen).sections[0]?.id ?? "overview");
+      setError("");
+    } catch (reason) {
+      setError(phoneExplain(reason instanceof Error ? reason.message : "Не удалось войти"));
+      if (previous) {
+        void openDelivery(previous).catch(() => {});
+        void refresh(previous).catch(() => {});
+      }
+    } finally { setEntering(false); }
+  }
+
   async function enter(email: string, password: string) {
     if (entering) return;
     setEntering(true);
@@ -210,7 +265,7 @@ export function App() {
   }
 
   if (joinCode) {
-    if (session) return <main className="login"><div><Mark/><h1>Вы уже вошли</h1><p>Сейчас открыт аккаунт {session.email}. Выйдите, чтобы зарегистрировать другого человека по приглашению.</p><button className="fill" onClick={() => void logout()}>Выйти из аккаунта</button><a href="/">Вернуться в кабинет</a>{error ? <p role="alert">{error}</p> : null}</div></main>;
+    if (session) return <main className="login"><div><Mark/><h1>Вы уже вошли</h1><p>Сейчас открыт аккаунт {session.name || session.email}. Выйдите, чтобы зарегистрировать другого человека по приглашению.</p><button className="fill" onClick={() => void logout()}>Выйти из аккаунта</button><a href="/">Вернуться в кабинет</a>{error ? <p role="alert">{error}</p> : null}</div></main>;
     return <JoinPage code={joinCode} onEntered={next => { setJoinCode(null); setSession(next); setView(homeView(next.role)); setSection(accessOf(homeView(next.role)).sections[0]?.id ?? 'overview'); setError(''); }}/>;
   }
   if (!session) {
@@ -219,23 +274,39 @@ export function App() {
         <form
           onSubmit={(event) => {
             event.preventDefault();
+            if (byPhone) {
+              if (codeSent) void enterPhone();
+              else void sendPhone();
+              return;
+            }
             const form = new FormData(event.currentTarget);
             void enter(String(form.get("email")), String(form.get("password")));
           }}
         >
           <Mark />
           <h1 style={{ fontSize: 32, letterSpacing: "-0.04em" }}>Кто входит</h1>
-          <p className="sub">{demoCabinets ? "Учебные входы отдельно от просмотра кабинета." : "Вход по логину и паролю."}</p>
-          {demoCabinets ? entries.map((item) => (
+          <p className="sub">{byPhone ? "Вход по телефону и одноразовому коду." : demoCabinets ? "Учебные входы отдельно от просмотра кабинета." : "Вход по логину и паролю."}</p>
+          {!byPhone && demoCabinets ? entries.map((item) => (
             <button className="role-pick" type="button" key={item.email} onClick={() => void enter(item.email, item.password)}>
               <strong>{item.role}</strong>
               <small>{item.hint}</small>
             </button>
           )) : null}
-          <label className="field"><span>Логин</span><input name="email" required maxLength={320} defaultValue={demoCabinets ? "director@pilot.helios" : ""} autoComplete="username" autoCapitalize="none" autoCorrect="off" /></label>
-          <label className="field"><span>Пароль</span><input name="password" required maxLength={1024} type="password" defaultValue={demoCabinets ? "pilot-director" : ""} autoComplete="current-password" /></label>
+          {byPhone ? (
+            <>
+              <label className="field"><span>Телефон</span><input value={phone} disabled={entering} required autoComplete="tel" onChange={(event) => { setPhone(event.target.value); setCodeSent(false); setOtp(""); }} /></label>
+              {codeSent ? <label className="field"><span>Код</span><input value={otp} required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} onChange={(event) => setOtp(event.target.value)} /></label> : null}
+            </>
+          ) : (
+            <>
+              <label className="field"><span>Логин</span><input name="email" required maxLength={320} defaultValue={demoCabinets ? "director@pilot.helios" : ""} autoComplete="username" autoCapitalize="none" autoCorrect="off" /></label>
+              <label className="field"><span>Пароль</span><input name="password" required maxLength={1024} type="password" defaultValue={demoCabinets ? "pilot-director" : ""} autoComplete="current-password" /></label>
+            </>
+          )}
           {error ? <div className="alert" role="alert">{error}</div> : null}
-          <button className="fill" type="submit" disabled={entering}>{entering ? "Входим…" : "Войти"}</button>
+          <button className="fill" type="submit" disabled={entering}>{entering ? "Входим…" : byPhone ? (codeSent ? "Войти" : "Получить код") : "Войти"}</button>
+          {byPhone && codeSent ? <button className="ghost" type="button" disabled={entering} onClick={() => { setOtp(""); void sendPhone(); }}>Запросить ещё раз</button> : null}
+          {phoneLoginEnabled ? <button className="ghost" type="button" disabled={entering} onClick={() => { setByPhone((value) => !value); setError(""); setCodeSent(false); }}>{byPhone ? "Войти по паролю" : "Войти по телефону"}</button> : null}
           <button className="ghost" type="button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? "Светлая тема" : "Тёмная тема"}</button>
         </form>
       </main>
