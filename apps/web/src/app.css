@@ -1156,6 +1156,19 @@ h1, h2, h3, p { margin: 0; }
 .documents-heading h2 { padding: 0; }
 .documents-title { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 32px; }
 .desk-action { height: 32px; min-height: 32px; padding: 0 10px; font-size: 13px; line-height: 1; white-space: nowrap; }
+.checklist-preview { width: min(560px, 100%); margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 16px; }
+.checklist-preview h1 { margin: 0; font-size: 28px; line-height: 1.15; letter-spacing: -0.03em; }
+.checklist-preview p { margin: 0; overflow-wrap: anywhere; }
+.checklist-form { display: grid; gap: 14px; }
+.checklist-item { margin: 0; padding: 0 0 12px; border: 0; display: grid; gap: 8px; min-height: 72px; }
+.checklist-item legend { padding: 0; overflow-wrap: anywhere; }
+.checklist-item label { display: grid; gap: 6px; }
+.checklist-item input { height: 32px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); padding: 0 10px; }
+.checklist-choice { display: flex; gap: 4px; width: max-content; max-width: 100%; padding: 4px; border-radius: 12px; background: var(--soft); }
+.checklist-choice button { height: 32px; padding: 0 10px; border: 0; border-radius: 9px; background: transparent; color: var(--muted); font-size: 13px; }
+.checklist-choice button.is-on { background: var(--surface); color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
+.checklist-step { display: flex; align-items: center; gap: 8px; }
+.checklist-warn { color: var(--warn); }
 .note-mark { position: relative; display: inline-flex; flex: none; }
 .note-mark-button { width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--muted); font-size: 11px; font-family: Georgia, serif; font-style: italic; padding: 0; line-height: 16px; }
 .note-mark-button:hover, .note-mark-button[aria-expanded="true"] { color: var(--ink); border-color: color-mix(in srgb, var(--ink) 28%, var(--line)); }
@@ -1279,3 +1292,13 @@ h1, h2, h3, p { margin: 0; }
 .order-types label { display: flex; align-items: center; gap: 6px; }
 .orders-warn { color: var(--warn); }
 @media (max-width: 800px) { .orders-layout { grid-template-columns: minmax(0, 1fr); } }
+.daily-route-facts { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 16px; margin: 20px 0; }
+.daily-route-facts > div { display: grid; gap: 6px; align-content: start; }
+.daily-route-facts > p { grid-column: 1 / -1; margin: 0; }
+.daily-route-facts b { font-size: 14px; font-weight: 500; }
+.daily-route-history { margin-top: 20px; }
+.daily-route-history summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.daily-route-history ol { list-style: none; padding: 0; display: grid; gap: 16px; margin: 16px 0 0; }
+.daily-route-history li div { display: grid; gap: 4px; }
+.daily-route-history li p { margin: 8px 0 0; overflow-wrap: anywhere; }
+@media (max-width: 600px) { .daily-route-facts { grid-template-columns: 1fr; } }

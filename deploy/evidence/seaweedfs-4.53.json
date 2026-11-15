@@ -1,0 +1,11 @@
+{
+  "version": "4.53",
+  "darwin-arm64": {
+    "url": "https://github.com/seaweedfs/seaweedfs/releases/download/4.53/darwin_arm64.tar.gz",
+    "sha256": "152a89d83e66372cc50c25d67e67a51ab295efbf85b88c139ca9965adc369b6f"
+  },
+  "linux-amd64": {
+    "url": "https://github.com/seaweedfs/seaweedfs/releases/download/4.53/linux_amd64.tar.gz",
+    "sha256": "d1a7dec9f48d8b33895a0ea8951971defc2dc5312906dcc76fa5a5f74a6ee90d"
+  }
+}
