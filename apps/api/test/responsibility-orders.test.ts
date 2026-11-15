@@ -27,6 +27,16 @@ test("истёкший и отозванный приказ не действу�
   assert.equal(orderApplies([order({ id: "old", status: "revoked" }), order({ id: "new" })], query).orderId, "new");
 });
 
+test("отзыв вне запрошенной даты не подменяет истёкший или ещё не начатый срок", () => {
+  const oldRevoked = order({ id: "old", status: "revoked", validFrom: "2026-01-01", validUntil: "2026-03-31" });
+  const future = order({ id: "future", validFrom: "2026-07-01", validUntil: "2026-12-31" });
+  const gap = orderApplies([oldRevoked, future], query);
+  assert.equal(gap.reason, "expired");
+  assert.notEqual(gap.reason, "revoked");
+  assert.equal(orderApplies([future], query).reason, "not_started");
+  assert.equal(orderApplies([oldRevoked], { ...query, on: "2026-02-01" }).reason, "revoked");
+});
+
 test("истечение в ближайшие 30 дней не считает уже прошедший или дальний срок", () => {
   assert.equal(expiringWithin30Days("active", plusDays("2026-11-15", 30), "2026-11-15"), true);
   assert.equal(expiringWithin30Days("active", plusDays("2026-11-15", 31), "2026-11-15"), false);

@@ -95,9 +95,10 @@ export function orderApplies(orders: readonly ResponsibilityOrderFact[], query: 
   const covering = typed.filter((order) => order.validFrom <= query.on && query.on <= order.validUntil);
   const active = covering.find((order) => order.status === "active");
   if (active) return { applicable: true, reason: "active", orderId: active.id };
-  const revoked = covering.find((order) => order.status === "revoked") ?? typed.find((order) => order.status === "revoked");
+  const revoked = covering.find((order) => order.status === "revoked");
   if (revoked) return { applicable: false, reason: "revoked", orderId: revoked.id };
   const expired = typed.find((order) => order.validUntil < query.on);
   if (expired) return { applicable: false, reason: "expired", orderId: expired.id };
-  return { applicable: false, reason: "not_started", orderId: typed[0]!.id };
+  const upcoming = typed.find((order) => order.validFrom > query.on);
+  return { applicable: false, reason: "not_started", orderId: upcoming?.id ?? typed[0]!.id };
 }

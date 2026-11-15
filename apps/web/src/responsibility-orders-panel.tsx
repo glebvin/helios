@@ -31,20 +31,23 @@ export function ResponsibilityOrders({ session, projectId }: { session: Session;
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [pulse, setPulse] = useState(0);
-  const [check, setCheck] = useState("");
+  const [check, setCheck] = useState<{ key: string; text: string } | null>(null);
   const [employeeId, setEmployeeId] = useState("");
   const [types, setTypes] = useState<string[]>(["hidden-works-act"]);
   const [number, setNumber] = useState("");
   const [orderDate, setOrderDate] = useState("");
   const [validFrom, setValidFrom] = useState("");
-  const [validUntil, setValidUntil] = useState("");
+  const [createdUntil, setCreatedUntil] = useState("");
+  const [editedUntil, setEditedUntil] = useState("");
   const [reason, setReason] = useState("");
   const [objectId, setObjectId] = useState(projectId);
   const request = useRef({ id: "", key: "" });
   const generation = useRef(0);
+  const checkPass = useRef(0);
   const writable = session.role === "hr";
   const rows = (list?.items ?? []).filter((row) => filter === "all" || (filter === "soon" ? row.expiringWithin30Days : row.status === "revoked"));
   const selected = detail?.id === selectedId ? detail : rows.find((row) => row.id === selectedId) ?? null;
+  useEffect(() => { setEditedUntil(selected?.status === "active" ? selected.validUntil : ""); }, [selected?.id, selected?.version, selected?.validUntil, selected?.status]);
   async function read(nextId = selectedId) {
     const pass = ++generation.current;
     setReading(true); setError("");
@@ -75,9 +78,9 @@ export function ResponsibilityOrders({ session, projectId }: { session: Session;
   async function create() {
     if (!writable || busy || !list) return;
     const employee = list.catalog.employees.find((item) => item.id === employeeId);
-    if (!employee || !number.trim() || !orderDate || !validFrom || !validUntil || !types.length) { setError("Укажите человека, номер, даты и хотя бы один тип документа."); return; }
+    if (!employee || !number.trim() || !orderDate || !validFrom || !createdUntil || !types.length) { setError("Укажите человека, номер, даты и хотя бы один тип документа."); return; }
     setBusy(true); setError("");
-    const body = { employeeId: employee.id, organizationId: employee.organizationId, projectId: objectId, documentTypes: types, orderNumber: number.trim(), orderDate, validFrom, validUntil };
+    const body = { employeeId: employee.id, organizationId: employee.organizationId, projectId: objectId, documentTypes: types, orderNumber: number.trim(), orderDate, validFrom, validUntil: createdUntil };
     try {
       const saved = await send("/responsibility-orders", body, JSON.stringify(body));
       setMessage(`Сервер записал приказ ${saved.orderNumber}.`); setPulse((value) => value + 1); setNumber("");
@@ -87,8 +90,9 @@ export function ResponsibilityOrders({ session, projectId }: { session: Session;
   }
   async function correct() {
     if (!selected || selected.status !== "active" || busy) return;
+    if (!editedUntil) { setError("Укажите новый срок."); return; }
     setBusy(true); setError("");
-    const body = { expectedVersion: selected.version, documentTypes: selected.documentTypes, orderNumber: selected.orderNumber, orderDate: selected.orderDate, validFrom: selected.validFrom, validUntil: validUntil || selected.validUntil };
+    const body = { expectedVersion: selected.version, documentTypes: selected.documentTypes, orderNumber: selected.orderNumber, orderDate: selected.orderDate, validFrom: selected.validFrom, validUntil: editedUntil };
     try {
       const saved = await send(`/responsibility-orders/${selected.id}`, body, JSON.stringify({ id: selected.id, ...body }));
       setMessage(`Версия ${saved.version} записана.`); setPulse((value) => value + 1); await read(saved.id);
@@ -96,7 +100,8 @@ export function ResponsibilityOrders({ session, projectId }: { session: Session;
     finally { setBusy(false); }
   }
   async function revoke() {
-    if (!selected || !reason.trim() || busy) return;
+    if (!selected || busy) return;
+    if (!reason.trim()) { setError("Укажите основание отзыва."); return; }
     setBusy(true); setError("");
     const body = { expectedVersion: selected.version, reason: reason.trim() };
     try {
@@ -105,13 +110,20 @@ export function ResponsibilityOrders({ session, projectId }: { session: Session;
     } catch (cause) { setError(problem(cause)); }
     finally { setBusy(false); }
   }
+  function applicabilityKey(order: Order, day: string) {
+    return [session.token, session.tenantId, objectId, order.id, order.version, order.status, day].join(":");
+  }
   async function applicability() {
     if (!selected || !list) return;
-    setCheck("");
+    const pass = ++checkPass.current;
+    const key = applicabilityKey(selected, list.today);
+    const path = `/responsibility-orders/applicability?employeeId=${selected.employeeId}&organizationId=${selected.organizationId}&projectId=${selected.projectId}&documentType=${selected.documentTypes[0]}&on=${list.today}`;
+    setCheck(null); setError("");
     try {
-      const result = await v1<{ applicable: boolean; reason: string }>(session, `/responsibility-orders/applicability?employeeId=${selected.employeeId}&organizationId=${selected.organizationId}&projectId=${selected.projectId}&documentType=${selected.documentTypes[0]}&on=${list.today}`);
-      setCheck(reasons[result.reason] ?? "Сервер не подтвердил применимость.");
-    } catch (cause) { setError(problem(cause)); }
+      const result = await v1<{ applicable: boolean; reason: string }>(session, path);
+      if (pass !== checkPass.current) return;
+      setCheck({ key, text: reasons[result.reason] ?? "Сервер не подтвердил применимость." });
+    } catch (cause) { if (pass === checkPass.current) setError(problem(cause)); }
   }
   if (!writable) return <section className="panel settings-wide" aria-label="Приказы"><h2>Приказы об ответственных</h2><p className="quiet">Просмотр кабинета не записывает приказы. Реестр открывается входом службы персонала.</p></section>;
   return <section className="panel settings-wide orders-screen" aria-label="Приказы об ответственных">
@@ -134,7 +146,7 @@ export function ResponsibilityOrders({ session, projectId }: { session: Session;
           <label>Номер<input value={number} onChange={(event) => setNumber(event.target.value)} /></label>
           <label>Дата приказа<input type="date" value={orderDate} onChange={(event) => setOrderDate(event.target.value)} /></label>
           <label>Действует с<input type="date" value={validFrom} onChange={(event) => setValidFrom(event.target.value)} /></label>
-          <label>Действует по<input type="date" value={validUntil} onChange={(event) => setValidUntil(event.target.value)} /></label>
+          <label>Действует по<input type="date" value={createdUntil} onChange={(event) => setCreatedUntil(event.target.value)} /></label>
           <div className="order-types">{list?.catalog.documentTypes.map((type) => <label key={type.code}><input type="checkbox" checked={types.includes(type.code)} onChange={() => setTypes((current) => current.includes(type.code) ? current.filter((item) => item !== type.code) : [...current, type.code])} />{type.title}</label>)}</div>
           <button className="ghost desk-action" type="submit" disabled={busy || !objectId}>Записать приказ</button>
         </form>
@@ -148,8 +160,8 @@ export function ResponsibilityOrders({ session, projectId }: { session: Session;
           {selected.revocationReason ? <p>Основание отзыва: {selected.revocationReason}</p> : null}
           <ol className="timeline">{(selected.history ?? []).map((item, index, all) => <li key={item.version} className="timeline-item"><span className="timeline-rail"><i hidden={index === all.length - 1} /><b className={index === all.length - 1 ? "is-on" : ""} /></span><span><b>{actions[item.action] ?? item.action}</b><small>Версия {item.version}</small></span><time dateTime={item.createdAt}>{item.createdAt.slice(0, 10)}</time></li>)}</ol>
           <button className="ghost desk-action" type="button" onClick={() => void applicability()}>Проверить срок</button>
-          {check ? <p>{check}</p> : null}
-          {selected.status === "active" ? <form onSubmit={(event) => { event.preventDefault(); void revoke(); }}><label>Новый срок до<input type="date" value={validUntil} onChange={(event) => setValidUntil(event.target.value)} /></label><button className="ghost desk-action" type="button" disabled={busy} onClick={() => void correct()}>Сохранить срок</button><label>Основание отзыва<input value={reason} onChange={(event) => setReason(event.target.value)} /></label><button className="ghost desk-action" type="submit" disabled={busy}>Отозвать</button></form> : null}
+          {selected && list && check?.key === applicabilityKey(selected, list.today) ? <p>{check.text}</p> : null}
+          {selected.status === "active" ? <form onSubmit={(event) => { event.preventDefault(); void revoke(); }}><label>Новый срок до<input type="date" value={editedUntil} onChange={(event) => setEditedUntil(event.target.value)} /></label><button className="ghost desk-action" type="button" disabled={busy} onClick={() => void correct()}>Сохранить срок</button><label>Основание отзыва<input value={reason} onChange={(event) => setReason(event.target.value)} /></label><button className="ghost desk-action" type="submit" disabled={busy}>Отозвать</button></form> : null}
         </>}
       </motion.div>
     </div>
