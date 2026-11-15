@@ -44,7 +44,7 @@ export class ChecklistTemplatesService {
 
   async create(a: Actor, projectId: string, input: unknown) {
     const project = uuid(projectId), body = checklistDraft(input);
-    return this.command(a, `POST /projects/${project}/checklist-templates`, body, async (c) => {
+    return this.command(a, project, `POST /projects/${project}/checklist-templates`, body, async (c) => {
       const role = await this.role(c, a, project, true);
       const route = await this.route(c, a, project);
       if (role !== "engineer-pto" || route.preparer.userId !== a.userId) throw httpError(403, "role_denied");
@@ -58,7 +58,7 @@ export class ChecklistTemplatesService {
 
   async save(a: Actor, projectId: string, templateId: string, input: unknown) {
     const project = uuid(projectId), id = uuid(templateId), body = checklistSave(input);
-    return this.command(a, `POST /projects/${project}/checklist-templates/${id}`, body, async (c) => {
+    return this.command(a, project, `POST /projects/${project}/checklist-templates/${id}`, body, async (c) => {
       await this.role(c, a, project, true);
       const row = await this.locked(c, project, id);
       if (row.status !== "draft" || !this.preparer(a, row)) throw httpError(403, "role_denied");
@@ -72,7 +72,7 @@ export class ChecklistTemplatesService {
   async submit(a: Actor, projectId: string, templateId: string, input: unknown) {
     const project = uuid(projectId), id = uuid(templateId);
     const body = checklistSubmit(input);
-    return this.command(a, `POST /projects/${project}/checklist-templates/${id}/submit`, body, async (c) => {
+    return this.command(a, project, `POST /projects/${project}/checklist-templates/${id}/submit`, body, async (c) => {
       await this.role(c, a, project, true);
       const row = await this.locked(c, project, id);
       if (row.status !== "draft" || !this.preparer(a, row)) throw httpError(403, "role_denied");
@@ -87,7 +87,7 @@ export class ChecklistTemplatesService {
 
   async decide(a: Actor, projectId: string, templateId: string, input: unknown) {
     const project = uuid(projectId), id = uuid(templateId), body = checklistDecision(input);
-    return this.command(a, `POST /projects/${project}/checklist-templates/${id}/decision`, body, async (c) => {
+    return this.command(a, project, `POST /projects/${project}/checklist-templates/${id}/decision`, body, async (c) => {
       const role = await this.role(c, a, project, true);
       const row = await this.locked(c, project, id);
       if (row.version !== body.expectedVersion) throw httpError(409, "stale_version");
@@ -120,9 +120,10 @@ export class ChecklistTemplatesService {
     return this.detail(c, a, await this.edition(c, row.projectId, row.templateId, edition));
   }
 
-  private async command(a: Actor, operation: string, body: Record<string, unknown>, work: (c: PoolClient) => Promise<Record<string, unknown>>) {
+  private async command(a: Actor, project: string, operation: string, body: Record<string, unknown>, work: (c: PoolClient) => Promise<Record<string, unknown>>) {
     return withTenant(this.pool, a.tenantId, a.userId, async (c) => {
       const { inserted, hash } = await reserveCommand(c, a, operation, body);
+      await this.role(c, a, project, true);
       if (!inserted) return replayCommand(c, a, String(body.requestId), hash);
       const result = await work(c);
       return completeCommand(c, a, String(body.requestId), 201, result);

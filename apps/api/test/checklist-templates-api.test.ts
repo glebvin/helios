@@ -11,6 +11,8 @@ import { hashPassword } from "../src/password.js";
 import { defaultRouteConfiguration } from "../src/route-config.js";
 import { checkHttpContract } from "./contract-check.js";
 
+const qaPort = process.env.HELIOS_CHECKLIST_QA_DB_PORT ?? "54563";
+assert.ok(["54563","54595"].includes(qaPort));
 const password = "fixture-checklist-2026";
 const admin = createPool(adminUrl);
 let app: { close(): Promise<void>; getUrl(): Promise<string>; useGlobalFilters(filter: unknown): void; listen(port: number, host: string): Promise<void> } | undefined;
@@ -50,9 +52,9 @@ function decision(action: string, version: number, extra: Record<string, unknown
 test.before(async () => {
   const url = new URL((admin.options as { connectionString: string }).connectionString);
   assert.equal(url.hostname, "127.0.0.1");
-  assert.equal(url.port, process.env.GITHUB_ACTIONS === "true" ? "54339" : "54563");
+  assert.equal(url.port, process.env.GITHUB_ACTIONS === "true" ? "54339" : qaPort);
   const directory = (await admin.query("SHOW data_directory")).rows[0].data_directory as string;
-  if (process.env.GITHUB_ACTIONS !== "true") assert.equal(realpathSync(directory), realpathSync(fileURLToPath(new URL("../../../.data/pg-54563", import.meta.url))));
+  if (process.env.GITHUB_ACTIONS !== "true") assert.equal(realpathSync(directory), realpathSync(fileURLToPath(new URL(`../../../.data/pg-${qaPort}`, import.meta.url))));
   tenant = randomUUID();
   foreignTenant = randomUUID();
   project = randomUUID();

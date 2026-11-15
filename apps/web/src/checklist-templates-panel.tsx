@@ -1,3 +1,4 @@
+import { templateCommand, confirmedTemplateCommand } from "./template-command";
 import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { checklistPage, checklistPageCount, type ChecklistItem, type ChecklistKind } from "@helios/domain";
@@ -164,47 +165,71 @@ export function ChecklistTemplates({ session, projectId }: { session: Session; p
     }
   }
 
+  const currentScope = useRef("");
+  currentScope.current = [session.token, session.tenantId, projectId].join(":");
+  const mutation = useRef(false);
+  async function write<T>(path: string, payload: Record<string, unknown>) {
+    const origin = currentScope.current;
+    const key = `helios.checklist:${session.tenantId}:${session.userId}:${path}`;
+    const requestId = templateCommand(key, JSON.stringify(payload), () => crypto.randomUUID());
+    try {
+      const result = await v1<T>(session, path, { requestId, ...payload });
+      confirmedTemplateCommand(key);
+      if (origin !== currentScope.current) throw new Error("scope_changed");
+      return result;
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.status < 500) confirmedTemplateCommand(key);
+      throw cause;
+    }
+  }
   async function create() {
+    if (mutation.current) return;
     const found = problem(title, items);
     if (found || !project) { setError(found || "Объект ещё не подтверждён."); return; }
+    const origin = currentScope.current;
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
-      const saved = await v1<Detail>(session, `/projects/${project}/checklist-templates`, { requestId: crypto.randomUUID(), title: title.trim(), items: items.map(forServer) });
+      const saved = await write<Detail>(`/projects/${project}/checklist-templates`, { title: title.trim(), items: items.map(forServer) });
       note("Черновик сохранён.");
       setCreating(false);
       await refresh(saved.templateId, saved.edition);
     } catch (reason) {
+      if (origin !== currentScope.current) return;
       setError(explain(reason));
-    } finally { setBusy(false); }
+    } finally { mutation.current = false; setBusy(false); }
   }
 
   async function act(action: Action) {
+    if (mutation.current) return;
     if (!detail || !project) return;
     if ((action === "save" || action === "revise") && problem(title, items)) { setError(problem(title, items)); return; }
     if (action === "return" && !reason.trim()) { setError("Укажите причину возврата."); return; }
+    const origin = currentScope.current;
+    mutation.current = true;
     setBusy(true);
     setError("");
-    const requestId = crypto.randomUUID();
     try {
       if (action === "save") {
-        await v1(session, `/projects/${project}/checklist-templates/${detail.templateId}`, { requestId, expectedVersion: detail.version, title: title.trim(), items: items.map(forServer) });
+        await write(`/projects/${project}/checklist-templates/${detail.templateId}`, { expectedVersion: detail.version, title: title.trim(), items: items.map(forServer) });
         note("Черновик сохранён.");
       } else if (action === "submit") {
-        await v1(session, `/projects/${project}/checklist-templates/${detail.templateId}/submit`, { requestId, expectedVersion: detail.version });
+        await write(`/projects/${project}/checklist-templates/${detail.templateId}/submit`, { expectedVersion: detail.version });
         note("Шаблон отправлен ответственному.");
       } else {
-        const body: Record<string, unknown> = { requestId, expectedVersion: detail.version, action, reason: action === "return" ? reason.trim() : null };
+        const body: Record<string, unknown> = { expectedVersion: detail.version, action, reason: action === "return" ? reason.trim() : null };
         if (action === "revise") { body.title = title.trim(); body.items = items.map(forServer); }
-        await v1(session, `/projects/${project}/checklist-templates/${detail.templateId}/decision`, body);
+        await write(`/projects/${project}/checklist-templates/${detail.templateId}/decision`, body);
         note(action === "approve" ? "Версия утверждена." : action === "return" ? "Шаблон возвращён." : action === "revise" ? "Открыта новая редакция." : action === "accept" ? "Ответственность принята." : "Согласование записано.");
         if (action === "return") setReason("");
       }
       await refresh(detail.templateId, action === "revise" ? null : detail.edition);
     } catch (reason) {
+      if (origin !== currentScope.current) return;
       setError(explain(reason));
       if (reason instanceof ApiError && (reason.message === "stale_version" || reason.message === "review_recorded")) await refresh(detail.templateId, detail.edition);
-    } finally { setBusy(false); }
+    } finally { mutation.current = false; setBusy(false); }
   }
 
   const editable = creating || !!detail?.allowedActions.includes("save") || !!detail?.allowedActions.includes("revise");

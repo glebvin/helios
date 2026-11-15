@@ -11,6 +11,10 @@ export class VersionedAuthController {
   constructor(@Inject(AuthService) private readonly auth: AuthService) {}
   @Post("login")
   login(@Body() body: unknown) { return this.auth.login(body); }
+  @Post("phone/challenge")
+  phoneChallenge(@Body() body: unknown) { return this.auth.phoneChallenge(body); }
+  @Post("phone/login")
+  phoneLogin(@Body() body: unknown) { return this.auth.phoneLogin(body); }
   @Post("logout")
   @UseGuards(TenantGuard)
   logout(@Req() request: ActorRequest) { return this.auth.logout(request.sessionToken!); }

@@ -8,9 +8,11 @@ import { hashPassword } from "../apps/api/src/password.ts";
 import { defaultRouteConfiguration } from "../apps/api/src/route-config.ts";
 
 const password = "fixture-checklist-2026";
-const db = "postgres://helios:helios@127.0.0.1:54563/helios";
-const api = "http://127.0.0.1:4395";
-const web = "http://127.0.0.1:5272";
+const dbPort = Number(process.env.HELIOS_CHECKLIST_QA_DB_PORT ?? 54563);
+assert.ok([54563,54595].includes(dbPort));
+const db = `postgres://helios:helios@127.0.0.1:${dbPort}/helios`;
+const api = `http://127.0.0.1:${dbPort === 54595 ? 4411 : 4395}`;
+const web = `http://127.0.0.1:${dbPort === 54595 ? 5283 : 5272}`;
 const admin = new pg.Pool({ connectionString: db });
 const tenant = randomUUID();
 const project = randomUUID();
@@ -58,9 +60,9 @@ async function templates(page) {
 }
 
 const url = new URL(db);
-assert.equal(url.port, "54563");
+assert.equal(url.port, String(dbPort));
 const directory = (await admin.query("SHOW data_directory")).rows[0].data_directory;
-assert.equal(realpathSync(directory), realpathSync(fileURLToPath(new URL("../.data/pg-54563", import.meta.url))));
+assert.equal(realpathSync(directory), realpathSync(fileURLToPath(new URL(`../.data/pg-${dbPort}`, import.meta.url))));
 const hash = hashPassword(password);
 await admin.query("INSERT INTO tenants(id,name) VALUES($1,'Checklist browser')", [tenant]);
 await admin.query("INSERT INTO projects(tenant_id,id,name) VALUES($1,$2,'Объект шаблона'),($1,$3,'Чужой объект')", [tenant, project, other]);
@@ -121,7 +123,21 @@ try {
   await page.getByLabel("Единица").fill("мм");
   await page.getByLabel("Допуск от").fill("10");
   await page.getByLabel("Допуск до").fill("20");
+  let lostCreate = null;
+  await page.route("**/api/v1/projects/*/checklist-templates", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    lostCreate = route.request().postDataJSON();
+    const response = await route.fetch(); assert.equal(response.status(), 201);
+    await route.abort("failed");
+    await page.unroute("**/api/v1/projects/*/checklist-templates");
+  });
   await page.getByRole("button", { name: "Сохранить черновик" }).click();
+  await page.getByText("Нет ответа сервера.", {exact:true}).waitFor();
+  const retryCreate = page.waitForRequest((request) => request.method() === "POST" && /\/checklist-templates$/.test(new URL(request.url()).pathname));
+  await page.getByRole("button", { name: "Сохранить черновик" }).click();
+  assert.deepEqual((await retryCreate).postDataJSON(), lostCreate);
+  assert.equal((await admin.query("SELECT count(*)::int n FROM checklist_template_editions WHERE tenant_id=$1 AND title='Сдача шва'", [tenant])).rows[0].n, 1);
+
   await page.getByRole("button", { name: /Сдача шва/ }).waitFor();
   await page.getByRole("button", { name: "Отправить по маршруту" }).click();
   const draft = () => page.getByRole("button", { name: /Сдача шва/ });

@@ -12,6 +12,7 @@ import { QualificationsPanel } from "./qualifications-panel";
 import { EmployeeForm } from "./employee-form";
 import { canWriteStaff } from "./staff-form";
 import { CrewPanel } from "./crew-panel";
+import { StaffImportPanel } from "./staff-import-panel";
 import { TimeSheet } from "./time-sheet";
 import { Flash } from "./flash";
 import { DeskBadge, DeskCrumbs, DeskEmpty, DeskSelect, DeskTimeline, FluidTabs, SmoothButton, StatGrid } from "./kit";
@@ -129,6 +130,7 @@ export function People({
             { value: list.error ? "—" : String(onShift.size), label: "на смене на этой странице" },
             { value: list.error ? "—" : String(review.size), label: "проверка на этой странице" },
           ]} />
+          {canWriteStaff(session.role) ? <StaffImportPanel /> : null}
           <input className="object-search" type="search" value={query} placeholder="Найти работника" aria-label="Найти работника" onChange={(event) => setQuery(event.target.value)} />
           {list.loading && list.items.length === 0 ? <p className="quiet">Читаем список сотрудников на сервере.</p> : null}
           {list.error ? <DeskEmpty title="Список не прочитан" description={list.error} /> : null}
