@@ -192,7 +192,8 @@ export class TasksService {
   // Ordinary GETs deliberately do not acquire this lock set and are informational only.
   private async readiness(c:PoolClient,a:Actor,p:string,t:Row) {
     const reasons:string[]=[],warnings:string[]=[];
-    const employee=(await c.query(`SELECT * FROM employees WHERE tenant_id=$1 AND id=$2`,[a.tenantId,t.assigneeEmployeeId])).rows[0];
+    // Publication evidence lists the accepted employee columns.
+    const employee=(await c.query(`SELECT tenant_id,id,organization_id,full_name,phone,document_number,user_id,status,version FROM employees WHERE tenant_id=$1 AND id=$2`,[a.tenantId,t.assigneeEmployeeId])).rows[0];
     const assignment=(await c.query(`SELECT employee_id AS "employeeId",status,version,admission_check_id AS "admissionCheckId" FROM employee_project_assignments WHERE tenant_id=$1 AND project_id=$2 AND employee_id=$3`,[a.tenantId,p,t.assigneeEmployeeId])).rows[0];
     if(!assignment || assignment.status!=='active')reasons.push('assignment_inactive');
     if(!employee || employee.status!=='active')reasons.push('employee_archived');

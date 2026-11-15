@@ -26,15 +26,17 @@ const people = [
   { key: "master", role: "master", name: "Мастер" },
   { key: "pto", role: "pto", name: "ПТО" },
 ].map((person) => ({ ...person, id: randomUUID(), email: `${person.key}-${tenant}@staff-import.test` }));
-const admin = createPool(process.env.ADMIN_DATABASE_URL);
+const adminTarget = new URL(process.env.ADMIN_DATABASE_URL ?? "postgres://invalid");
+const admin = createPool(adminTarget.toString());
 let app: INestApplication;
 let base = "";
 const tokens = new Map<string, string>();
 
 before(async () => {
   const live = await admin.query(`SELECT inet_server_port()::text AS port, inet_server_addr()::text AS host, current_setting('data_directory') AS directory`);
+  assert.equal(adminTarget.hostname, "127.0.0.1");
   assert.equal(live.rows[0].port, expectedPort);
-  assert.match(live.rows[0].host, /^127\.0\.0\.1/);
+  if (!ci) assert.match(live.rows[0].host, /^127\.0\.0\.1/);
   assert.match(live.rows[0].directory, expectedDir);
   const hash = hashPassword(password);
   await admin.query(`INSERT INTO tenants(id,name) VALUES($1,'Импорт'),($2,'Чужая')`, [tenant, otherTenant]);
