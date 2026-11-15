@@ -13,6 +13,7 @@ import { EmployeeForm } from "./employee-form";
 import { canWriteStaff } from "./staff-form";
 import { CrewPanel } from "./crew-panel";
 import { TimeSheet } from "./time-sheet";
+import { PrimaryDay } from "./primary-day";
 import { Flash } from "./flash";
 import { DeskBadge, DeskCrumbs, DeskEmpty, DeskSelect, DeskTimeline, FluidTabs, SmoothButton, StatGrid } from "./kit";
 import { amount, clock, laneOf, laneTone, permitState, statusLabel, todayKey, type Admission } from "./model";
@@ -175,7 +176,10 @@ export function People({
           </div>
         )
       ) : null}
-      {tab === "sheet" ? <TimeSheet key={`${session.tenantId}:${session.userId}:${projectId}`} session={session} projectId={projectId} canDecide={canDecideHours} day={sheetDay} /> : null}
+      {tab === "sheet" ? <>
+        {session.role === "master" || session.role === "hr" ? <PrimaryDay key={`${session.tenantId}:${session.userId}:${projectId}`} session={session} projectId={projectId} organizations={data.organizations} /> : null}
+        {session.role === "hr" ? null : <TimeSheet key={`${session.tenantId}:${session.userId}:${projectId}`} session={session} projectId={projectId} canDecide={canDecideHours} day={sheetDay} />}
+      </> : null}
     </section>
   );
 }

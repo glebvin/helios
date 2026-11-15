@@ -8083,6 +8083,111 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{p}/time/primary-days/{day}": {
+      "get": {
+        "operationId": "readPrimaryDay",
+        "summary": "Read one employer's civil day beside its immutable primary close",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "p", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "day", "in": "path", "required": true, "schema": { "type": "string", "format": "date", "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$" } },
+          { "name": "organizationId", "in": "query", "required": false, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Live facts and, once closed, the frozen snapshot.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PrimaryDay" } } } },
+          "400": { "description": "Malformed day or query.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing or invalid session.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role or employer is outside this command.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Project or employer is not visible.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Recorded execution does not match its events.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/time/primary-days/{day}/close": {
+      "post": {
+        "operationId": "closePrimaryDay",
+        "summary": "Master closes the primary day for their employer",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "p", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "day", "in": "path", "required": true, "schema": { "type": "string", "format": "date", "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PrimaryDayCloseInput" } } } },
+        "responses": {
+          "201": { "description": "Immutable close stored.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PrimaryDay" } } } },
+          "400": { "description": "Malformed command.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing or invalid session.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role or employer is outside this command.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Project is not visible.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Version, source or idempotency conflict.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Nothing recorded, an interval is open, or the day is still in the future.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/time/primary-days/{day}/corrections": {
+      "post": {
+        "operationId": "preparePrimaryDayCorrection",
+        "summary": "Master prepares a correction of a closed primary day after a consolidated revision",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "p", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "day", "in": "path", "required": true, "schema": { "type": "string", "format": "date", "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PrimaryDayCorrectionInput" } } } },
+        "responses": {
+          "201": { "description": "Correction stored. The close and issued revisions stay unchanged.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PrimaryDay" } } } },
+          "400": { "description": "Malformed command.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing or invalid session.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role or employer is outside this command.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Project is not visible.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "No issued revision, version conflict, or a correction is already waiting.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/time/consolidated/{day}": {
+      "get": {
+        "operationId": "readConsolidatedTime",
+        "summary": "Read issued consolidated revisions for a project day",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "p", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "day", "in": "path", "required": true, "schema": { "type": "string", "format": "date", "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$" } }
+        ],
+        "responses": {
+          "200": { "description": "Issued revisions. Missing history is an empty list.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConsolidatedTime" } } } },
+          "400": { "description": "Malformed day or query.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing or invalid session.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role is outside this read.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Project is not visible.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/time/consolidated/{day}/revisions": {
+      "post": {
+        "operationId": "issueConsolidatedTime",
+        "summary": "Personnel issues the next consolidated revision",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "p", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "day", "in": "path", "required": true, "schema": { "type": "string", "format": "date", "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConsolidatedTimeInput" } } } },
+        "responses": {
+          "201": { "description": "New revision stored. Previous revisions stay.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ConsolidatedTime" } } } },
+          "400": { "description": "Malformed command.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing or invalid session.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role is outside this command.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Project or correction is not visible.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Version conflict or the correction does not cite the frozen close.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "No primary close exists for this day.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
     }
   },
   "components": {
@@ -8141,6 +8246,147 @@
       }
     },
     "schemas": {
+      "PrimaryDayFacts": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sourceHash", "presenceMs", "idleMs", "workMs", "breakMs", "downtimeMs", "shifts"],
+        "properties": {
+          "sourceHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "presenceMs": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+          "idleMs": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+          "workMs": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+          "breakMs": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+          "downtimeMs": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+          "shifts": { "type": "array", "items": { "$ref": "#/components/schemas/PrimaryDayShift" } }
+        }
+      },
+      "PrimaryDayShift": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["shiftId", "mode", "ms", "open"],
+        "properties": {
+          "shiftId": { "type": "string", "format": "uuid" },
+          "mode": { "type": "string", "enum": ["idle", "work", "break", "downtime"] },
+          "ms": { "type": "string", "pattern": "^(0|[1-9][0-9]*)$" },
+          "open": { "type": "boolean" }
+        }
+      },
+      "PrimaryDayEmployee": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["employeeId", "fullName", "live", "snapshot"],
+        "properties": {
+          "employeeId": { "type": "string", "format": "uuid" },
+          "fullName": { "type": "string" },
+          "live": { "nullable": true, "oneOf": [{ "$ref": "#/components/schemas/PrimaryDayFacts" }] },
+          "snapshot": { "nullable": true, "oneOf": [{ "$ref": "#/components/schemas/PrimaryDayFacts" }] }
+        }
+      },
+      "PrimaryDayCorrection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "reason", "correctsVersion", "correctsHash", "recordedAt", "recordedBy", "recordedByName", "acceptedRevision"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "reason": { "type": "string" },
+          "correctsVersion": { "type": "integer", "minimum": 1, "maximum": 1 },
+          "correctsHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "recordedAt": { "type": "string", "format": "date-time" },
+          "recordedBy": { "type": "string", "format": "uuid" },
+          "recordedByName": { "type": "string" },
+          "acceptedRevision": { "type": "integer", "minimum": 1, "nullable": true }
+        }
+      },
+      "ConsolidatedClose": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["organizationId", "sourceHash", "version"],
+        "properties": {
+          "organizationId": { "type": "string", "format": "uuid" },
+          "sourceHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "version": { "type": "integer", "minimum": 1, "maximum": 1 }
+        }
+      },
+      "ConsolidatedRevision": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["revision", "previousRevision", "issuedAt", "issuedBy", "issuedByName", "correctionId", "closes"],
+        "properties": {
+          "revision": { "type": "integer", "minimum": 1 },
+          "previousRevision": { "type": "integer", "minimum": 1, "nullable": true },
+          "issuedAt": { "type": "string", "format": "date-time" },
+          "issuedBy": { "type": "string", "format": "uuid" },
+          "issuedByName": { "type": "string" },
+          "correctionId": { "type": "string", "format": "uuid", "nullable": true },
+          "closes": { "type": "array", "items": { "$ref": "#/components/schemas/ConsolidatedClose" } }
+        }
+      },
+      "PrimaryDay": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["projectId", "organizationId", "organizationName", "day", "timezone", "closeVersion", "closedAt", "closedBy", "closedByName", "liveHash", "snapshotHash", "diverged", "employees", "revision", "revisions", "correction"],
+        "properties": {
+          "projectId": { "type": "string", "format": "uuid" },
+          "organizationId": { "type": "string", "format": "uuid" },
+          "organizationName": { "type": "string" },
+          "day": { "type": "string", "format": "date" },
+          "timezone": { "type": "string" },
+          "closeVersion": { "type": "integer", "minimum": 0, "maximum": 1 },
+          "closedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "closedBy": { "type": "string", "format": "uuid", "nullable": true },
+          "closedByName": { "type": "string", "nullable": true },
+          "liveHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "snapshotHash": { "type": "string", "pattern": "^[0-9a-f]{64}$", "nullable": true },
+          "diverged": { "type": "boolean" },
+          "employees": { "type": "array", "items": { "$ref": "#/components/schemas/PrimaryDayEmployee" } },
+          "revision": { "type": "integer", "minimum": 0 },
+          "revisions": { "type": "array", "items": { "$ref": "#/components/schemas/ConsolidatedRevision" } },
+          "correction": { "nullable": true, "oneOf": [{ "$ref": "#/components/schemas/PrimaryDayCorrection" }] }
+        }
+      },
+      "ConsolidatedTime": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["projectId", "day", "revision", "revisions"],
+        "properties": {
+          "projectId": { "type": "string", "format": "uuid" },
+          "day": { "type": "string", "format": "date" },
+          "revision": { "type": "integer", "minimum": 0 },
+          "revisions": { "type": "array", "items": { "$ref": "#/components/schemas/ConsolidatedRevision" } }
+        }
+      },
+      "PrimaryDayCloseInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "expectedCloseVersion", "organizationId", "sourceHash"],
+        "properties": {
+          "requestId": { "type": "string", "format": "uuid" },
+          "expectedCloseVersion": { "type": "integer", "minimum": 0 },
+          "organizationId": { "type": "string", "format": "uuid" },
+          "sourceHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      },
+      "PrimaryDayCorrectionInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "organizationId", "reason", "expectedCorrectionVersion"],
+        "properties": {
+          "requestId": { "type": "string", "format": "uuid" },
+          "organizationId": { "type": "string", "format": "uuid" },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "expectedCorrectionVersion": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "ConsolidatedTimeInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "expectedRevision"],
+        "properties": {
+          "requestId": { "type": "string", "format": "uuid" },
+          "expectedRevision": { "type": "integer", "minimum": 0 },
+          "correctionId": { "type": "string", "format": "uuid" }
+        }
+      },
       "Error": {
         "type": "object",
         "properties": {
