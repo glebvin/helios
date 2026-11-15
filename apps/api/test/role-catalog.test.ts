@@ -72,6 +72,13 @@ async function guard(role:string,method:string,path:string){
   const request={headers:{authorization:'Bearer '+'a'.repeat(64),'x-tenant-id':tenant},method,path};
   return new TenantGuard(auth).canActivate({switchToHttp:()=>({getRequest:()=>request})}as unknown as ExecutionContext);
 }
+test('cost maintains contract prices only inside an assigned project',()=>{
+  assert.ok(allow('cost','prices.maintain'));
+  assert.ok(roleContractAllows(actor('cost'),'prices.maintain',{tenantId:tenant}));
+  assert.equal(allow('cost','prices.maintain',{...resource,projectId:other}),false);
+  assert.equal(allow('cost','prices.maintain',{...resource,tenantId:other}),false);
+  for(const role of roleCatalog)if(role.code!=='cost')assert.equal(allow(role.code,'prices.maintain'),false);
+});
 test('reserved roles authenticate identity/logout but cannot fall through any business handler',async()=>{
   for(const role of roleCatalog.filter(r=>!isExistingRuntimeRole(r.code))){
     assert.equal(await guard(role.code,'GET','/api/v1/me'),true);
@@ -81,6 +88,11 @@ test('reserved roles authenticate identity/logout but cannot fall through any bu
     }
   }
   await assert.rejects(guard('constructor','GET','/api/v1/me'),{message:'role_denied'});
+  assert.equal(await guard('cost','GET','/api/v1/contract-prices/projects'),true);
+  assert.equal(await guard('cost','POST',`/api/v1/projects/${project}/contract-prices`),true);
+  await assert.rejects(guard('brigadier','GET','/api/v1/contract-prices/projects'),{message:'role_denied'});
+  await assert.rejects(guard('cost','GET','/api/v1/projects'),{message:'role_denied'});
+  await assert.rejects(guard('cost','POST',`/api/v1/projects/${project}/work-types`),{message:'role_denied'});
 });
 test('engineer-pto reaches only checklist templates; other reserved roles and unrelated writes stay closed',async()=>{
   const project='/api/v1/projects/33333333-3333-4333-8333-333333333333';

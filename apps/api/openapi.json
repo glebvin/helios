@@ -7751,6 +7751,57 @@
         }
       }
     },
+    "/api/v1/contract-prices/projects": {
+      "get": {
+        "operationId": "listContractPriceProjects",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Projects the cost role may price", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContractPriceProjects" } } } },
+          "400": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/contract-prices": {
+      "get": {
+        "operationId": "readContractPrices",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Work types and immutable price revisions", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContractPriceRegister" } } } },
+          "400": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "operationId": "recordContractPrice",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContractPriceCommand" } } } },
+        "responses": {
+          "201": { "description": "Stored revision", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContractPriceRevision" } } } },
+          "400": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/route-config": {
       "get": {
         "operationId": "readRouteConfiguration",
@@ -15745,6 +15796,91 @@
             "format": "date-time",
             "nullable": true
           }
+        }
+      },
+      "ContractPriceProjects": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["projects"],
+        "properties": {
+          "projects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "name"],
+              "properties": {
+                "id": { "type": "string", "format": "uuid" },
+                "name": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "ContractPriceRevision": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["projectId", "workTypeId", "version", "unit", "price", "start", "end"],
+        "properties": {
+          "projectId": { "type": "string", "format": "uuid" },
+          "workTypeId": { "type": "string", "format": "uuid" },
+          "version": { "type": "integer", "minimum": 1 },
+          "unit": { "type": "string" },
+          "price": { "type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,6})?$" },
+          "start": { "type": "string", "format": "date" },
+          "end": { "type": "string", "format": "date" }
+        }
+      },
+      "ContractPriceCommand": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "workTypeId", "price", "start", "end", "expectedVersion"],
+        "properties": {
+          "requestId": { "type": "string", "format": "uuid" },
+          "workTypeId": { "type": "string", "format": "uuid" },
+          "price": { "type": "string" },
+          "start": { "type": "string", "format": "date" },
+          "end": { "type": "string", "format": "date" },
+          "expectedVersion": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "ContractPriceRegister": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["projectId", "asOf", "workTypes"],
+        "properties": {
+          "projectId": { "type": "string", "format": "uuid" },
+          "asOf": { "type": "string", "format": "date" },
+          "workTypes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "name", "unit", "status", "headVersion", "acting", "revisions"],
+              "properties": {
+                "id": { "type": "string", "format": "uuid" },
+                "name": { "type": "string" },
+                "unit": { "type": "string" },
+                "status": { "type": "string", "enum": ["active", "archived"] },
+                "headVersion": { "type": "integer", "minimum": 0 },
+                "acting": { "nullable": true, "allOf": [{ "$ref": "#/components/schemas/ContractPriceHistoryItem" }] },
+                "revisions": { "type": "array", "items": { "$ref": "#/components/schemas/ContractPriceHistoryItem" } }
+              }
+            }
+          }
+        }
+      },
+      "ContractPriceHistoryItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["version", "unit", "price", "start", "end", "createdAt"],
+        "properties": {
+          "version": { "type": "integer", "minimum": 1 },
+          "unit": { "type": "string" },
+          "price": { "type": "string" },
+          "start": { "type": "string", "format": "date" },
+          "end": { "type": "string", "format": "date" },
+          "createdAt": { "type": "string", "format": "date-time" }
         }
       },
       "RouteConfigRead": {
