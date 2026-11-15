@@ -20,6 +20,8 @@ for path in paths:
         errors.append(f'Missing {path.relative_to(root)}')
         continue
     text=path.read_text()
+    if re.search(r"^(?:<{7} |>{7} )", text, re.M):
+        errors.append(f'Unresolved merge conflict in {path.relative_to(root)}')
     for target in re.findall(r'(?<!!)\[[^\]]+\]\(([^)]+)\)',text):
         target=target.strip('<>').split('#',1)[0]
         if not target or re.match(r'^[a-zA-Z][a-zA-Z0-9+.-]*:',target):

@@ -509,11 +509,15 @@ test('OpenAPI81 retains exact old58 inventory plus time days and route configura
   added03b.push(['get',time+'/days']);
   const routeConfig=[['get','/api/v1/projects/{projectId}/route-config'],['post','/api/v1/projects/{projectId}/route-config'],['get','/api/v1/projects/{id}/tasks/{task}/route']];
   const phoneRoutes=[['post','/api/v1/auth/phone/challenge'],['post','/api/v1/auth/phone/login']];
-  const primaryDay=[['get','/api/v1/projects/{p}/time/primary-days/{day}'],['post','/api/v1/projects/{p}/time/primary-days/{day}/close'],['post','/api/v1/projects/{p}/time/primary-days/{day}/corrections'],['get','/api/v1/projects/{p}/time/consolidated/{day}'],['post','/api/v1/projects/{p}/time/consolidated/{day}/revisions']];
-  const newKeys=[...added03b,...routeConfig,...phoneRoutes,...primaryDay].map(([m,p])=>`${m} ${p}`),retained=actual.filter(k=>!newKeys.includes(k));
+  const orders=[['get','/api/v1/responsibility-orders'],['post','/api/v1/responsibility-orders'],['get','/api/v1/responsibility-orders/applicability'],['get','/api/v1/responsibility-orders/{id}'],['post','/api/v1/responsibility-orders/{id}'],['post','/api/v1/responsibility-orders/{id}/revoke']];
+  const prices=[['get','/api/v1/contract-prices/projects'],['get','/api/v1/projects/{projectId}/contract-prices'],['post','/api/v1/projects/{projectId}/contract-prices']];
+  const checklistTemplates=[["get", "/api/v1/checklist-templates"], ["get", "/api/v1/projects/{projectId}/checklist-templates"], ["post", "/api/v1/projects/{projectId}/checklist-templates"], ["get", "/api/v1/projects/{projectId}/checklist-templates/{templateId}"], ["post", "/api/v1/projects/{projectId}/checklist-templates/{templateId}"], ["post", "/api/v1/projects/{projectId}/checklist-templates/{templateId}/submit"], ["post", "/api/v1/projects/{projectId}/checklist-templates/{templateId}/decision"]];
+  const primaryDayOps=[["get", "/api/v1/projects/{p}/time/primary-days/{day}"], ["post", "/api/v1/projects/{p}/time/primary-days/{day}/close"], ["post", "/api/v1/projects/{p}/time/primary-days/{day}/corrections"], ["get", "/api/v1/projects/{p}/time/consolidated/{day}"], ["post", "/api/v1/projects/{p}/time/consolidated/{day}/revisions"]];
+  const newKeys=[...added03b,...routeConfig,...orders,...phoneRoutes,...prices,...checklistTemplates,...primaryDayOps].map(([m,p])=>`${m} ${p}`),retained=actual.filter(k=>!newKeys.includes(k));
   assert.equal(originalOperationInventory.length,53);assert.equal(retained.length,58);assert.deepEqual(retained.sort(),[...originalOperationInventory,...added].map(([m,p])=>`${m} ${p}`).sort());
-  assert.equal(added03b.length,12);assert.equal(actual.length,80);assert.deepEqual(actual.sort(),[...originalOperationInventory,...added,...added03b,...routeConfig,...phoneRoutes,...primaryDay].map(([m,p])=>`${m} ${p}`).sort());
-  const ids=Object.values(spec.paths).flatMap((p:any)=>Object.values(p).map((v:any)=>v.operationId));assert.equal(new Set(ids).size,86);
+  assert.equal(added03b.length,12);assert.equal(orders.length,6);assert.equal(actual.length,96);assert.deepEqual(actual.sort(),[...originalOperationInventory,...added,...added03b,...routeConfig,...orders,...phoneRoutes,...prices,...checklistTemplates,...primaryDayOps].map(([m,p])=>`${m} ${p}`).sort());
+  const ids=Object.values(spec.paths).flatMap((p:any)=>Object.values(p).map((v:any)=>v.operationId));assert.equal(new Set(ids).size,102);
+
   const scan=(v:any):void=>{if(v&&typeof v==='object'){if(v.$ref?.startsWith('#/'))assert.ok(v.$ref.slice(2).split('/').reduce((o:any,k:string)=>o?.[k],spec),v.$ref);Object.values(v).forEach(scan);}};scan(spec);
   function matches(v:any,s:any):void{
     if(s.$ref)return matches(v,schemas[s.$ref.split('/').at(-1)]);

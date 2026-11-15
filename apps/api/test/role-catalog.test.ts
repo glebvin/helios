@@ -51,6 +51,13 @@ test('self and crew contracts keep people, crews and employers separate',()=>{
   for(const target of [{...resource,crewId:other},{...resource,employerId:other},{...resource,crewId:undefined}])assert.equal(allow('brigadier','crew.volume.report',target),false);
   assert.equal(allow('worker','crew.volume.report'),false);
 });
+test('orders belong to personnel and stay inside the company and object',()=>{
+  assert.ok(allow('hr','orders.manage'));
+  assert.equal(allow('hr','orders.manage',{...resource,projectId:other}),false);
+  assert.equal(allow('hr','orders.manage',{...resource,employerId:other}),false);
+  assert.equal(allow('director','orders.manage'),false);
+  assert.equal(allow('admin','orders.manage'),false);
+});
 test('admin config is scoped and never a blanket editor of confirmed production data',()=>{
   assert.ok(allow('admin','routes.configure'));assert.equal(allow('admin','routes.configure',{...resource,projectId:other}),false);
   assert.equal(allow('director','routes.configure'),false);
@@ -65,6 +72,13 @@ async function guard(role:string,method:string,path:string){
   const request={headers:{authorization:'Bearer '+'a'.repeat(64),'x-tenant-id':tenant},method,path};
   return new TenantGuard(auth).canActivate({switchToHttp:()=>({getRequest:()=>request})}as unknown as ExecutionContext);
 }
+test('cost maintains contract prices only inside an assigned project',()=>{
+  assert.ok(allow('cost','prices.maintain'));
+  assert.ok(roleContractAllows(actor('cost'),'prices.maintain',{tenantId:tenant}));
+  assert.equal(allow('cost','prices.maintain',{...resource,projectId:other}),false);
+  assert.equal(allow('cost','prices.maintain',{...resource,tenantId:other}),false);
+  for(const role of roleCatalog)if(role.code!=='cost')assert.equal(allow(role.code,'prices.maintain'),false);
+});
 test('reserved roles authenticate identity/logout but cannot fall through any business handler',async()=>{
   for(const role of roleCatalog.filter(r=>!isExistingRuntimeRole(r.code))){
     assert.equal(await guard(role.code,'GET','/api/v1/me'),true);
@@ -74,9 +88,32 @@ test('reserved roles authenticate identity/logout but cannot fall through any bu
     }
   }
   await assert.rejects(guard('constructor','GET','/api/v1/me'),{message:'role_denied'});
+  assert.equal(await guard('cost','GET','/api/v1/contract-prices/projects'),true);
+  assert.equal(await guard('cost','POST',`/api/v1/projects/${project}/contract-prices`),true);
+  await assert.rejects(guard('brigadier','GET','/api/v1/contract-prices/projects'),{message:'role_denied'});
+  await assert.rejects(guard('cost','GET','/api/v1/projects'),{message:'role_denied'});
+  await assert.rejects(guard('cost','POST',`/api/v1/projects/${project}/work-types`),{message:'role_denied'});
+});
+test('engineer-pto reaches only checklist templates; other reserved roles and unrelated writes stay closed',async()=>{
+  const project='/api/v1/projects/33333333-3333-4333-8333-333333333333';
+  const template=`${project}/checklist-templates/55555555-5555-4555-8555-555555555555`;
+  for (const [method,path] of [['GET','/api/v1/checklist-templates'],['GET',`${project}/checklist-templates`],['POST',`${project}/checklist-templates`],['GET',template],['POST',template],['POST',`${template}/submit`],['POST',`${template}/decision`]]) assert.equal(await guard('engineer-pto',method,path),true);
+  await assert.rejects(guard('engineer-pto','POST','/api/v1/employees'),{message:'role_denied'});
+  await assert.rejects(guard('engineer-pto','GET','/api/v1/projects'),{message:'role_denied'});
+  await assert.rejects(guard('engineer-pto','GET','/api/v1/overview'),{message:'role_denied'});
+  for (const role of ['cost','brigadier','subcontractor','peo','gb','uo']) await assert.rejects(guard(role,'GET','/api/v1/checklist-templates'),{message:'role_denied'});
+  assert.equal(await guard('safety','POST',`${template}/decision`),true);
+  assert.equal(await guard('zds-soso','POST',`${template}/decision`),true);
+  await assert.rejects(guard('safety','POST',`${project}/checklist-templates`),{message:'role_denied'});
+  await assert.rejects(guard('zds-soso','POST',`${template}/submit`),{message:'role_denied'});
+  await assert.rejects(guard('hr','POST',`${template}/decision`),{message:'role_denied'});
 });
 test('existing role guard behaviour remains unchanged',async()=>{
   for(const role of roleCatalog.filter(r=>isExistingRuntimeRole(r.code)))assert.equal(await guard(role.code,'GET','/api/desk'),true);
   assert.equal(await guard('director','POST','/api/tasks'),true);
   for(const role of ['gd','admin','hr','customer'])await assert.rejects(guard(role,'POST','/api/tasks'),{message:'role_denied'});
+  assert.equal(await guard('hr','POST','/api/v1/responsibility-orders'),true);
+  assert.equal(await guard('hr','POST',`/api/v1/responsibility-orders/${project}/revoke`),true);
+  await assert.rejects(guard('admin','POST','/api/v1/responsibility-orders'),{message:'role_denied'});
+  await assert.rejects(guard('hr','POST','/api/v1/responsibility-orders/not-an-order'),{message:'role_denied'});
 });

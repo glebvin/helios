@@ -24,7 +24,7 @@ export function Documents({ data, canConfirm, canDraft = false, checklistNote = 
         <div>
           <h1>Акты</h1>
           <p className="sub">Скрытая работа, которую потом закроют. Такой акт называется АОСР. Черновик собирается из принятого задания.</p>
-          {checklistNote ? <p className="quiet">Шаблоны чек-листов и перечень ИД пока не реализованы.</p> : null}
+          {checklistNote ? <p className="quiet">Перечень ИД пока не реализован.</p> : null}
           <p className="quiet">Подпись и передача акта пока не реализованы. Черновик, если он собран, остаётся в браузере.</p>
         </div>
         {data.files.length > 0 ? <SmoothButton tone="ghost" onClick={() => save(data.files.map((item) => item.filename))}>Выгрузить реестр</SmoothButton> : null}

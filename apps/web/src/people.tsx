@@ -39,7 +39,7 @@ const peopleTabLabels: { id: Tab; label: string }[] = [
 ];
 
 export function People({
-  session, projectId = "", data, onOpenTask, inviteWorker = false, inviteForeman = false, peopleTabs = ["people"], admitStep = "none", canExport = false, canDecideHours = false, admissions = [], onAdmit, cards = [], onCard, openSheet = 0, sheetDay = "",
+  session, projectId = "", data, onOpenTask, inviteWorker = false, inviteForeman = false, peopleTabs = ["people"], admitStep = "none", canExport = false, canDecideHours = false, admissions = [], onAdmit, cards = [], onCard, openSheet = 0, sheetDay = "", primaryDay = "", primaryWritable = false,
 }: {
   session: Session;
   projectId?: string;
@@ -57,6 +57,8 @@ export function People({
   onCard?: (card: PersonCard) => void;
   openSheet?: number;
   sheetDay?: string;
+  primaryDay?: string;
+  primaryWritable?: boolean;
 }) {
   const [rawTab, setTab] = useState<Tab>(peopleTabs[0] ?? "people");
   useEffect(() => { if (openSheet > 0 && peopleTabs.includes("sheet")) setTab("sheet"); }, [openSheet, peopleTabs]);
@@ -179,7 +181,7 @@ export function People({
         )
       ) : null}
       {tab === "sheet" ? <>
-        {session.role === "master" || session.role === "hr" ? <PrimaryDay key={`${session.tenantId}:${session.userId}:${projectId}`} session={session} projectId={projectId} organizations={data.organizations} /> : null}
+        {session.role === "master" || session.role === "hr" ? <PrimaryDay key={`${session.tenantId}:${session.userId}:${projectId}`} session={session} projectId={projectId} organizations={data.organizations} serverDay={primaryDay} readOnly={!primaryWritable} /> : null}
         {session.role === "hr" ? null : <TimeSheet key={`${session.tenantId}:${session.userId}:${projectId}`} session={session} projectId={projectId} canDecide={canDecideHours} day={sheetDay} />}
       </> : null}
     </section>

@@ -4,7 +4,7 @@ import type { Session } from "./api";
 import { DeskEmpty, DeskTimeline } from "./kit";
 import { Flash } from "./flash";
 import { NoteMark } from "./note-mark";
-import { ApiError, moscowDay, v1 } from "./v1";
+import { ApiError, v1 } from "./v1";
 import { timeDecisionId } from "./time-command";
 import { durationLabel } from "./worker-day";
 
@@ -32,9 +32,9 @@ type PrimaryDay = {
 
 const modes: Record<string, string> = { idle: "Ожидание", work: "Работа", break: "Перерыв", downtime: "Простой" };
 
-export function PrimaryDay({ session, projectId, organizations }: { session: Session; projectId: string; organizations: { id: string; name: string }[] }) {
+export function PrimaryDay({ session, projectId, organizations, serverDay, readOnly = true }: { session: Session; projectId: string; organizations: { id: string; name: string }[]; serverDay: string; readOnly?: boolean }) {
   const reduce = useReducedMotion();
-  const [day, setDay] = useState(moscowDay());
+  const [day, setDay] = useState(serverDay);
   const [organizationId, setOrganizationId] = useState("");
   const [pass, setPass] = useState(0);
   const [reading, setReading] = useState<{ scope: string; day: PrimaryDay | null; error: string } | null>(null);
@@ -52,9 +52,10 @@ export function PrimaryDay({ session, projectId, organizations }: { session: Ses
   useEffect(() => {
     setOrganizationId(current => organizations.some(item => item.id === current) ? current : organizations.length === 1 ? organizations[0]!.id : "");
   }, [organizations, projectId]);
+  useEffect(() => { if (!day && serverDay) setDay(serverDay); }, [day, serverDay]);
   useEffect(() => { setPicked(""); setReason(""); setSaved(""); }, [projectId, day, organizationId]);
   useEffect(() => {
-    if (!projectId || (session.role === "hr" && !organizationId)) return;
+    if (!projectId || !day || (session.role === "hr" && !organizationId)) return;
     let live = true;
     const query = session.role === "hr" ? `?organizationId=${organizationId}` : "";
     void v1<PrimaryDay>(session, `/projects/${projectId}/time/primary-days/${day}${query}`).then((body) => {
@@ -67,7 +68,7 @@ export function PrimaryDay({ session, projectId, organizations }: { session: Ses
   const selected = page?.employees.find((item) => item.employeeId === picked) ?? page?.employees[0] ?? null;
   const facts = selected?.live ?? selected?.snapshot ?? null;
   const waiting = page?.correction && page.correction.acceptedRevision === null;
-  if (!projectId) return <section className="panel" aria-label="Первичный день"><h2>Первичный день</h2><p>Сначала подтвердите объект в шапке кабинета.</p></section>;
+  if (!projectId || !day) return <section className="panel" aria-label="Первичный день"><h2>Первичный день</h2><p>Сначала подтвердите объект в шапке кабинета.</p></section>;
   return <section className="panel" aria-label="Первичный день">
     <div className="panel-bar">
       <h2>Первичный день <NoteMark label="Как закрывается день"><p>Мастер закрывает факт своего работодателя. Снимок, автор и время остаются. Служба персонала выпускает свод. Поздний факт показывает расхождение и идёт отдельной корректировкой, не правкой старого свода.</p></NoteMark></h2>
@@ -76,6 +77,7 @@ export function PrimaryDay({ session, projectId, organizations }: { session: Ses
         {session.role === "hr" ? <label className="field"><span>Работодатель</span><select aria-label="Работодатель" value={organizationId} onChange={(event) => setOrganizationId(event.target.value)}><option value="">Выберите работодателя</option>{organizations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}
       </div>
     </div>
+    {readOnly ? <p className="quiet">Просмотр: закрытие дня и ревизии здесь не записываются.</p> : null}
     {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={() => setPass((value) => value + 1)}>Повторить чтение</button></p> : null}
     {session.role === "hr" && !organizationId ? <p>Выберите работодателя, чтобы прочитать день.</p> : null}
     {loading && !page ? <p className="quiet task-hold" role="status">Читаем день…</p> : null}
@@ -84,9 +86,9 @@ export function PrimaryDay({ session, projectId, organizations }: { session: Ses
       <p className="quiet">{page.organizationName} · {page.timezone}{page.closedAt ? ` · закрыл ${page.closedByName} ${stamp(page.closedAt)}` : " · день ещё не закрыт"}</p>
       {page.diverged ? <p className="alert" role="status">После закрытия пришёл ещё один факт. Снимок и выпущенный свод не изменились. Дальше — корректировка.</p> : null}
       <div className="panel-tools">
-        {session.role === "master" && page.closeVersion === 0 ? <button className="fill desk-action" type="button" disabled={busy} onClick={() => void send("close", page)}>Закрыть первичный день</button> : null}
-        {session.role === "hr" && page.closeVersion === 1 && page.revision === 0 ? <button className="fill desk-action" type="button" disabled={busy} onClick={() => void send("issue", page)}>Выпустить свод</button> : null}
-        {session.role === "hr" && waiting ? <button className="fill desk-action" type="button" disabled={busy} onClick={() => void send("next", page)}>Выпустить следующую ревизию</button> : null}
+        {!readOnly && session.role === "master" && page.closeVersion === 0 ? <button className="fill desk-action" type="button" disabled={busy} onClick={() => void send("close", page)}>Закрыть первичный день</button> : null}
+        {!readOnly && session.role === "hr" && page.closeVersion === 1 && page.revision === 0 ? <button className="fill desk-action" type="button" disabled={busy} onClick={() => void send("issue", page)}>Выпустить свод</button> : null}
+        {!readOnly && session.role === "hr" && waiting ? <button className="fill desk-action" type="button" disabled={busy} onClick={() => void send("next", page)}>Выпустить следующую ревизию</button> : null}
       </div>
       <p className="quiet">В таблице — текущий факт. Первичный снимок и выпущенный свод показаны отдельно.</p>
       <div className="sheet-split">
@@ -111,8 +113,8 @@ export function PrimaryDay({ session, projectId, organizations }: { session: Ses
           {selected?.snapshot ? <p>Первичный снимок: смена {durationLabel(selected.snapshot.presenceMs)}, работа {durationLabel(selected.snapshot.workMs)}.</p> : null}
           {selected?.consolidated ? <p>В своде {page.revision}: смена {durationLabel(selected.consolidated.presenceMs)}, работа {durationLabel(selected.consolidated.workMs)}.</p> : null}
           {facts ? <ul>{facts.shifts.map((shift) => <li key={`${shift.shiftId}:${shift.mode}:${shift.ms}`}>{modes[shift.mode] ?? shift.mode} · {durationLabel(shift.ms)}{shift.open ? " · интервал открыт" : ""}</li>)}</ul> : null}
-          {session.role === "master" && page.closeVersion === 1 && page.revision > 0 && !waiting ? <label className="field"><span>Причина корректировки</span><textarea aria-label="Причина корректировки" value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} /></label> : null}
-          {session.role === "master" && page.closeVersion === 1 && page.revision > 0 && !waiting ? <button className="fill desk-action" type="button" disabled={busy || !reason.trim()} onClick={() => void send("correct", page)}>Подготовить корректировку</button> : null}
+          {!readOnly && session.role === "master" && page.closeVersion === 1 && page.revision > 0 && !waiting ? <label className="field"><span>Причина корректировки</span><textarea aria-label="Причина корректировки" value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} /></label> : null}
+          {!readOnly && session.role === "master" && page.closeVersion === 1 && page.revision > 0 && !waiting ? <button className="fill desk-action" type="button" disabled={busy || !reason.trim()} onClick={() => void send("correct", page)}>Подготовить корректировку</button> : null}
           {page.correction ? <p className="quiet">Корректировка: {page.correction.reason}{page.correction.acceptedRevision ? ` · в своде ${page.correction.acceptedRevision}` : " · ждёт свод"}</p> : null}
           {page.revisions.length ? <DeskTimeline events={page.revisions.map((item) => ({ id: String(item.revision), title: `Свод ${item.revision}`, detail: item.correctionId ? `${item.issuedByName} принял корректировку` : `${item.issuedByName} выпустил по первичному закрытию`, when: stamp(item.issuedAt) }))} /> : <p className="quiet">Свод ещё не выпущен.</p>}
         </div>
@@ -122,7 +124,7 @@ export function PrimaryDay({ session, projectId, organizations }: { session: Ses
   </section>;
 
   async function send(action: "close" | "correct" | "issue" | "next", body: PrimaryDay) {
-    if (mutation.current) return;
+    if (readOnly || mutation.current) return;
     mutation.current = true; setBusy(true); setSaved("");
     const identity = `helios.primary:${session.tenantId}:${session.userId}:${projectId}:${day}:${action}`;
     const payload = action === "close" ? {expectedCloseVersion: body.closeVersion, organizationId: body.organizationId, sourceHash: body.liveHash}

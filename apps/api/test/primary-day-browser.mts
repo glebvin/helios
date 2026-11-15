@@ -73,12 +73,14 @@ try {
   await primary.getByText(/закрыл Павел Мастер/).waitFor();
 
   await enter(hrPage, hr);
+  await hrPage.getByRole('button',{name:'Люди',exact:true}).click();
   await hrPage.getByRole('tab', { name: 'Табель' }).click();
   const personnel = hrPage.getByRole('region', { name: 'Первичный день' });
   await personnel.getByRole('textbox', { name: 'День', exact: true }).fill(day);
   await personnel.getByRole('button', { name: 'Выпустить свод' }).click();
   await hrPage.getByRole('status').filter({ hasText: 'Свод выпущен.' }).waitFor();
   await hrPage.reload();
+  await hrPage.getByRole('button',{name:'Люди',exact:true}).click();
   await hrPage.getByRole('tab', { name: 'Табель' }).click();
   await personnel.getByRole('textbox', { name: 'День', exact: true }).fill(day);
   await personnel.getByText('Свод 1').waitFor();
@@ -92,6 +94,7 @@ try {
   await masterPage.getByRole('status').filter({ hasText: 'Корректировка подготовлена.' }).waitFor();
 
   await hrPage.reload();
+  await hrPage.getByRole('button',{name:'Люди',exact:true}).click();
   await hrPage.getByRole('tab', { name: 'Табель' }).click();
   await personnel.getByRole('textbox', { name: 'День', exact: true }).fill(day);
   await personnel.getByRole('button', { name: 'Выпустить следующую ревизию' }).click();
@@ -109,6 +112,7 @@ try {
   await primary.getByRole('button',{name:'Подготовить корректировку'}).click();
   await masterPage.getByRole('status').filter({hasText:'Корректировка подготовлена.'}).waitFor();
   await hrPage.reload();
+  await hrPage.getByRole('button',{name:'Люди',exact:true}).click();
   await hrPage.getByRole('tab',{name:'Табель'}).click();
   await personnel.getByRole('textbox',{name:'День',exact:true}).fill(day);
   await personnel.getByRole('button',{name:'Выпустить следующую ревизию'}).click();

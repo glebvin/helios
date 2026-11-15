@@ -20,15 +20,20 @@ import { minutesLabel, useBook } from "./book";
 import { amount, dayTasks, laneOf, laneTone, personName, progress, statusLabel, todayKey, type Admission, type Lane, type Remark } from "./model";
 import { LiveInbox, LiveToday } from "./today";
 import { PtoFacts, PtoFiles } from "./facts";
+import { ChecklistTemplates } from "./checklist-templates-panel";
+import { ResponsibilityOrders } from "./responsibility-orders-panel";
+
 
 const icons: Record<Section, string> = {
   overview: paths.home,
   mine: paths.check,
   people: paths.people,
+  orders: paths.file,
   tasks: paths.list,
   quality: paths.shield,
   materials: paths.box,
   documents: paths.file,
+  templates: paths.list,
   objects: paths.pin,
   settings: paths.gear,
 };
@@ -220,6 +225,8 @@ export function DirectorDesk({
           {page === "objects" ? <Objects lead={hasV1ProjectScope(session.role) ? <ProjectCatalogs session={session} projectId={templateProjectId} writable={!preview && session.role === "director"} /> : null} data={data} canEdit={canPlace} normsNote={access.normsNote} onSavePlace={onSavePlace} onTasks={() => onSection("tasks")} /> : null}
           {page === "people" ? (
             <People
+              primaryDay={taskDay}
+              primaryWritable={!preview}
               projectId={templateProjectId}
               key={view}
               session={session}
@@ -239,6 +246,7 @@ export function DirectorDesk({
               sheetDay={taskDay}
             />
           ) : null}
+          {page === "orders" ? <ResponsibilityOrders session={session} projectId={templateProjectId} /> : null}
           {page === "tasks" ? (hasV1ProjectScope(session.role) ? <TaskRead key={`${session.tenantId}:${templateProjectId}:${taskDay}`} session={session} projectId={templateProjectId} day={taskDay} notice={scope.notice} openTaskId={openTask?.id ?? ""} openToken={openTask?.token ?? 0} /> : <WorkBoard
               data={data}
               tasks={tasks}
@@ -275,6 +283,7 @@ export function DirectorDesk({
               onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
             />
           )) : null}
+          {page === "templates" ? <ChecklistTemplates session={session} projectId={templateProjectId} /> : null}
           {page === "documents" ? (livePto ? (
             <PtoFiles session={session} projectId={templateProjectId} projectName={project} day={taskDay} notice={scope.notice} />
           ) : <Documents data={data} canConfirm={false} canDraft={canDraftAct} checklistNote={access.checklistNote} />) : null}
