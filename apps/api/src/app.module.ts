@@ -45,6 +45,9 @@ import {RouteConfigService} from "./route-config.service.js";
 import {RouteConfigController} from "./route-config.controller.js";
 import {ContractPriceService} from "./contract-prices.service.js";
 import {ContractPriceController, ContractPriceProjectController} from "./contract-prices.controller.js";
+import {ResponsibilityOrdersService} from "./responsibility-orders.service.js";
+import {ResponsibilityOrdersController} from "./responsibility-orders.controller.js";
+
 
 export const APP_POOL = "APP_POOL";
 export const BOSS = "BOSS";
@@ -155,7 +158,8 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [ContractPriceProjectController, ContractPriceController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+
   providers: [
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
@@ -177,6 +181,8 @@ class WorkforceController {
     {provide:InvitationsService,useFactory:(pool:Pool)=>new InvitationsService(pool),inject:[APP_POOL]},
     {provide:RouteConfigService,useFactory:(pool:Pool)=>new RouteConfigService(pool),inject:[APP_POOL]},
     {provide:ContractPriceService,useFactory:(pool:Pool)=>new ContractPriceService(pool),inject:[APP_POOL]},
+    {provide:ResponsibilityOrdersService,useFactory:(pool:Pool)=>new ResponsibilityOrdersService(pool),inject:[APP_POOL]},
+
     TenantGuard,
   ],
 })

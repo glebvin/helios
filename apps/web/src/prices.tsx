@@ -80,7 +80,7 @@ export function PriceDesk({ session, theme, onTheme, onLogout }: { session: Sess
     setError("");
     const submittedScope = scope;
     const target = projectId;
-    const body = pending ?? keepPriceCommand(scope, { requestId: crypto.randomUUID(), workTypeId: work.id, price: price.trim(), start, end, expectedVersion: work.headVersion });
+    const body = pending ?? keepPriceCommand(scope, { requestId: crypto.randomUUID(), workTypeId: work.id, price: price.trim().replace(",", "."), start, end, expectedVersion: work.headVersion });
     setPending(body);
     try {
       await call(session, `/projects/${target}/contract-prices`, body);

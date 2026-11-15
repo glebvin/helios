@@ -3,7 +3,7 @@ export type View =
   | "master" | "pto" | "supply" | "safety" | "hr"
   | "customer" | "admin" | "worker";
 
-export type Section = "overview" | "mine" | "people" | "tasks" | "quality" | "materials" | "documents" | "objects" | "settings";
+export type Section = "overview" | "mine" | "people" | "orders" | "tasks" | "quality" | "materials" | "documents" | "objects" | "settings";
 export type PeopleTab = "people" | "foremen" | "crews" | "sheet" | "contractors";
 export type QualityTab = "queue" | "check" | "remarks" | "history";
 
@@ -261,9 +261,9 @@ const desk: Access[] = [
     ...look,
     id: "hr",
     label: "Кадры",
-    hint: "Директор по персоналу, служба персонала. Утверждает табель. Этот шаг пока не реализован на сервере.",
+    hint: "Директор по персоналу, служба персонала. Ведёт приказы об ответственных. Утверждение табеля этим шагом не подключается.",
     account: "director",
-    sections: [{ id: "people", label: "Люди" }],
+    sections: [{ id: "orders", label: "Приказы" }, { id: "people", label: "Люди" }],
     exportPeople: true,
     peopleTabs: ["people", "sheet"],
     shell: "desk",

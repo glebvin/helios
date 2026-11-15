@@ -15,7 +15,7 @@ const director = id(), cost = id(), second = id(), worker = id(), outsider = id(
 const users = [director, cost, second, worker, outsider];
 const tokens = new Map<string, string>();
 let app: INestApplication | undefined, base: string, plaster: { id: string }, zero: { id: string }, missing: { id: string }, edge: { id: string };
-const command = (body: Record<string, unknown>) => ({ requestId: id(), ...body });
+const command = <T extends Record<string, unknown>>(body: T) => ({ requestId: id(), ...body });
 
 async function req(path: string, body: unknown, user = cost, method = body === undefined ? 'GET' : 'POST', tenantId = tenant) {
   const response = await fetch(`${base}/api/v1${path}`, {
