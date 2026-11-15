@@ -9,6 +9,10 @@ import {httpError} from './errors.js';
 import {MAX_EVIDENCE_BYTES,type EvidenceType} from './evidence-input.js';
 import {uuid} from './api-input.js';
 export type BlobDeclaration={sizeBytes:number;sha256:string;contentType:EvidenceType};
+export interface EvidenceBlobStore{
+ put(tenant:string,file:string,bytes:Buffer,declaration:BlobDeclaration):Promise<void>;
+ get(tenant:string,file:string,declaration:BlobDeclaration):Promise<Buffer>;
+}
 export function verifyEvidence(bytes:Buffer,d:BlobDeclaration){
  if(bytes.length!==d.sizeBytes||bytes.length<1||bytes.length>MAX_EVIDENCE_BYTES)throw httpError(422,'evidence_size_mismatch');
  if(createHash('sha256').update(bytes).digest('hex')!==d.sha256)throw httpError(422,'evidence_digest_mismatch');
@@ -35,7 +39,7 @@ export async function readEvidenceRequest(req:IncomingMessage,d:BlobDeclaration)
  verifyEvidence(bytes,d);return bytes;
 }
 // Local/pilot adapter. Filesystem promotion and PostgreSQL ready commit are separate durability boundaries.
-export class EvidenceStorage {
+export class EvidenceStorage implements EvidenceBlobStore {
  private readonly root:string;
  constructor(){this.root=evidenceRoot();}
  private key(tenant:string,file:string){return join(this.root,uuid(tenant).toLowerCase(),uuid(file).toLowerCase());}
