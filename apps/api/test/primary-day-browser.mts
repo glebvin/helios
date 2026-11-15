@@ -1,12 +1,15 @@
 import assert from 'node:assert/strict';
+import { realpathSync,writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { randomUUID as id } from 'node:crypto';
 import { chromium } from 'playwright';
 import pg from 'pg';
 import { hashPassword } from '../src/password.js';
 
-const port = 54583;
-const api = process.env.HELIOS_API_ORIGIN ?? 'http://127.0.0.1:4399';
-const web = process.env.HELIOS_WEB_ORIGIN ?? 'http://127.0.0.1:5278';
+const port = Number(process.env.HELIOS_PRIMARY_QA_DB_PORT ?? 54583);
+assert.ok([54583,54597].includes(port));
+const api = `http://127.0.0.1:${port === 54597 ? 4413 : 4399}`;
+const web = `http://127.0.0.1:${port === 54597 ? 5284 : 5278}`;
 const admin = new pg.Client({ connectionString: `postgres://helios:helios@127.0.0.1:${port}/helios` });
 const tenant = id(), org = id(), project = id(), task = id();
 const worker = id(), master = id(), hr = id(), employee = id(), masterEmployee = id();
@@ -18,7 +21,7 @@ await admin.connect();
 const actual = (await admin.query(`SELECT inet_server_addr()::text addr, inet_server_port() port, current_setting('data_directory') dir`)).rows[0];
 assert.equal(String(actual.addr).startsWith('127.0.0.1'), true, actual.addr);
 assert.equal(Number(actual.port), port);
-assert.equal(String(actual.dir).endsWith('primary-day-consolidated-time/.data/pg-54583'), true, actual.dir);
+assert.equal(realpathSync(actual.dir),realpathSync(fileURLToPath(new URL(`../../../.data/pg-${port}`,import.meta.url))));
 
 await admin.query(`INSERT INTO tenants(id,name,timezone) VALUES($1,'Кабинет','Europe/Moscow')`, [tenant]);
 for (const [user, name] of [[master, 'Павел Мастер'], [hr, 'Ольга Кадры'], [worker, 'Иван Рабочий']] as const) {
@@ -37,6 +40,8 @@ await admin.end();
 const browser = await chromium.launch({ headless: true });
 const masterContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
 const hrContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+const traces: unknown[] = [];
+for (const context of [masterContext,hrContext]) context.on("response",async response=>{if(response.url().includes("/time/"))traces.push({url:response.url(),status:response.status(),body:await response.json().catch(()=>null)})});
 try {
   const masterPage = await masterContext.newPage();
   const hrPage = await hrContext.newPage();
@@ -48,7 +53,18 @@ try {
   await primary.getByRole('cell', { name: 'Иван Рабочий' }).waitFor();
   const text = await primary.innerText();
   for (const word of ['Работа', 'Перерыв', 'Простой']) assert.ok(text.includes(word), text);
+  let lostClose: unknown = null;
+  await masterPage.route('**/time/primary-days/*/close', async (route) => {
+    lostClose = route.request().postDataJSON();
+    const response = await route.fetch(); assert.equal(response.status(),201);
+    await route.abort('failed'); await masterPage.unroute('**/time/primary-days/*/close');
+  });
   await primary.getByRole('button', { name: 'Закрыть первичный день' }).click();
+  await primary.getByText('Ответ сервера не подтверждён. Повтор отправит тот же запрос.',{exact:false}).waitFor();
+  const retryClose=masterPage.waitForRequest(request=>request.method()==='POST'&&request.url().endsWith('/close'));
+  await primary.getByRole('button', { name: 'Закрыть первичный день' }).click();
+  assert.deepEqual((await retryClose).postDataJSON(),lostClose);
+
   await masterPage.getByRole('status').filter({ hasText: 'Первичный день закрыт.' }).waitFor();
   await masterPage.reload();
   await masterPage.getByRole('button', { name: 'Работники' }).click();
@@ -89,6 +105,23 @@ try {
   await masterPage.getByRole('tab', { name: 'Табель' }).click();
   await primary.getByRole('textbox', { name: 'День', exact: true }).fill(day);
   await primary.getByText('После закрытия пришёл ещё один факт.').waitFor();
+  await primary.getByLabel('Причина корректировки').fill('Уточнить поздние полчаса');
+  await primary.getByRole('button',{name:'Подготовить корректировку'}).click();
+  await masterPage.getByRole('status').filter({hasText:'Корректировка подготовлена.'}).waitFor();
+  await hrPage.reload();
+  await hrPage.getByRole('tab',{name:'Табель'}).click();
+  await personnel.getByRole('textbox',{name:'День',exact:true}).fill(day);
+  await personnel.getByRole('button',{name:'Выпустить следующую ревизию'}).click();
+  await hrPage.getByRole('status').filter({hasText:'Свод выпущен.'}).waitFor();
+  await personnel.getByText('Свод 3',{exact:true}).waitFor();
+  await personnel.getByText(/В своде 3:/).waitFor();
+  const session=await hrPage.evaluate(()=>JSON.parse(localStorage.getItem('helios.session')!));
+  const view=await hrPage.request.get(`${web}/api/v1/projects/${project}/time/primary-days/${day}?organizationId=${org}`,{headers:{authorization:'Bearer '+session.token,'x-tenant-id':tenant}});
+  assert.equal(view.status(),200);const verified=await view.json();
+  assert.equal(verified.correctionVersion,2);
+  assert.equal(verified.employees[0].consolidated.presenceMs,verified.employees[0].live.presenceMs);
+  assert.notEqual(verified.employees[0].consolidated.presenceMs,verified.employees[0].snapshot.presenceMs);
+
   await primary.getByText('Свод 2').waitFor();
 
   await masterPage.setViewportSize({ width: 390, height: 844 });
@@ -100,7 +133,16 @@ try {
   await primary.getByText('Свод 2').waitFor();
   const box = await primary.boundingBox();
   assert.ok(box && box.width <= 390, JSON.stringify(box));
-  console.log('primary day browser: desktop and 390px passed');
+  assert.ok(await masterPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+  await masterPage.screenshot({path:'/private/tmp/helios-primary-review-390.png',fullPage:true});
+  console.log('primary day browser: desktop and390px, document width passed');
+ } catch(error) {
+  for(const [index,context] of [masterContext,hrContext].entries()) for(const page of context.pages()) {
+    await page.screenshot({path:`/private/tmp/helios-primary-failure-${index}.png`,fullPage:true}).catch(()=>{});
+    writeFileSync(`/private/tmp/helios-primary-failure-${index}.txt`,await page.locator('body').innerText());
+  }
+  writeFileSync('/private/tmp/helios-primary-traces.json',JSON.stringify(traces,null,2));
+  throw error;
 } finally {
   await browser.close();
   const cleanup = new pg.Client({ connectionString: `postgres://helios:helios@127.0.0.1:${port}/helios` });

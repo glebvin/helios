@@ -30,13 +30,14 @@ export class PrimaryDayService {
     return withTenant(this.pool, actor.tenantId, actor.userId, async (client) => {
       const role = await this.role(client, actor, projectId);
       if (role !== "hr" && role !== "master") throw httpError(403, "role_denied");
-      return this.sheet(client, actor, projectId, day);
+      const organization = role === "master" ? await this.organization(client, actor, projectId, role) : undefined;
+      return this.sheet(client, actor, projectId, day, organization);
     });
   }
 
   close(actor: Actor, projectId: string, day: string, input: unknown) {
     const command = closeCommand(input);
-    return this.command(actor, projectId, "POST /time/primary-close", command, async (client) => {
+    return this.command(actor, projectId, `POST /projects/${projectId}/time/primary-days/${day}/close`, command, async (client) => {
       if ((await this.role(client, actor, projectId)) !== "master") throw httpError(403, "role_denied");
       const organization = await this.organization(client, actor, projectId, "master", command.organizationId);
       const current = await this.closeRow(client, actor, projectId, organization, day);
@@ -54,28 +55,34 @@ export class PrimaryDayService {
 
   correct(actor: Actor, projectId: string, day: string, input: unknown) {
     const command = correctionCommand(input);
-    return this.command(actor, projectId, "POST /time/primary-correction", command, async (client) => {
+    return this.command(actor, projectId, `POST /projects/${projectId}/time/primary-days/${day}/corrections`, command, async (client) => {
       if ((await this.role(client, actor, projectId)) !== "master") throw httpError(403, "role_denied");
       const organization = await this.organization(client, actor, projectId, "master", command.organizationId);
       const current = await this.closeRow(client, actor, projectId, organization, day);
       if (!current) throw httpError(409, "primary_close_required");
       const latest = await this.latestRevision(client, actor, projectId, day);
-      const cited = (latest?.closes ?? []).find((item: Row) => item.organizationId === organization && item.sourceHash === current.source_hash && item.version === 1);
-      if (!latest || !cited) throw httpError(409, "revision_required");
+      const cited = (latest?.closes ?? []).find((item: Row) => item.organizationId === organization);
+      if (!latest) throw httpError(409, "revision_required");
       const count = Number((await client.query(`SELECT count(*)::int n FROM time_corrections WHERE tenant_id=$1 AND project_id=$2 AND organization_id=$3 AND day=$4`, [actor.tenantId, projectId, organization, day])).rows[0].n);
       if (count !== command.expectedCorrectionVersion) throw httpError(409, "stale_version");
       const open = await client.query(`SELECT 1 FROM time_corrections c WHERE c.tenant_id=$1 AND c.project_id=$2 AND c.organization_id=$3 AND c.day=$4 AND NOT EXISTS (SELECT 1 FROM consolidated_time_revisions r WHERE r.tenant_id=c.tenant_id AND r.correction_id=c.id)`, [actor.tenantId, projectId, organization, day]);
       if (open.rowCount) throw httpError(409, "correction_open");
+      const built = await this.lines(client, actor, projectId, organization, day);
+      if (!built.lines.length) throw httpError(422, "recorded_time_required");
+      if (built.open) throw httpError(422, "open_intervals");
+      if (built.future) throw httpError(422, "future_day");
+      if (built.hash !== command.sourceHash) throw httpError(409, "stale_source");
+      const baseline = cited?.sourceHash ?? current.source_hash;
       const id = randomUUID();
-      await client.query(`INSERT INTO time_corrections(tenant_id,id,project_id,organization_id,day,corrects_version,corrects_hash,reason,actor_user_id,request_id) VALUES($1,$2,$3,$4,$5,1,$6,$7,$8,$9)`, [actor.tenantId, id, projectId, organization, day, current.source_hash, command.reason, actor.userId, command.requestId]);
-      await this.audit(client, actor, "primary_day_correction_prepared", id, { day, projectId, organizationId: organization, correctsHash: current.source_hash, requestId: command.requestId });
+      await client.query(`INSERT INTO time_corrections(tenant_id,id,project_id,organization_id,day,corrects_version,corrects_hash,reason,actor_user_id,request_id,source_hash,snapshot) VALUES($1,$2,$3,$4,$5,1,$6,$7,$8,$9,$10,$11)`, [actor.tenantId, id, projectId, organization, day, baseline, command.reason, actor.userId, command.requestId, built.hash, JSON.stringify({ timezone: built.timezone, employees: built.lines })]);
+      await this.audit(client, actor, "primary_day_correction_prepared", id, { day, projectId, organizationId: organization, correctsHash: baseline, sourceHash: built.hash, requestId: command.requestId });
       return this.view(client, actor, projectId, organization, day);
     });
   }
 
   issue(actor: Actor, projectId: string, day: string, input: unknown) {
     const command = revisionCommand(input);
-    return this.command(actor, projectId, "POST /time/consolidated-revision", command, async (client) => {
+    return this.command(actor, projectId, `POST /projects/${projectId}/time/consolidated/${day}/revisions`, command, async (client) => {
       if ((await this.role(client, actor, projectId)) !== "hr") throw httpError(403, "role_denied");
       await client.query(`SELECT revision FROM consolidated_time_heads WHERE tenant_id=$1 AND project_id=$2 AND day=$3 FOR NO KEY UPDATE`, [actor.tenantId, projectId, day]);
       const head = await this.latestRevision(client, actor, projectId, day);
@@ -92,9 +99,12 @@ export class PrimaryDayService {
         const correction = (await client.query(`SELECT * FROM time_corrections WHERE tenant_id=$1 AND id=$2 AND project_id=$3 AND day=$4`, [actor.tenantId, command.correctionId, projectId, day])).rows[0];
         if (!correction) throw httpError(404, "not_found");
         if ((await client.query(`SELECT 1 FROM consolidated_time_revisions WHERE tenant_id=$1 AND correction_id=$2`, [actor.tenantId, correction.id])).rowCount) throw httpError(409, "stale_version");
-        const cited = head.closes.find((item: Row) => item.organizationId === correction.organization_id && item.sourceHash === correction.corrects_hash && item.version === 1);
-        if (!cited) throw httpError(409, "revision_required");
-        closes = JSON.parse(JSON.stringify(head.closes));
+        const cited = head.closes.find((item: Row) => item.organizationId === correction.organization_id);
+        const primary = await this.closeRow(client, actor, projectId, correction.organization_id, day);
+        if (!primary || (cited?.sourceHash ?? primary.source_hash) !== correction.corrects_hash) throw httpError(409, "revision_required");
+        const amended = { organizationId: correction.organization_id, version: 1, sourceHash: correction.source_hash, correctionId: correction.id };
+        closes = head.closes.map((item: Row) => item.organizationId === correction.organization_id ? amended : item);
+        if (!cited) closes.push(amended);
         correctionId = correction.id;
       }
       const next = current + 1;
@@ -110,6 +120,7 @@ export class PrimaryDayService {
       const receipt = await reserveCommand(client, actor, operation, JSON.parse(JSON.stringify(command)));
       if (!(await client.query(`SELECT id FROM projects WHERE tenant_id=$1 AND id=$2 FOR NO KEY UPDATE`, [actor.tenantId, projectId])).rowCount) throw httpError(404, "not_found");
       await client.query(`SELECT user_id FROM memberships WHERE tenant_id=$1 AND user_id=$2 FOR NO KEY UPDATE`, [actor.tenantId, actor.userId]);
+      await this.role(client, actor, projectId);
       if (!receipt.inserted) return replayCommand(client, actor, command.requestId, receipt.hash);
       const body = await work(client);
       return completeCommand(client, actor, command.requestId, 201, body);
@@ -118,15 +129,15 @@ export class PrimaryDayService {
 
   private async role(client: PoolClient, actor: Actor, projectId: string) {
     if (!(await client.query(`SELECT id FROM projects WHERE tenant_id=$1 AND id=$2`, [actor.tenantId, projectId])).rowCount) throw httpError(404, "not_found");
-    const member = (await client.query(`SELECT role, status FROM memberships WHERE tenant_id=$1 AND user_id=$2`, [actor.tenantId, actor.userId])).rows[0];
-    if (!member || member.status !== "active" || (member.role !== "master" && member.role !== "hr")) throw httpError(403, "role_denied");
-    if (!(await client.query(`SELECT 1 FROM project_memberships WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3 AND status='active'`, [actor.tenantId, projectId, actor.userId])).rowCount) throw httpError(404, "not_found");
+    const member = (await client.query(`SELECT role, status FROM memberships WHERE tenant_id=$1 AND user_id=$2 FOR SHARE`, [actor.tenantId, actor.userId])).rows[0];
+    if (!member || member.role !== actor.role || member.status !== "active" || (member.role !== "master" && member.role !== "hr")) throw httpError(403, "role_denied");
+    if (!(await client.query(`SELECT 1 FROM project_memberships WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3 AND status='active' FOR SHARE`, [actor.tenantId, projectId, actor.userId])).rowCount) throw httpError(404, "not_found");
     return member.role as "master" | "hr";
   }
 
   private async organization(client: PoolClient, actor: Actor, projectId: string, role: "master" | "hr", requested?: string) {
     if (role === "master") {
-      const cards = (await client.query(`SELECT organization_id FROM employees WHERE tenant_id=$1 AND user_id=$2 AND status='active' ORDER BY id`, [actor.tenantId, actor.userId])).rows;
+      const cards = (await client.query(`SELECT organization_id FROM employees WHERE tenant_id=$1 AND user_id=$2 AND status='active' ORDER BY id FOR SHARE`, [actor.tenantId, actor.userId])).rows;
       if (cards.length !== 1) throw httpError(403, "employer_denied");
       const organization = cards[0].organization_id as string;
       if (requested && requested !== organization) throw httpError(403, "employer_denied");
@@ -134,7 +145,7 @@ export class PrimaryDayService {
     }
     if (!requested) throw httpError(400, "invalid_input");
     if (!(await client.query(`SELECT 1 FROM organizations WHERE tenant_id=$1 AND id=$2`, [actor.tenantId, requested])).rowCount) throw httpError(404, "not_found");
-    const assigned = await client.query(`SELECT 1 FROM employees e JOIN employee_project_assignments a ON a.tenant_id=e.tenant_id AND a.employee_id=e.id WHERE e.tenant_id=$1 AND e.organization_id=$2 AND a.project_id=$3 AND a.status='active' AND e.status='active'`, [actor.tenantId, requested, projectId]);
+    const assigned = await client.query(`SELECT 1 FROM employees e JOIN employee_project_assignments a ON a.tenant_id=e.tenant_id AND a.employee_id=e.id WHERE e.tenant_id=$1 AND e.organization_id=$2 AND a.project_id=$3 AND a.status='active' AND e.status='active' UNION ALL SELECT 1 FROM primary_day_closes WHERE tenant_id=$1 AND organization_id=$2 AND project_id=$3 LIMIT 1`, [actor.tenantId, requested, projectId]);
     if (!assigned.rowCount) throw httpError(403, "employer_denied");
     return requested;
   }
@@ -145,7 +156,7 @@ export class PrimaryDayService {
 
   private async lines(client: PoolClient, actor: Actor, projectId: string, organization: string, day: string) {
     const clock = await executionClock(client, actor, day);
-    const employees = (await client.query(`SELECT e.id, e.full_name FROM employees e JOIN employee_project_assignments a ON a.tenant_id=e.tenant_id AND a.employee_id=e.id WHERE e.tenant_id=$1 AND e.organization_id=$2 AND a.project_id=$3 AND a.status='active' AND e.status='active' ORDER BY e.id`, [actor.tenantId, organization, projectId])).rows;
+    const employees = (await client.query(`SELECT DISTINCT e.id, e.full_name FROM employees e JOIN managed_shifts s ON s.tenant_id=e.tenant_id AND s.employee_id=e.id WHERE e.tenant_id=$1 AND e.organization_id=$2 AND s.project_id=$3 ORDER BY e.id`, [actor.tenantId, organization, projectId])).rows;
     const lines: Line[] = [];
     let open = false;
     let future = false;
@@ -169,24 +180,39 @@ export class PrimaryDayService {
     const snapshot = new Map<string, Line>(((closed?.snapshot.employees ?? []) as Line[]).map((line) => [line.employeeId, line]));
     const live = new Map(built.lines.map((line) => [line.employeeId, line]));
     const ids = [...new Set([...live.keys(), ...snapshot.keys()])].sort();
-    const sheet = await this.sheet(client, actor, projectId, day);
+    const sheet = await this.sheet(client, actor, projectId, day, actor.role === "master" ? organization : undefined);
+    const issued = sheet.revisions.at(-1)?.closes.find((item: Row) => item.organizationId === organization)?.snapshot;
+    const issuedLines = new Map<string, Line>((issued?.employees ?? []).map((line: Line) => [line.employeeId, line]));
+    const correctionCount = Number((await client.query(`SELECT count(*) n FROM time_corrections WHERE tenant_id=$1 AND project_id=$2 AND organization_id=$3 AND day=$4`, [actor.tenantId, projectId, organization, day])).rows[0].n);
     const correction = (await client.query(`SELECT c.*, r.revision AS accepted_revision FROM time_corrections c LEFT JOIN consolidated_time_revisions r ON r.tenant_id=c.tenant_id AND r.correction_id=c.id WHERE c.tenant_id=$1 AND c.project_id=$2 AND c.organization_id=$3 AND c.day=$4 ORDER BY c.recorded_at DESC LIMIT 1`, [actor.tenantId, projectId, organization, day])).rows[0];
     const author = closed ? await this.userName(client, closed.actor_user_id) : null;
     return {
       projectId, organizationId: organization, organizationName: name.name as string, day, timezone: built.timezone,
       closeVersion: closed ? 1 : 0, closedAt: closed ? closed.recorded_at.toISOString() : null, closedBy: closed ? closed.actor_user_id : null, closedByName: author,
       liveHash: built.hash, snapshotHash: closed ? closed.source_hash : null, diverged: closed ? built.hash !== closed.source_hash : false,
-      employees: ids.map((id) => ({ employeeId: id, fullName: (live.get(id) ?? snapshot.get(id))!.fullName, live: live.get(id)?.facts ?? null, snapshot: snapshot.get(id)?.facts ?? null })),
-      revision: sheet.revision, revisions: sheet.revisions,
-      correction: correction ? { id: correction.id, reason: correction.reason, correctsVersion: 1, correctsHash: correction.corrects_hash, recordedAt: correction.recorded_at.toISOString(), recordedBy: correction.actor_user_id, recordedByName: await this.userName(client, correction.actor_user_id), acceptedRevision: correction.accepted_revision === null ? null : Number(correction.accepted_revision) } : null,
+      employees: ids.map((id) => ({ employeeId: id, fullName: (live.get(id) ?? snapshot.get(id))!.fullName, live: live.get(id)?.facts ?? null, snapshot: snapshot.get(id)?.facts ?? null, consolidated: issuedLines.get(id)?.facts ?? null })),
+      correctionVersion: correctionCount, revision: sheet.revision, revisions: sheet.revisions,
+      correction: correction ? { id: correction.id, reason: correction.reason, correctsVersion: 1, correctsHash: correction.corrects_hash, sourceHash: correction.source_hash, recordedAt: correction.recorded_at.toISOString(), recordedBy: correction.actor_user_id, recordedByName: await this.userName(client, correction.actor_user_id), acceptedRevision: correction.accepted_revision === null ? null : Number(correction.accepted_revision) } : null,
     };
   }
 
-  private async sheet(client: PoolClient, actor: Actor, projectId: string, day: string) {
+  private async sheet(client: PoolClient, actor: Actor, projectId: string, day: string, organization?: string) {
     const rows = (await client.query(`SELECT * FROM consolidated_time_revisions WHERE tenant_id=$1 AND project_id=$2 AND day=$3 ORDER BY revision`, [actor.tenantId, projectId, day])).rows;
     const names = new Map<string, string>();
     for (const row of rows) if (!names.has(row.actor_user_id)) names.set(row.actor_user_id, await this.userName(client, row.actor_user_id));
-    const revisions = rows.map((row) => ({ revision: Number(row.revision), previousRevision: row.previous_revision === null ? null : Number(row.previous_revision), issuedAt: row.recorded_at.toISOString(), issuedBy: row.actor_user_id, issuedByName: names.get(row.actor_user_id)!, correctionId: row.correction_id, closes: row.closes }));
+    const revisions = [];
+    for (const row of rows) {
+      const closes = [];
+      for (const close of row.closes.filter((item: Row) => !organization || item.organizationId === organization)) {
+        const saved = close.correctionId
+          ? (await client.query(`SELECT snapshot,source_hash FROM time_corrections WHERE tenant_id=$1 AND project_id=$2 AND organization_id=$3 AND day=$4 AND id=$5`, [actor.tenantId,projectId,close.organizationId,day,close.correctionId])).rows[0]
+          : await this.closeRow(client,actor,projectId,close.organizationId,day);
+        if (!saved || saved.source_hash !== close.sourceHash) throw httpError(409,"snapshot_missing");
+        closes.push({...close,snapshot:saved.snapshot});
+      }
+      const ownCorrection = !organization || !row.correction_id || (await client.query(`SELECT 1 FROM time_corrections WHERE tenant_id=$1 AND id=$2 AND organization_id=$3`,[actor.tenantId,row.correction_id,organization])).rowCount;
+      revisions.push({ revision: Number(row.revision), previousRevision: row.previous_revision === null ? null : Number(row.previous_revision), issuedAt: row.recorded_at.toISOString(), issuedBy: row.actor_user_id, issuedByName: names.get(row.actor_user_id)!, correctionId: ownCorrection ? row.correction_id : null, closes });
+    }
     return { projectId, day, revision: revisions.at(-1)?.revision ?? 0, revisions };
   }
 

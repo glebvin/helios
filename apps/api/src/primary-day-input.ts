@@ -24,8 +24,9 @@ export function closeCommand(value: unknown) {
 }
 
 export function correctionCommand(value: unknown) {
-  const body = strictObject(value, ["requestId", "organizationId", "reason", "expectedCorrectionVersion"]);
-  return { requestId: requestId(body.requestId), organizationId: organizationId(body.organizationId), reason: reason(body.reason), expectedCorrectionVersion: version(body.expectedCorrectionVersion) };
+  const body = strictObject(value, ["requestId", "organizationId", "reason", "expectedCorrectionVersion", "sourceHash"]);
+  if (typeof body.sourceHash !== "string" || !/^[0-9a-f]{64}$/.test(body.sourceHash)) throw httpError(400, "invalid_source_hash");
+  return { sourceHash: body.sourceHash, requestId: requestId(body.requestId), organizationId: organizationId(body.organizationId), reason: reason(body.reason), expectedCorrectionVersion: version(body.expectedCorrectionVersion) };
 }
 
 export function revisionCommand(value: unknown) {

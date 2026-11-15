@@ -1,10 +1,15 @@
 import { Body, Controller, Get, Inject, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
 import { TenantGuard, actorOf, type ActorRequest } from "./auth.service.js";
 import { day, queryInput, uuid } from "./api-input.js";
+import { httpError } from "./errors.js";
 import { PrimaryDayService } from "./primary-day.service.js";
 
 const projectOf = (value: string) => uuid(value).toLowerCase();
-const civilDay = (value: string) => day(value)!;
+const civilDay = (value: string) => {
+  const parsed = day(value);
+  if (!parsed) throw httpError(400, "invalid_day");
+  return parsed;
+};
 
 @Controller("api/v1/projects/:p/time")
 @UseGuards(TenantGuard)

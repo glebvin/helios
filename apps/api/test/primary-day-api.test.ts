@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { randomUUID as id } from 'node:crypto';
 import test, { before, after } from 'node:test';
 import { NestFactory } from '@nestjs/core';
@@ -9,8 +11,10 @@ import { adminUrl, createPool } from '../src/db.js';
 import { hashPassword } from '../src/password.js';
 import { checkHttpContract } from './contract-check.js';
 
-const expectedPort = process.env.GITHUB_ACTIONS === 'true' ? 54339 : 54583;
-const expectedDir = process.env.GITHUB_ACTIONS === 'true' ? 'codex-api/.data/pg-54339' : 'primary-day-consolidated-time/.data/pg-54583';
+const qaPort = Number(process.env.HELIOS_PRIMARY_QA_DB_PORT ?? 54583);
+assert.ok([54583,54597].includes(qaPort));
+const expectedPort = process.env.GITHUB_ACTIONS === 'true' ? 54339 : qaPort;
+const expectedDir = fileURLToPath(new URL(`../../../.data/pg-${qaPort}`, import.meta.url));
 const restricted = createPool();
 const admin = createPool(adminUrl);
 const tenant = id(), foreign = id(), org = id(), otherOrg = id(), idleOrg = id();
@@ -53,9 +57,11 @@ async function lifecycle(civil: string, emp = employee) {
 
 before(async () => {
   const actual = (await admin.query(`SELECT inet_server_addr()::text addr, inet_server_port() port, current_setting('data_directory') dir`)).rows[0];
-  assert.equal(String(actual.addr).startsWith('127.0.0.1'), true, actual.addr);
+  assert.equal(new URL(adminUrl).hostname, '127.0.0.1');
+  if (process.env.GITHUB_ACTIONS !== 'true') assert.equal(String(actual.addr).startsWith('127.0.0.1'), true, actual.addr);
   assert.equal(Number(actual.port), expectedPort);
-  assert.equal(String(actual.dir).endsWith(expectedDir), true, actual.dir);
+  if (process.env.GITHUB_ACTIONS === 'true') assert.ok(String(actual.dir).endsWith('codex-api/.data/pg-54339'), actual.dir);
+  else assert.equal(realpathSync(actual.dir), realpathSync(expectedDir));
   await admin.query(`INSERT INTO tenants(id,name,timezone) VALUES($1,'Primary','Europe/Moscow'),($2,'Foreign','Europe/Moscow')`, [tenant, foreign]);
   for (const user of users) await admin.query(`INSERT INTO users(id,email,name,password_hash) VALUES($1,$2,$3,$4)`, [user, `${user}@primary.test`, `User ${user.slice(0, 4)}`, hashPassword('primary-password')]);
   for (const [user, role] of [[worker, 'worker'], [master, 'master'], [director, 'director'], [hr, 'hr'], [hr2, 'hr'], [pto, 'pto']] as const) await admin.query(`INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,$3)`, [tenant, user, role]);
@@ -133,7 +139,7 @@ test('master closes the primary day, personnel issues revisions, and a late fact
   assert.equal(exported.status, 200);
   assert.equal(Buffer.isBuffer(exported.body) && exported.body.subarray(0, 2).toString(), 'PK');
   const before = (await admin.query(`SELECT revision, previous_revision, correction_id, closes, recorded_at FROM consolidated_time_revisions WHERE tenant_id=$1 AND project_id=$2 AND day=$3 AND revision=1`, [tenant, project, day])).rows[0];
-  const correction = await req(`${primary().split('?')[0]}/corrections`, { requestId: id(), organizationId: org, reason: 'Поздний факт смены', expectedCorrectionVersion: 0 });
+  const correction = await req(`${primary().split('?')[0]}/corrections`, { requestId: id(), organizationId: org, reason: 'Поздний факт смены', expectedCorrectionVersion: 0, sourceHash: (await req(primary())).body.liveHash });
   assert.equal(correction.status, 201, JSON.stringify(correction.body));
   assert.equal(correction.body.correction.correctsHash, closed.body.snapshotHash);
   assert.equal(correction.body.snapshotHash, closed.body.snapshotHash);
@@ -142,7 +148,9 @@ test('master closes the primary day, personnel issues revisions, and a late fact
   assert.equal(again.body.revision, 2);
   assert.equal(again.body.revisions[0].correctionId, null);
   assert.equal(again.body.revisions[1].correctionId, correction.body.correction.id);
-  assert.deepEqual(again.body.revisions[0].closes, again.body.revisions[1].closes);
+  assert.equal(again.body.revisions[0].closes[0].sourceHash, again.body.revisions[1].closes[0].sourceHash);
+  assert.equal(again.body.revisions[1].closes[0].correctionId, correction.body.correction.id);
+  assert.deepEqual(again.body.revisions[0].closes[0].snapshot, again.body.revisions[1].closes[0].snapshot);
   const after = (await admin.query(`SELECT revision, previous_revision, correction_id, closes, recorded_at FROM consolidated_time_revisions WHERE tenant_id=$1 AND project_id=$2 AND day=$3 AND revision=1`, [tenant, project, day])).rows[0];
   assert.deepEqual(after, before);
   const kept = (await admin.query(`SELECT source_hash FROM primary_day_closes WHERE tenant_id=$1 AND project_id=$2 AND organization_id=$3 AND day=$4`, [tenant, project, org, day])).rows[0];
@@ -165,6 +173,33 @@ test('master closes the primary day, personnel issues revisions, and a late fact
   const frozen = (await admin.query(`SELECT source_hash, snapshot FROM primary_day_closes WHERE tenant_id=$1 AND project_id=$2 AND day=$3`, [tenant, project, day])).rows[0];
   assert.equal(frozen.source_hash, kept.source_hash);
   assert.equal(frozen.snapshot.employees[0].facts.sourceHash === diverged.body.liveHash, false);
+  const preserved = (await admin.query('SELECT revision,closes,recorded_at FROM consolidated_time_revisions WHERE tenant_id=$1 AND project_id=$2 AND day=$3 ORDER BY revision',[tenant,project,day])).rows;
+  const staleCorrection = await req(`${primary().split('?')[0]}/corrections`, {requestId:id(),organizationId:org,reason:'Old source',expectedCorrectionVersion:1,sourceHash:'0'.repeat(64)});
+  assert.equal(staleCorrection.status,409);
+  const prepared = await req(`${primary().split('?')[0]}/corrections`, {requestId:id(),organizationId:org,reason:'Accept the late half hour',expectedCorrectionVersion:1,sourceHash:diverged.body.liveHash});
+  assert.equal(prepared.status,201,JSON.stringify(prepared.body));
+  assert.equal(prepared.body.correctionVersion,2);
+  assert.equal(prepared.body.correction.sourceHash,diverged.body.liveHash);
+  const correctedFacts = structuredClone(diverged.body.employees[0].live);
+  await lifecycle(day); // A further late fact must not enter the already prepared correction.
+  const amended = await req(`/projects/${project}/time/consolidated/${day}/revisions`,{requestId:id(),expectedRevision:2,correctionId:prepared.body.correction.id},hr);
+  assert.equal(amended.status,201,JSON.stringify(amended.body));
+  assert.equal(amended.body.revision,3);
+  const amendedClose = amended.body.revisions[2].closes.find((item:any)=>item.organizationId===org);
+  assert.equal(amendedClose.sourceHash,diverged.body.liveHash);
+  assert.deepEqual(amendedClose.snapshot.employees[0].facts,correctedFacts);
+  assert.deepEqual((await admin.query('SELECT revision,closes,recorded_at FROM consolidated_time_revisions WHERE tenant_id=$1 AND project_id=$2 AND day=$3 AND revision<=2 ORDER BY revision',[tenant,project,day])).rows,preserved);
+  const currentFacts = await req(primary());
+  assert.deepEqual(currentFacts.body.employees[0].consolidated,correctedFacts);
+  assert.notEqual(currentFacts.body.employees[0].live.sourceHash,correctedFacts.sourceHash);
+  const third = await req(`${primary().split('?')[0]}/corrections`,{requestId:id(),organizationId:org,reason:'Next late source',expectedCorrectionVersion:2,sourceHash:currentFacts.body.liveHash});
+  assert.equal(third.status,201,JSON.stringify(third.body));
+  assert.equal(third.body.correction.correctsHash,diverged.body.liveHash);
+  assert.equal(third.body.correctionVersion,3);
+  const fourth = await req(`/projects/${project}/time/consolidated/${day}/revisions`,{requestId:id(),expectedRevision:3,correctionId:third.body.correction.id},hr);
+  assert.equal(fourth.status,201,JSON.stringify(fourth.body));
+  assert.equal(fourth.body.revisions[3].closes.find((item:any)=>item.organizationId===org).sourceHash,currentFacts.body.liveHash);
+
 });
 
 test('a repeated lost command is one row and two simultaneous decisions conflict', async () => {
@@ -200,4 +235,37 @@ test('a worker, another company, project and employer cannot close or issue the 
   assert.equal((await req(`/projects/${id()}/time/primary-days/${day}`, undefined, outsider, 'GET', foreign)).status, 404);
   const stored = (await admin.query(`SELECT request_id FROM primary_day_closes WHERE tenant_id=$1 AND day=$2`, [tenant, day])).rows[0];
   assert.equal((await req(`${primary().split('?')[0]}/close`, { requestId: stored.request_id, expectedCloseVersion: 0, organizationId: org, sourceHash: 'b'.repeat(64) })).status, 409);
+});
+
+
+test('master reads only their employer in a consolidated revision and commands stay bound to the day',async()=>{
+  const civil='2026-11-03';
+  for(const employer of [org,otherOrg]) {
+    const request=id();
+    await admin.query("INSERT INTO people_command_receipts(tenant_id,actor_user_id,request_id,operation,command_hash,status,result)VALUES($1,$2,$3,'fixture',repeat('e',64),201,'{}')",[tenant,master,request]);
+    await admin.query("INSERT INTO primary_day_closes(tenant_id,project_id,organization_id,day,version,source_hash,snapshot,actor_user_id,request_id)VALUES($1,$2,$3,$4,1,repeat('f',64),$5,$6,$7)",[tenant,project,employer,civil,JSON.stringify({timezone:'Europe/Moscow',employees:[]}),master,request]);
+  }
+  const body={requestId:id(),expectedRevision:0};
+  const issued=await req(`/projects/${project}/time/consolidated/${civil}/revisions`,body,hr);
+  assert.equal(issued.status,201,JSON.stringify(issued.body));
+  assert.equal(issued.body.revisions[0].closes.length,2);
+  const limited=await req(`/projects/${project}/time/consolidated/${civil}`,undefined,master);
+  assert.equal(limited.status,200);
+  assert.deepEqual(limited.body.revisions[0].closes.map((item:any)=>item.organizationId),[org]);
+  const crossDay=await req(`/projects/${project}/time/consolidated/2026-11-04/revisions`,body,hr);
+  assert.equal(crossDay.status,409,JSON.stringify(crossDay.body));
+  assert.equal(crossDay.body.error,'idempotency_payload_mismatch');
+  await admin.query("UPDATE project_memberships SET status='revoked' WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3",[tenant,project,hr]);
+  try {assert.equal((await req(`/projects/${project}/time/consolidated/${civil}/revisions`,body,hr)).status,404);}
+  finally {await admin.query("UPDATE project_memberships SET status='active' WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3",[tenant,project,hr]);}
+});
+
+
+test('invalid civil dates fail before a receipt or day is written',async()=>{
+  for(const civil of ['not-a-day','2026-02-31','2026-13-01']) {
+    assert.equal((await req(`/projects/${project}/time/primary-days/${civil}`)).status,400);
+    const body={requestId:id(),expectedCloseVersion:0,organizationId:org,sourceHash:'a'.repeat(64)};
+    assert.equal((await req(`/projects/${project}/time/primary-days/${civil}/close`,body)).status,400);
+    assert.equal((await admin.query('SELECT count(*)::int n FROM people_command_receipts WHERE tenant_id=$1 AND request_id=$2',[tenant,body.requestId])).rows[0].n,0);
+  }
 });
