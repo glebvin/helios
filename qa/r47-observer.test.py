@@ -165,6 +165,50 @@ class Observer(unittest.TestCase):
         self.assertNotIn(SECRET, combined)
         self.assertNotIn('user:', combined)
 
+    def test_corrupt_http_stays_a_failed_probe_and_recovers(self):
+        garbage = self.raw(lambda conn: (conn.recv(4096), conn.sendall(b'garbage\r\n\r\n')))
+        broken = observer.probe(garbage, 1)
+        self.assertEqual(broken, {'kind': 'invalid'})
+        closed = self.raw(lambda conn: conn.shutdown(socket.SHUT_RDWR))
+        self.assertEqual(observer.probe(closed, 1)['kind'], 'unreachable')
+        chunked = self.raw(lambda conn: (conn.recv(4096), conn.sendall(b'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello')))
+        self.assertEqual(observer.probe(chunked, 1), {'kind': 'invalid'})
+        morning = '2026-11-14T10:00:00+03:00'
+        command = [sys.executable, str(Path(observer.__file__)), '--url', garbage, '--interval', '0.05', '--timeout', '1', '--threshold', '3', '--state', str(self.state), '--events', str(self.events), '--probes', '3', '--at', morning]
+        failed = subprocess.run(command, check=True, capture_output=True, text=True)
+        self.assertNotIn('garbage', failed.stdout + failed.stderr)
+        self.assertEqual([item['kind'] for item in self.records()], ['down'])
+        self.assertEqual(self.records()[0]['failures'], 3)
+        self.server.mode = 'ready'
+        recovered = subprocess.run([sys.executable, str(Path(observer.__file__)), '--url', self.url, '--interval', '30', '--timeout', '1', '--threshold', '3', '--state', str(self.state), '--events', str(self.events), '--probes', '1', '--at', '2026-11-14T10:05:00+03:00'], check=True, capture_output=True, text=True)
+        self.assertEqual(recovered.returncode, 0)
+        self.assertEqual([item['kind'] for item in self.records()], ['down', 'recovered'])
+
+    def raw(self, respond):
+        sock = socket.socket()
+        sock.bind(('127.0.0.1', 0))
+        sock.listen(8)
+        stop = threading.Event()
+
+        def loop():
+            sock.settimeout(0.2)
+            while not stop.is_set():
+                try:
+                    conn, _ = sock.accept()
+                except socket.timeout:
+                    continue
+                with conn:
+                    try:
+                        respond(conn)
+                    except OSError:
+                        pass
+
+        thread = threading.Thread(target=loop, daemon=True)
+        thread.start()
+        self.addCleanup(stop.set)
+        self.addCleanup(sock.close)
+        return f'http://127.0.0.1:{sock.getsockname()[1]}/api/ready'
+
     def test_corrupt_state_is_refused(self):
         self.state.write_text('not-json')
         with self.assertRaises(SystemExit):

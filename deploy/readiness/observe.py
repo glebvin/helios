@@ -50,6 +50,10 @@ def probe(url: str, timeout: float) -> dict:
         raw = response.read(65536)
     except (socket.timeout, TimeoutError):
         return {'kind': 'timeout'}
+    except http.client.RemoteDisconnected:
+        return {'kind': 'unreachable'}
+    except http.client.HTTPException:
+        return {'kind': 'invalid'}
     except OSError:
         return {'kind': 'unreachable'}
     finally:
