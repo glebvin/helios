@@ -10,9 +10,10 @@ import { TaskActionPanel } from "./task-action-panel";
 import { TaskDraftDialog } from "./task-draft-form";
 import { canWriteTaskDraft } from "./task-draft";
 import { ApiError, v1, v1Items, v1Collection } from "./v1";
+import { ChecklistRunPanel } from "./checklist-run-panel";
 import { VolumeDesk } from "./volume-panel";
 import { canWriteVolume, reportListPath, volumeLines, type VolumeReport } from "./volume";
-import { boardColumn, shownTaskStatus, taskArea, taskError, taskListPath, taskStatusText, type BoardColumn, type ServerTask } from "./task-read";
+import { boardColumn, shownTaskStatus, taskError, taskListPath, taskStatusText, type BoardColumn, type ServerTask } from "./task-read";
 
 type Page = { items: ServerTask[]; total: number; limit: number; offset: number };
 type BoardView = "board" | "list";
@@ -203,7 +204,6 @@ function TaskDetail({ compact, session, projectId, taskId, names, canEdit, onEdi
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, taskId, pass]);
   const status = task ? shownTaskStatus(task) : "";
-  const area = task ? taskArea(status) : "plan";
   const person = task ? names[task.assigneeEmployeeId] ?? "" : "";
   const place = task ? [task.zoneId ? names[task.zoneId] : "", task.workTypeId ? names[task.workTypeId] : ""].filter(Boolean).join(" · ") : "";
   return <>
@@ -251,13 +251,7 @@ function TaskDetail({ compact, session, projectId, taskId, names, canEdit, onEdi
           <ShiftPanel session={session} projectId={projectId} employeeId={task.assigneeEmployeeId} day={task.workDate} onChanged={() => { setPass((value) => value + 1); onChanged(); }} />
           <VolumeDesk refreshToken={pass} session={session} projectId={projectId} employeeId={task.assigneeEmployeeId} day={task.workDate} tasks={[{ id: task.id, title: task.title, unit: task.unit, status: task.status, workflowKind: task.workflowKind }]} writable={canWriteVolume(session.role)} onDone={(message) => { onNoted(message); setPass((value) => value + 1); onChanged(); }} />
           </> : <section className="panel" aria-label="Исполнение"><h2>Исполнение</h2><p className="quiet">Смена и отчёты для этого задания здесь недоступны.</p></section>}
-          <section className="panel" aria-label="Качество">
-            <div className="panel-head">
-              <h2>Качество</h2>
-              <NoteMark label="Про качество"><p>Приёмка с этой карточки не записывается.</p></NoteMark>
-            </div>
-            <p className="task-state">{area === "quality" ? taskStatusText(status) : "Не отмечено"}</p>
-          </section>
+          <ChecklistRunPanel key={task.id} session={session} projectId={projectId} taskId={task.id} />
         </div>
       </div>
       {task.workflowKind === "managed02b" ? <TaskActionPanel session={session} projectId={projectId} task={task} timezone={timezone} onDone={() => { setPass((value) => value + 1); onChanged(); }} /> : null}

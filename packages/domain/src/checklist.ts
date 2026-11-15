@@ -44,7 +44,8 @@ export type ChecklistReason =
   | "out_of_bounds"
   | "failed_condition"
   | "photo_limit"
-  | "invalid_template";
+  | "invalid_template"
+  | "batch_unavailable";
 
 export type ChecklistRefusal = { itemId: string; reason: ChecklistReason };
 

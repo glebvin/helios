@@ -8194,6 +8194,82 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/tasks/{taskId}/checklist-runs": {
+      "get": {
+        "operationId": "listChecklistRuns",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "taskId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Saved runs", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChecklistRunList" } } } },
+          "400": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "operationId": "saveChecklistRun",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "taskId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChecklistRunInput" } } } },
+        "responses": {
+          "201": { "description": "Saved", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChecklistRun" } } } },
+          "400": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/tasks/{taskId}/checklist-files": {
+      "post": {
+        "operationId": "uploadChecklistFile",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "taskId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChecklistFileInput" } } } },
+        "responses": {
+          "201": { "description": "Stored", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChecklistFile" } } } },
+          "400": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/tasks/{taskId}/checklist-files/{fileId}": {
+      "get": {
+        "operationId": "downloadChecklistFile",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "taskId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "fileId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "File bytes", "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary" } } } },
+          "401": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
     "/api/v1/checklist-templates": {
       "get": {
         "operationId": "listChecklistTemplates",
@@ -8987,6 +9063,77 @@
       }
     },
     "schemas": {
+      "ChecklistRunInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "templateId", "edition", "expectedVersion", "answers"],
+        "properties": {
+          "requestId": { "type": "string", "format": "uuid" },
+          "templateId": { "type": "string", "format": "uuid" },
+          "edition": { "type": "integer", "minimum": 1 },
+          "expectedVersion": { "type": "integer", "minimum": 0 },
+          "answers": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["itemId", "value"], "properties": { "itemId": { "type": "string" }, "value": { "type": "string" } } } }
+        }
+      },
+      "ChecklistFileInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "itemId", "filename", "contentType", "fileBase64"],
+        "properties": {
+          "requestId": { "type": "string", "format": "uuid" },
+          "itemId": { "type": "string" },
+          "filename": { "type": "string" },
+          "contentType": { "type": "string", "enum": ["image/jpeg", "image/png", "application/pdf"] },
+          "fileBase64": { "type": "string" }
+        }
+      },
+      "ChecklistFile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fileId", "itemId", "filename", "contentType", "sizeBytes", "sha256"],
+        "properties": {
+          "fileId": { "type": "string", "format": "uuid" },
+          "itemId": { "type": "string" },
+          "filename": { "type": "string" },
+          "contentType": { "type": "string" },
+          "sizeBytes": { "type": "integer" },
+          "sha256": { "type": "string" }
+        }
+      },
+      "ChecklistRun": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "projectId", "taskId", "templateId", "edition", "templateVersion", "items", "answers", "verdict", "passed", "blocksNext", "actorUserId", "actorName", "requestId", "version", "createdAt", "files"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "projectId": { "type": "string", "format": "uuid" },
+          "taskId": { "type": "string", "format": "uuid" },
+          "templateId": { "type": "string", "format": "uuid" },
+          "edition": { "type": "integer" },
+          "templateVersion": { "type": "integer" },
+          "items": { "type": "array" },
+          "answers": { "type": "array" },
+          "verdict": { "type": "object" },
+          "passed": { "type": "boolean" },
+          "blocksNext": { "type": "boolean" },
+          "actorUserId": { "type": "string", "format": "uuid" },
+          "actorName": { "type": "string" },
+          "requestId": { "type": "string", "format": "uuid" },
+          "version": { "type": "integer" },
+          "createdAt": { "type": "string" },
+          "files": { "type": "array", "items": { "$ref": "#/components/schemas/ChecklistFile" } }
+        }
+      },
+      "ChecklistRunList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["latest", "history", "approved"],
+        "properties": {
+          "latest": { "allOf": [{ "$ref": "#/components/schemas/ChecklistRun" }], "nullable": true },
+          "history": { "type": "array", "items": { "$ref": "#/components/schemas/ChecklistRun" } },
+          "approved": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["templateId", "edition", "title", "version", "items"], "properties": { "templateId": { "type": "string", "format": "uuid" }, "edition": { "type": "integer" }, "title": { "type": "string" }, "version": { "type": "integer" }, "items": { "type": "array" } } } }
+        }
+      },
       "ChecklistTemplateList": {
         "type": "object",
         "additionalProperties": false,

@@ -9,6 +9,7 @@ import {executionBatch,type ExecutionEvent} from './execution-input.js';
 import type {Page} from './api-input.js';
 import {executionScope,executionJoin,executionClock,executionTotals} from './execution-read.js';
 import {PeopleService} from './people.service.js';
+import {refuseBlockedChecklist} from './checklist-runs.service.js';
 type Row=Record<string,any>;
 export function executionReviewFlags(occurredAt:string,receivedAt:Date,capturedAt?:string,abovePlannedQuantity=false){
   const delayed=+receivedAt-+new Date(occurredAt)>86400000,future=+new Date(occurredAt)-+receivedAt>300000;
@@ -133,6 +134,7 @@ export class ExecutionService {
           if(!shift.ended_at)throw httpError(409,'final_report_requires_closed_shift');
           if(new Date(b.occurredAt)<shift.ended_at)throw httpError(409,'report_before_shift_end');
           const task=await this.task(c,a,b,b.taskId,true);await this.admission(c,a,b,employee,task);
+          await refuseBlockedChecklist(c,a.tenantId,b.taskId);
           if(!(await c.query(`SELECT 1 FROM managed_segments WHERE tenant_id=$1 AND project_id=$2 AND employee_id=$3 AND shift_id=$4 AND task_id=$5 AND mode='work' AND ended_at>started_at`,[a.tenantId,b.projectId,b.employeeId,b.shiftId,b.taskId])).rowCount)throw httpError(422,'positive_closed_task_work_required');
           if((await c.query(`SELECT 1 FROM managed_execution_reports WHERE tenant_id=$1 AND project_id=$2 AND shift_id=$3 AND task_id=$4`,[a.tenantId,b.projectId,b.shiftId,b.taskId])).rowCount)throw httpError(409,'final_report_already_submitted');
           overPlan=(await c.query(`SELECT $1::numeric>$2::numeric over_plan`,[b.submittedQuantity,task.planned_quantity])).rows[0].over_plan;
