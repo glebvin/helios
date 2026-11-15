@@ -8,6 +8,7 @@ import { BookProvider } from "./book";
 import { WorkerPhone } from "./field";
 import { Mark } from "./mark";
 import { enqueue, pendingFor, readOutbox, writeOutbox, type OutboxEvent } from "./outbox";
+import { PriceDesk } from "./prices";
 import { accessOf, demoCabinets, homeView, type View } from "./roles";
 
 const entries = [
@@ -78,7 +79,7 @@ export function App() {
   }
 
   useEffect(() => {
-    if (!session || joinCode) return;
+    if (!session || joinCode || session.role === "cost") return;
     let live = true;
     setDeskFailed(false);
     void refresh(session).then(() => { if (live) setDeskFailed(false); }).catch((reason: Error) => {
@@ -95,7 +96,7 @@ export function App() {
   }, [session, joinCode]);
 
   useEffect(() => {
-    if (!session || joinCode) return;
+    if (!session || joinCode || session.role === "cost") return;
     let live = true;
     void openDelivery(session).catch(() => { if (live) setError("Очередь на этом входе не открылась."); });
     const unbind = bindRemoteClose(() => {
@@ -111,7 +112,7 @@ export function App() {
   }, [session, joinCode]);
 
   useEffect(() => {
-    if (!session || joinCode) return;
+    if (!session || joinCode || session.role === "cost") return;
     const update = () => { if (document.visibilityState === 'visible') void refresh(session).catch(() => {}); };
     window.addEventListener('focus', update);
     const timer = setInterval(update, 15000);
@@ -239,6 +240,10 @@ export function App() {
         </form>
       </main>
     );
+  }
+
+  if (session.role === "cost") {
+    return <PriceDesk session={session} theme={theme} onTheme={() => setTheme(theme === "dark" ? "light" : "dark")} onLogout={() => void logout()} />;
   }
 
   const savedShift = session.role === "worker" ? readShiftSnapshot(session.tenantId, session.userId) : null;
