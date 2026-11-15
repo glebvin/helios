@@ -8,6 +8,7 @@ const reasonText: Record<string, string> = {
   required_empty: "Обязательный пункт не заполнен.",
   type_mismatch: "Ответ не соответствует типу пункта.",
   out_of_bounds: "Число вне допустимых границ.",
+  failed_condition: "Ответ не совпадает с заданным условием.",
   photo_limit: "В прохождении больше 20 фото.",
   invalid_template: "Шаблон этой версии составлен неверно.",
 };
@@ -42,10 +43,13 @@ export function ChecklistForm({ snapshot, answers, onAnswers }: {
             <fieldset className="checklist-item" key={item.id}>
               <legend>{start + index + 1}. {item.prompt}{item.critical ? " · критичный" : ""}</legend>
               {item.kind === "yes_no" ? (
-                <div className="checklist-choice" role="group" aria-label={item.prompt}>
-                  <button className={value === "yes" ? "is-on" : ""} type="button" onClick={() => change(item.id, "yes")}>Да</button>
-                  <button className={value === "no" ? "is-on" : ""} type="button" onClick={() => change(item.id, "no")}>Нет</button>
-                </div>
+                <>
+                  <p className="quiet">Успешный ответ: {item.pass === "yes" ? "да" : item.pass === "no" ? "нет" : "не задан"}</p>
+                  <div className="checklist-choice" role="group" aria-label={item.prompt}>
+                    <button className={value === "yes" ? "is-on" : ""} type="button" onClick={() => change(item.id, "yes")}>Да</button>
+                    <button className={value === "no" ? "is-on" : ""} type="button" onClick={() => change(item.id, "no")}>Нет</button>
+                  </div>
+                </>
               ) : (
                 <label>
                   <span className="quiet">{item.kind === "number" ? `Число, ${item.unit}${item.min || item.max ? `, от ${item.min ?? "…"} до ${item.max ?? "…"}` : ""}` : "Идентификатор, без загрузки файла"}</span>

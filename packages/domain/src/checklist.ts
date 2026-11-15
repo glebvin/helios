@@ -1,4 +1,4 @@
-import { cmpDecimal } from "./decimal.js";
+import { cmpDecimal, parseDecimal } from "./decimal.js";
 
 export const CHECKLIST_PAGE = 10;
 export const CHECKLIST_PHOTO_LIMIT = 20;
@@ -14,6 +14,8 @@ export type ChecklistItem = {
   unit?: string;
   min?: string;
   max?: string;
+  /** Для да/нет задаётся в шаблоне. По тексту вопроса не выводится. */
+  pass?: "yes" | "no";
 };
 
 export type ChecklistTemplate = {
@@ -40,6 +42,7 @@ export type ChecklistReason =
   | "required_empty"
   | "type_mismatch"
   | "out_of_bounds"
+  | "failed_condition"
   | "photo_limit"
   | "invalid_template";
 
@@ -72,7 +75,16 @@ export function checklistPage<T>(items: readonly T[], page: number): readonly T[
 
 function refusal(itemId: string, reason: ChecklistReason, critical: boolean): ChecklistRefusal {
   if (!critical) return { itemId, reason };
-  return { itemId, reason: reason === "type_mismatch" || reason === "out_of_bounds" ? "critical_invalid" : "critical_empty" };
+  return { itemId, reason: reason === "type_mismatch" || reason === "out_of_bounds" || reason === "failed_condition" ? "critical_invalid" : "critical_empty" };
+}
+
+function decimalText(value: string): boolean {
+  try {
+    parseDecimal(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function numberProblem(item: ChecklistItem, value: string): ChecklistReason | null {
@@ -88,7 +100,10 @@ function numberProblem(item: ChecklistItem, value: string): ChecklistReason | nu
 function answerProblem(item: ChecklistItem, value: string | undefined): ChecklistReason | null {
   const empty = value === undefined || value.trim() === "";
   if (empty) return item.required || item.critical ? "required_empty" : null;
-  if (item.kind === "yes_no") return value === "yes" || value === "no" ? null : "type_mismatch";
+  if (item.kind === "yes_no") {
+    if (value !== "yes" && value !== "no") return "type_mismatch";
+    return value === item.pass ? null : "failed_condition";
+  }
   if (item.kind === "number") {
     if (!/^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/.test(value)) return "type_mismatch";
     return numberProblem(item, value);
@@ -99,13 +114,12 @@ function answerProblem(item: ChecklistItem, value: string | undefined): Checklis
 function itemValid(item: ChecklistItem, ids: Set<string>): boolean {
   if (!identifier.test(item.id) || ids.has(item.id) || !item.prompt.trim()) return false;
   ids.add(item.id);
+  if (item.kind === "yes_no") return item.pass === "yes" || item.pass === "no";
   if (item.kind !== "number") return true;
   if (!item.unit?.trim()) return false;
-  try {
-    if (item.min !== undefined && item.max !== undefined && cmpDecimal(item.min, item.max) > 0) return false;
-  } catch {
-    return false;
-  }
+  if (item.min !== undefined && !decimalText(item.min)) return false;
+  if (item.max !== undefined && !decimalText(item.max)) return false;
+  if (item.min !== undefined && item.max !== undefined && cmpDecimal(item.min, item.max) > 0) return false;
   return true;
 }
 

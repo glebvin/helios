@@ -5,7 +5,7 @@ import { ChecklistForm } from "./checklist-form";
 const longPrompt = "Площадка свободна от посторонних, проходы не перекрыты складом и можно пройти к шву без перестановки оборудования";
 
 function point(id: string, prompt: string, patch: Partial<ChecklistItem> = {}): ChecklistItem {
-  return { id, prompt, kind: "yes_no", required: false, critical: false, ...patch };
+  return { id, prompt, kind: "yes_no", pass: "yes", required: false, critical: false, ...patch };
 }
 
 const current: ChecklistTemplate = {

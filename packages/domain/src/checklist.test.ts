@@ -3,7 +3,7 @@ import test from "node:test";
 import { checklistPage, pinChecklist, validateChecklist, type ChecklistAnswer, type ChecklistItem, type ChecklistTemplate } from "./index.js";
 
 function item(patch: Partial<ChecklistItem> = {}): ChecklistItem {
-  return { id: "seam-clear", prompt: "Шов свободен", kind: "yes_no", required: true, critical: true, ...patch };
+  return { id: "seam-clear", prompt: "Шов свободен", kind: "yes_no", pass: "yes", required: true, critical: true, ...patch };
 }
 
 function template(items: ChecklistItem[], version = 1): ChecklistTemplate {
@@ -64,6 +64,54 @@ test("ответ сверяется с типом пункта, ноль не п
   assert.equal(validateChecklist(optional, []).ok, true);
   const required = pinChecklist(template([item({ critical: false })]));
   assert.deepEqual(validateChecklist(required, []).refusals, [{ itemId: "seam-clear", reason: "required_empty" }]);
+});
+
+test("да и нет сверяются с условием шаблона, а не с текстом вопроса", () => {
+  const site = item({ id: "site-clear", prompt: "Площадка свободна", pass: "yes" });
+  const pinned = pinChecklist(template([site]));
+  assert.equal(validateChecklist(pinned, [{ itemId: "site-clear", value: "yes" }]).ok, true);
+  const refused = validateChecklist(pinned, [{ itemId: "site-clear", value: "no" }]);
+  assert.equal(refused.ok, false);
+  assert.equal(refused.refused, true);
+  assert.deepEqual(refused.refusals, [{ itemId: "site-clear", reason: "critical_invalid" }]);
+  const empty = validateChecklist(pinned, []);
+  assert.deepEqual(empty.refusals, [{ itemId: "site-clear", reason: "critical_empty" }]);
+  const wrong = validateChecklist(pinned, [{ itemId: "site-clear", value: "maybe" }]);
+  assert.deepEqual(wrong.refusals, [{ itemId: "site-clear", reason: "critical_invalid" }]);
+  const allowedNo = pinChecklist(template([item({ id: "site-clear", prompt: "Площадка свободна", pass: "no" })]));
+  assert.equal(validateChecklist(allowedNo, [{ itemId: "site-clear", value: "no" }]).ok, true);
+  assert.equal(validateChecklist(allowedNo, [{ itemId: "site-clear", value: "yes" }]).ok, false);
+});
+
+test("старый снимок хранит прежнее условие да/нет", () => {
+  const source = template([item({ id: "site-clear", prompt: "Площадка свободна", pass: "yes" })]);
+  const pinned = pinChecklist(source);
+  source.items[0] = { ...source.items[0], pass: "no" };
+  const answer = [{ itemId: "site-clear", value: "no" }];
+  assert.equal(validateChecklist(pinned, answer).ok, false);
+  assert.equal(pinned.items[0].pass, "yes");
+  assert.equal(validateChecklist(pinChecklist(source), answer).ok, true);
+});
+
+test("нечисловая граница — ошибка шаблона, одна граница проверяется отдельно", () => {
+  const low = pinChecklist(template([item({ id: "thickness", prompt: "Толщина", kind: "number", unit: "мм", min: "10" })]));
+  assert.equal(validateChecklist(low, [{ itemId: "thickness", value: "10" }]).ok, true);
+  assert.equal(validateChecklist(low, [{ itemId: "thickness", value: "9" }]).ok, false);
+  const high = pinChecklist(template([item({ id: "thickness", prompt: "Толщина", kind: "number", unit: "мм", max: "20" })]));
+  assert.equal(validateChecklist(high, [{ itemId: "thickness", value: "20" }]).ok, true);
+  assert.equal(validateChecklist(high, [{ itemId: "thickness", value: "21" }]).ok, false);
+  const broken = validateChecklist(
+    pinChecklist(template([item({ id: "thickness", prompt: "Толщина", kind: "number", unit: "мм", min: "abc" })])),
+    [{ itemId: "thickness", value: "12" }],
+  );
+  assert.equal(broken.ok, false);
+  assert.deepEqual(broken.refusals, [{ itemId: "thickness", reason: "invalid_template" }]);
+  const reversed = validateChecklist(
+    pinChecklist(template([item({ id: "thickness", prompt: "Толщина", kind: "number", unit: "мм", min: "20", max: "10" })])),
+    [{ itemId: "thickness", value: "15" }],
+  );
+  assert.equal(reversed.ok, false);
+  assert.equal(reversed.refusals.some((item) => item.reason === "invalid_template"), true);
 });
 
 test("на экран помещается десять пунктов, фото сверх двадцати отвергаются", () => {
