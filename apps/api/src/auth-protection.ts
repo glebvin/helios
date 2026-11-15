@@ -39,7 +39,9 @@ export function authProtection(options?: { install?: boolean; now?: () => number
   const middleware = ((req: any, res: any, next: () => void) => {
     res.setHeader("Cache-Control", "no-store");
     const path = (req.path ?? "").replace(/\/+$/, "").toLowerCase();
-    const bucket = /^\/api\/v1\/join\/[^/]+$/.test(path) ? (req.method === "POST" ? "join" : "inspect") : null;
+    const joinChallenge = /^\/api\/v1\/join\/[^/]+\/challenge$/.test(path);
+    const phonePath = path === "/api/v1/auth/phone/challenge" || path === "/api/v1/auth/phone/login";
+    const bucket = phonePath || joinChallenge ? "phone" : /^\/api\/v1\/join\/[^/]+$/.test(path) ? (req.method === "POST" ? "join" : "inspect") : null;
     if (bucket && charge(buckets, bucket, bucket === "inspect" ? 200 : 40, res, now())) return;
     next();
   }) as Protection;
