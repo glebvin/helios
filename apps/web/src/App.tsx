@@ -77,6 +77,24 @@ export function App() {
 
   async function refresh(next = session) {
     if (!next) return;
+    if (next.role === "engineer-pto") {
+      if (activeSession.current?.token !== next.token || activeSession.current?.tenantId !== next.tenantId) return;
+      setData({
+        actor: { role: next.role, name: next.name },
+        projectId: "",
+        cabinet: { name: "" },
+        organizations: [],
+        projects: [],
+        files: [],
+        employees: [],
+        tasks: [],
+        shifts: [],
+        reports: [],
+        summary: { sample: false, label: "", rings: [], live: { tasksToday: 0, openShifts: 0 } },
+      });
+      setPending(0);
+      return;
+    }
     const body = await desk(next);
     if (activeSession.current?.token !== next.token || activeSession.current?.tenantId !== next.tenantId) return;
     setData(body);
@@ -101,7 +119,8 @@ export function App() {
   }, [session, joinCode]);
 
   useEffect(() => {
-    if (!session || joinCode || session.role === "cost") return;
+    if (!session || joinCode || ["cost", "engineer-pto"].includes(session.role)) return;
+
     let live = true;
     void openDelivery(session).catch(() => { if (live) setError("Очередь на этом входе не открылась."); });
     const unbind = bindRemoteClose(() => {

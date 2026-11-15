@@ -20,7 +20,9 @@ import { minutesLabel, useBook } from "./book";
 import { amount, dayTasks, laneOf, laneTone, personName, progress, statusLabel, todayKey, type Admission, type Lane, type Remark } from "./model";
 import { LiveInbox, LiveToday } from "./today";
 import { PtoFacts, PtoFiles } from "./facts";
+import { ChecklistTemplates } from "./checklist-templates-panel";
 import { ResponsibilityOrders } from "./responsibility-orders-panel";
+
 
 const icons: Record<Section, string> = {
   overview: paths.home,
@@ -31,6 +33,7 @@ const icons: Record<Section, string> = {
   quality: paths.shield,
   materials: paths.box,
   documents: paths.file,
+  templates: paths.list,
   objects: paths.pin,
   settings: paths.gear,
 };
@@ -278,6 +281,7 @@ export function DirectorDesk({
               onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
             />
           )) : null}
+          {page === "templates" ? <ChecklistTemplates session={session} projectId={templateProjectId} /> : null}
           {page === "documents" ? (livePto ? (
             <PtoFiles session={session} projectId={templateProjectId} projectName={project} day={taskDay} notice={scope.notice} />
           ) : <Documents data={data} canConfirm={false} canDraft={canDraftAct} checklistNote={access.checklistNote} />) : null}

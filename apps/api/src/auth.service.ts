@@ -163,19 +163,21 @@ export class TenantGuard implements CanActivate {
     const actor = await this.auth.actor(token, tenantId);
     if (!actor) throw httpError(403, "tenant_denied");
     if (!isKnownRole(actor.role)) throw httpError(403, "role_denied");
-    const identityRoute = (["GET", "HEAD"].includes(request.method ?? "") && request.path === "/api/v1/me") ||
-      (request.method === "POST" && request.path === "/api/v1/auth/logout");
-    const priceRoute = contractPriceRoute(actor.role, request.method ?? "", request.path ?? "");
-    if (!isExistingRuntimeRole(actor.role) && !identityRoute && !priceRoute) throw httpError(403, "role_denied");
-    const routeConfigurationWrite = actor.role === "admin" && request.method === "POST" &&
-      /^\/api\/v1\/projects\/[0-9a-f-]{36}\/route-config\/?$/i.test(request.path ?? "");
-    const responsibilityOrderWrite = actor.role === "hr" && request.method === "POST" &&
-      /^\/api\/v1\/responsibility-orders(?:\/[0-9a-f-]{36}(?:\/revoke)?)?$/i.test(request.path ?? "");
-    // These exceptions reach only their services, which reload role and company/object scope from DB.
-    if (readOnlyCabinetRoles.has(actor.role) && !routeConfigurationWrite && !responsibilityOrderWrite &&
-        !["GET", "HEAD"].includes(request.method ?? "") && request.path !== "/api/v1/auth/logout") {
-      throw httpError(403, "role_denied");
-    }
+    const method = request.method ?? "";
+    const path = request.path ?? "";
+    const identityRoute = (["GET", "HEAD"].includes(method) && path === "/api/v1/me") || (method === "POST" && path === "/api/v1/auth/logout");
+    const priceRoute = actor.role === "cost" && (
+      (["GET", "HEAD"].includes(method) && path === "/api/v1/contract-prices/projects") ||
+      (["GET", "HEAD", "POST"].includes(method) && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/contract-prices\/?$/i.test(path)));
+    const checklistProject = /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates(?:\/[0-9a-f-]{36}(?:\/(?:submit|decision))?)?\/?$/i.test(path);
+    const checklistRead = ["GET", "HEAD"].includes(method) && (path === "/api/v1/checklist-templates" || /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates(?:\/[0-9a-f-]{36})?\/?$/i.test(path));
+    const engineerChecklist = actor.role === "engineer-pto" && (checklistRead || (method === "POST" && checklistProject));
+    if (!isExistingRuntimeRole(actor.role) && !identityRoute && !priceRoute && !engineerChecklist) throw httpError(403, "role_denied");
+    const routeConfigurationWrite = actor.role === "admin" && method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/route-config\/?$/i.test(path);
+    const responsibilityOrderWrite = actor.role === "hr" && method === "POST" && /^\/api\/v1\/responsibility-orders(?:\/[0-9a-f-]{36}(?:\/revoke)?)?$/i.test(path);
+    const checklistDecision = ["safety", "zds-soso"].includes(actor.role) && method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates\/[0-9a-f-]{36}\/decision\/?$/i.test(path);
+    // Each module service reloads current role and project scope before writing/replaying.
+    if (readOnlyCabinetRoles.has(actor.role) && !routeConfigurationWrite && !responsibilityOrderWrite && !checklistDecision && !["GET", "HEAD"].includes(method) && path !== "/api/v1/auth/logout") throw httpError(403, "role_denied");
     request.actor = actor;
     request.sessionToken = token;
     return true;
