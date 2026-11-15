@@ -88,13 +88,17 @@ function prefix(row: number | null): string {
 function findItem(
   items: readonly VolumeImportCatalogItem[],
   name: string,
-  phrases: { missing: string; archived: string; several: string },
+  phrases: { missing: string; archived: string; inactive: (status: string) => string; several: string },
 ): { item?: VolumeImportCatalogItem; error?: string } {
   const same = items.filter((item) => item.name.trim() === name && item.id.trim() !== "");
   const active = same.filter((item) => item.status === "active");
   if (active.length === 1) return { item: active[0] };
   if (active.length > 1) return { error: phrases.several };
-  if (same.length > 0) return { error: phrases.archived };
+  if (same.length > 0) {
+    if (same.every((item) => item.status === "archived")) return { error: phrases.archived };
+    const status = [...new Set(same.map((item) => item.status))].join(", ");
+    return { error: phrases.inactive(status) };
+  }
   return { error: phrases.missing };
 }
 
@@ -144,11 +148,13 @@ function checkRow(input: unknown, catalog: VolumeImportCatalog): VolumeImportChe
   const zoneMatch = zone ? findItem(catalog.zones, zone, {
     missing: `зона «${zone}» не найдена в справочнике объекта`,
     archived: `зона «${zone}» в архиве справочника объекта`,
+    inactive: (status) => `зона «${zone}» не действует, её статус «${status}»`,
     several: `в справочнике объекта несколько зон «${zone}»`,
   }) : undefined;
   const workMatch = workType ? findItem(catalog.workTypes, workType, {
     missing: `вид работ «${workType}» не найден в справочнике объекта`,
     archived: `вид работ «${workType}» в архиве справочника объекта`,
+    inactive: (status) => `вид работ «${workType}» не действует, его статус «${status}»`,
     several: `в справочнике объекта несколько видов работ «${workType}»`,
   }) : undefined;
   if (zoneMatch?.error) errors.push(`${head}${zoneMatch.error}`);
@@ -173,7 +179,7 @@ function checkRow(input: unknown, catalog: VolumeImportCatalog): VolumeImportChe
 function warnRepeats(rows: VolumeImportCheckedRow[]): void {
   const groups = new Map<string, number[]>();
   for (const row of rows) {
-    if (row.sourceRow === null || row.zoneId === null || row.workTypeId === null || row.errors.length > 0) continue;
+    if (row.sourceRow === null || row.zoneId === null || row.workTypeId === null) continue;
     const key = `${row.zoneId}\0${row.workTypeId}`;
     const list = groups.get(key) ?? [];
     list.push(row.sourceRow);

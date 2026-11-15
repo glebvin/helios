@@ -68,6 +68,40 @@ test("повтор зоны и вида работ не удаляет стро�
   assert.deepEqual(result.rows.map((row) => row.errors), [[], [], []]);
 });
 
+test("предупреждение о повторе перечисляет и строку с ошибкой", () => {
+  const rows = [
+    { sourceRow: 2, zone: "Секция А", workType: "Кладка", unit: "м3", quantity: "1.25" },
+    { sourceRow: 3, zone: "Секция А", workType: "Кладка", unit: "м3", quantity: "0.5" },
+    { sourceRow: 4, zone: "Секция А", workType: "Кладка", unit: "м3", quantity: "00" },
+    { sourceRow: 5, zone: "Секция А", workType: "Кладка", unit: "м3", quantity: "0.75" },
+  ];
+  const result = checkVolumeImport(rows, catalog);
+  assert.deepEqual(result.rows.map((row) => row.quantity), ["1.25", "0.5", null, "0.75"]);
+  assert.match(result.rows[2].errors[0], /объём не является десятичным числом/);
+  for (const row of result.rows) {
+    assert.equal(row.warnings.length, 1);
+    assert.match(row.warnings[0], /строках 2, 3, 4, 5/);
+  }
+});
+
+test("черновик справочника не называется архивом", () => {
+  const draft = {
+    zones: [{ id: "draft-zone", name: "Секция А", status: "draft" }],
+    workTypes: [{ id: "draft-work", name: "Кладка", unit: "м3", status: "draft" }],
+  };
+  const result = checkVolumeImport(
+    [{ sourceRow: 2, zone: "Секция А", workType: "Кладка", unit: "м3", quantity: "1" }],
+    draft,
+  );
+  assert.equal(result.rows[0].zoneId, null);
+  assert.equal(result.rows[0].workTypeId, null);
+  assert.deepEqual(result.rows[0].errors, [
+    "Строка 2: зона «Секция А» не действует, её статус «draft»",
+    "Строка 2: вид работ «Кладка» не действует, его статус «draft»",
+  ]);
+  assert.equal(result.rows[0].errors.some((error) => error.includes("архив")), false);
+});
+
 test("чужой, архивный и неоднозначный справочник не подменяются", () => {
   const foreign = {
     zones: [
