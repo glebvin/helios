@@ -106,14 +106,22 @@ export class TenantGuard implements CanActivate {
     const actor = await this.auth.actor(token, tenantId);
     if (!actor) throw httpError(403, "tenant_denied");
     if (!isKnownRole(actor.role)) throw httpError(403, "role_denied");
-    const identityRoute = (["GET", "HEAD"].includes(request.method ?? "") && request.path === "/api/v1/me") ||
-      (request.method === "POST" && request.path === "/api/v1/auth/logout");
-    if (!isExistingRuntimeRole(actor.role) && !identityRoute) throw httpError(403, "role_denied");
-    const routeConfigurationWrite = actor.role === "admin" && request.method === "POST" &&
-      /^\/api\/v1\/projects\/[0-9a-f-]{36}\/route-config\/?$/i.test(request.path ?? "");
-    // This exception reaches only the route service, which reloads role/project scope from DB.
-    if (readOnlyCabinetRoles.has(actor.role) && !routeConfigurationWrite &&
-        !["GET", "HEAD"].includes(request.method ?? "") && request.path !== "/api/v1/auth/logout") {
+    const method = request.method ?? "";
+    const path = request.path ?? "";
+    const identityRoute = (["GET", "HEAD"].includes(method) && path === "/api/v1/me") ||
+      (method === "POST" && path === "/api/v1/auth/logout");
+    const checklistProject = /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates(?:\/[0-9a-f-]{36}(?:\/(?:submit|decision))?)?\/?$/i.test(path);
+    const checklistRead = ["GET", "HEAD"].includes(method) && (path === "/api/v1/checklist-templates" || /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates(?:\/[0-9a-f-]{36})?\/?$/i.test(path));
+    // Reserved engineer reaches only this module. The service checks the configured preparer again.
+    const engineerChecklist = actor.role === "engineer-pto" && (checklistRead || (method === "POST" && checklistProject));
+    if (!isExistingRuntimeRole(actor.role) && !identityRoute && !engineerChecklist) throw httpError(403, "role_denied");
+    const routeConfigurationWrite = actor.role === "admin" && method === "POST" &&
+      /^\/api\/v1\/projects\/[0-9a-f-]{36}\/route-config\/?$/i.test(path);
+    const checklistDecision = (actor.role === "safety" || actor.role === "zds-soso") && method === "POST" &&
+      /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates\/[0-9a-f-]{36}\/decision\/?$/i.test(path);
+    // This exception reaches only the route or checklist service, which reloads role/project scope from DB.
+    if (readOnlyCabinetRoles.has(actor.role) && !routeConfigurationWrite && !checklistDecision &&
+        !["GET", "HEAD"].includes(method) && path !== "/api/v1/auth/logout") {
       throw httpError(403, "role_denied");
     }
     request.actor = actor;

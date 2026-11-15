@@ -75,6 +75,20 @@ test('reserved roles authenticate identity/logout but cannot fall through any bu
   }
   await assert.rejects(guard('constructor','GET','/api/v1/me'),{message:'role_denied'});
 });
+test('engineer-pto reaches only checklist templates; other reserved roles and unrelated writes stay closed',async()=>{
+  const project='/api/v1/projects/33333333-3333-4333-8333-333333333333';
+  const template=`${project}/checklist-templates/55555555-5555-4555-8555-555555555555`;
+  for (const [method,path] of [['GET','/api/v1/checklist-templates'],['GET',`${project}/checklist-templates`],['POST',`${project}/checklist-templates`],['GET',template],['POST',template],['POST',`${template}/submit`],['POST',`${template}/decision`]]) assert.equal(await guard('engineer-pto',method,path),true);
+  await assert.rejects(guard('engineer-pto','POST','/api/v1/employees'),{message:'role_denied'});
+  await assert.rejects(guard('engineer-pto','GET','/api/v1/projects'),{message:'role_denied'});
+  await assert.rejects(guard('engineer-pto','GET','/api/v1/overview'),{message:'role_denied'});
+  for (const role of ['cost','brigadier','subcontractor','peo','gb','uo']) await assert.rejects(guard(role,'GET','/api/v1/checklist-templates'),{message:'role_denied'});
+  assert.equal(await guard('safety','POST',`${template}/decision`),true);
+  assert.equal(await guard('zds-soso','POST',`${template}/decision`),true);
+  await assert.rejects(guard('safety','POST',`${project}/checklist-templates`),{message:'role_denied'});
+  await assert.rejects(guard('zds-soso','POST',`${template}/submit`),{message:'role_denied'});
+  await assert.rejects(guard('hr','POST',`${template}/decision`),{message:'role_denied'});
+});
 test('existing role guard behaviour remains unchanged',async()=>{
   for(const role of roleCatalog.filter(r=>isExistingRuntimeRole(r.code)))assert.equal(await guard(role.code,'GET','/api/desk'),true);
   assert.equal(await guard('director','POST','/api/tasks'),true);
