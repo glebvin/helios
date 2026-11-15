@@ -7,11 +7,11 @@ import type {Page} from './api-input.js';
 import {reserveCommand,replayCommand,completeCommand} from './durable-command.js';
 import {evidenceReservation,evidenceAttachment,type EvidenceTarget} from './evidence-input.js';
 import {evidenceTimeScope} from './evidence-time-scope.js';
-import {EvidenceStorage,readEvidenceRequest,type BlobDeclaration} from './evidence-storage.js';
+import {readEvidenceRequest,type BlobDeclaration,type EvidenceBlobStore} from './evidence-storage.js';
 import {executionScope} from './execution-read.js';
 type Row=Record<string,any>;
 export class EvidenceService {
- constructor(private readonly pool:Pool,private readonly storage:EvidenceStorage){}
+ constructor(private readonly pool:Pool,private readonly storage:EvidenceBlobStore){}
  private declaration(f:Row):BlobDeclaration{return {sizeBytes:f.size_bytes,sha256:f.sha256,contentType:f.content_type};}
  private async file(c:PoolClient,a:Actor,p:string,id:string,mutation=false,reason?:string,useReservedReason=true){
   const initial=(await c.query(`SELECT employee_id,on_behalf_reason FROM private_evidence_files WHERE tenant_id=$1 AND project_id=$2 AND id=$3`,[a.tenantId,p,id])).rows[0];if(!initial)throw httpError(404,'not_found');
