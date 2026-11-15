@@ -39,6 +39,8 @@ export class TasksController {
   checks(@Req()r:ActorRequest,@Param('p')p:string,@Param('id')id:string,@Query()q:Record<string,unknown>){queryInput(q,['limit','offset']);return this.tasks.frontChecks(actorOf(r),uuid(p).toLowerCase(),uuid(id).toLowerCase(),page(q));}
   @Get('tasks/:id/front-checks/:check')
   check(@Req()r:ActorRequest,@Param('p')p:string,@Param('id')id:string,@Param('check')check:string,@Query()q:Record<string,unknown>){queryInput(q,[]);return this.tasks.frontChecks(actorOf(r),uuid(p).toLowerCase(),uuid(id).toLowerCase(),page({}),uuid(check).toLowerCase());}
+  @Get('tasks/:id/route')
+  route(@Req()r:ActorRequest,@Param('p')p:string,@Param('id')id:string,@Query()q:Record<string,unknown>){queryInput(q,[]);return this.tasks.taskRoute(actorOf(r),uuid(p).toLowerCase(),uuid(id).toLowerCase());}
   @Get('tasks/:id/readiness')
   readiness(@Req()r:ActorRequest,@Param('p')p:string,@Param('id')id:string,@Query()q:Record<string,unknown>){queryInput(q,[]);return this.tasks.taskReadiness(actorOf(r),uuid(p).toLowerCase(),uuid(id).toLowerCase());}
   @Post('tasks/:id/front-checks')
