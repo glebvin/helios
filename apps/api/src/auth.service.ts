@@ -165,7 +165,8 @@ export class TenantGuard implements CanActivate {
     if (!isKnownRole(actor.role)) throw httpError(403, "role_denied");
     const identityRoute = (["GET", "HEAD"].includes(request.method ?? "") && request.path === "/api/v1/me") ||
       (request.method === "POST" && request.path === "/api/v1/auth/logout");
-    if (!isExistingRuntimeRole(actor.role) && !identityRoute) throw httpError(403, "role_denied");
+    const priceRoute = contractPriceRoute(actor.role, request.method ?? "", request.path ?? "");
+    if (!isExistingRuntimeRole(actor.role) && !identityRoute && !priceRoute) throw httpError(403, "role_denied");
     const routeConfigurationWrite = actor.role === "admin" && request.method === "POST" &&
       /^\/api\/v1\/projects\/[0-9a-f-]{36}\/route-config\/?$/i.test(request.path ?? "");
     const responsibilityOrderWrite = actor.role === "hr" && request.method === "POST" &&
@@ -179,6 +180,12 @@ export class TenantGuard implements CanActivate {
     request.sessionToken = token;
     return true;
   }
+}
+
+function contractPriceRoute(role: string, method: string, path: string) {
+  if (role !== "cost") return false;
+  if (method === "GET" && path === "/api/v1/contract-prices/projects") return true;
+  return ["GET", "POST"].includes(method) && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/contract-prices\/?$/i.test(path);
 }
 
 export function actorOf(request: ActorRequest): Actor {
