@@ -1320,6 +1320,30 @@ h1, h2, h3, p { margin: 0; }
 .daily-route-history li div { display: grid; gap: 4px; }
 .daily-route-history li p { margin: 8px 0 0; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .daily-route-facts { grid-template-columns: 1fr; } }
+.checklist-templates { min-height: 360px; }
+.checklist-layout { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(0, 1.2fr); gap: 12px; min-height: 320px; }
+.checklist-list, .checklist-card { min-width: 0; }
+.checklist-list-head, .checklist-actions, .checklist-bounds, .checklist-steps { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.checklist-list-head { justify-content: space-between; }
+.checklist-rows { display: grid; gap: 8px; }
+.checklist-row { display: grid; gap: 4px; width: 100%; min-height: 32px; padding: 10px; text-align: left; border: 0; border-radius: 12px; background: transparent; color: inherit; }
+.checklist-row.is-on { background: var(--soft); box-shadow: inset 0 -2px 0 #EA580C; }
+.checklist-row b { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.checklist-row span, .checklist-row em { font-size: 13px; font-style: normal; color: var(--muted); }
+.checklist-steps b { font-size: 13px; font-weight: 500; color: var(--muted); }
+.checklist-steps b.is-on { color: #EA580C; }
+.checklist-steps b.is-warn { color: var(--warn); }
+.checklist-items { display: grid; gap: 12px; margin: 12px 0; }
+.checklist-item { display: grid; gap: 8px; min-width: 0; }
+.checklist-bounds { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.checklist-history { list-style: none; margin: 16px 0 0; padding: 0 0 0 12px; border-left: 2px solid #15803d; display: grid; gap: 12px; }
+.checklist-history li { display: grid; gap: 4px; min-width: 0; }
+.checklist-history b { font-size: 13px; font-weight: 500; }
+.checklist-history p { margin: 0; overflow-wrap: anywhere; }
+.checkline { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+@media (max-width: 800px) {
+  .checklist-layout, .checklist-bounds { grid-template-columns: minmax(0, 1fr); }
+}
 .prices { min-height: 100vh; padding: 20px 16px 48px; display: grid; gap: 16px; align-content: start; }
 .prices header { display: flex; align-items: center; gap: 12px; }
 .prices header div { display: grid; margin-right: auto; }

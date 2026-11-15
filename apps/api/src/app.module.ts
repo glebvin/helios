@@ -45,8 +45,11 @@ import {InvitationsController} from "./invitations.controller.js";
 
 import {RouteConfigService} from "./route-config.service.js";
 import {RouteConfigController} from "./route-config.controller.js";
+import { ChecklistTemplatesController } from "./checklist-templates.controller.js";
+import { ChecklistTemplatesService } from "./checklist-templates.service.js";
 import {ContractPriceService} from "./contract-prices.service.js";
 import {ContractPriceController, ContractPriceProjectController} from "./contract-prices.controller.js";
+
 import {ResponsibilityOrdersService} from "./responsibility-orders.service.js";
 import {ResponsibilityOrdersController} from "./responsibility-orders.controller.js";
 
@@ -160,7 +163,7 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [MaterialBatchProjectController, MaterialBatchController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [MaterialBatchProjectController, MaterialBatchController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
   providers: [
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
@@ -182,7 +185,9 @@ class WorkforceController {
     {provide:MaterialBatchService,useFactory:(pool:Pool,storage:EvidenceBlobStore)=>new MaterialBatchService(pool,storage),inject:[APP_POOL,EvidenceStorage]},
     {provide:InvitationsService,useFactory:(pool:Pool)=>new InvitationsService(pool),inject:[APP_POOL]},
     {provide:RouteConfigService,useFactory:(pool:Pool)=>new RouteConfigService(pool),inject:[APP_POOL]},
+    { provide: ChecklistTemplatesService, useFactory: (pool: Pool) => new ChecklistTemplatesService(pool), inject: [APP_POOL] },
     {provide:ContractPriceService,useFactory:(pool:Pool)=>new ContractPriceService(pool),inject:[APP_POOL]},
+
     {provide:ResponsibilityOrdersService,useFactory:(pool:Pool)=>new ResponsibilityOrdersService(pool),inject:[APP_POOL]},
 
     TenantGuard,

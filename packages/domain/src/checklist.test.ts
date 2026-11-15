@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checklistPage, pinChecklist, validateChecklist, type ChecklistAnswer, type ChecklistItem, type ChecklistTemplate } from "./index.js";
+import { checklistPage, checklistTemplateIssues, pinChecklist, validateChecklist, type ChecklistAnswer, type ChecklistItem, type ChecklistTemplate } from "./index.js";
 
 function item(patch: Partial<ChecklistItem> = {}): ChecklistItem {
   return { id: "seam-clear", prompt: "Шов свободен", kind: "yes_no", pass: "yes", required: true, critical: true, ...patch };
@@ -112,6 +112,15 @@ test("нечисловая граница — ошибка шаблона, од�
   );
   assert.equal(reversed.ok, false);
   assert.equal(reversed.refusals.some((item) => item.reason === "invalid_template"), true);
+});
+
+test("шаблон проверяет типы и допуски до записи ответов", () => {
+  assert.deepEqual(checklistTemplateIssues(full().items), []);
+  const many = Array.from({ length: 11 }, (_, index) => item({ id: `item-${index + 1}`, prompt: `Пункт ${index + 1}`, critical: false, required: false }));
+  assert.deepEqual(checklistTemplateIssues(many), []);
+  assert.equal(checklistTemplateIssues([]).includes("invalid_template"), true);
+  assert.equal(checklistTemplateIssues([item({ pass: undefined })]).includes("invalid_template"), true);
+  assert.equal(checklistTemplateIssues([item({ id: "thickness", prompt: "Толщина", kind: "number", unit: "мм", min: "20", max: "10" })]).includes("invalid_template"), true);
 });
 
 test("на экран помещается десять пунктов, фото сверх двадцати отвергаются", () => {
