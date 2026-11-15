@@ -226,6 +226,7 @@ const desk: Access[] = [
     sections: [
       { id: "quality", label: "Приёмка" },
       { id: "documents", label: "Акты" },
+      { id: "materials", label: "Материалы" },
       { id: "people", label: "Табель" },
     ],
     peopleTabs: ["sheet"],

@@ -254,7 +254,7 @@ export function DirectorDesk({
               remarks={remarks}
               onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
             />) : null}
-          {page === "materials" ? <Materials canEdit={canRecordSupply} /> : null}
+          {page === "materials" ? <Materials session={session} projectId={templateProjectId} canEdit={canRecordSupply} /> : null}
           {page === "quality" ? (livePto ? (
             <PtoFacts session={session} projectId={templateProjectId} projectName={project} day={taskDay} notice={scope.notice} onOpenSheet={openSheet} />
           ) : (

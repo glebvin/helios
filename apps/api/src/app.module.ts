@@ -37,6 +37,8 @@ import {EvidenceController} from './evidence.controller.js';
 import {EvidenceService} from './evidence.service.js';
 import {EvidenceStorage,type EvidenceBlobStore} from './evidence-storage.js';
 import {createEvidenceStore} from './evidence-store.js';
+import {MaterialBatchService} from './material-batches.service.js';
+import {MaterialBatchController, MaterialBatchProjectController} from './material-batches.controller.js';
 
 import {InvitationsService} from "./invitations.service.js";
 import {InvitationsController} from "./invitations.controller.js";
@@ -153,7 +155,7 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [MaterialBatchProjectController, MaterialBatchController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
   providers: [
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
@@ -172,6 +174,7 @@ class WorkforceController {
     // Shared DI: unset HELIOS_EVIDENCE_STORE keeps the filesystem adapter. S3 is opt-in for the QA store only.
     {provide:EvidenceStorage,useFactory:()=>createEvidenceStore()},
     {provide:EvidenceService,useFactory:(pool:Pool,storage:EvidenceBlobStore)=>new EvidenceService(pool,storage),inject:[APP_POOL,EvidenceStorage]},
+    {provide:MaterialBatchService,useFactory:(pool:Pool,storage:EvidenceBlobStore)=>new MaterialBatchService(pool,storage),inject:[APP_POOL,EvidenceStorage]},
     {provide:InvitationsService,useFactory:(pool:Pool)=>new InvitationsService(pool),inject:[APP_POOL]},
     {provide:RouteConfigService,useFactory:(pool:Pool)=>new RouteConfigService(pool),inject:[APP_POOL]},
     TenantGuard,

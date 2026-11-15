@@ -168,8 +168,10 @@ export class TenantGuard implements CanActivate {
     if (!isExistingRuntimeRole(actor.role) && !identityRoute) throw httpError(403, "role_denied");
     const routeConfigurationWrite = actor.role === "admin" && request.method === "POST" &&
       /^\/api\/v1\/projects\/[0-9a-f-]{36}\/route-config\/?$/i.test(request.path ?? "");
-    // This exception reaches only the route service, which reloads role/project scope from DB.
-    if (readOnlyCabinetRoles.has(actor.role) && !routeConfigurationWrite &&
+    const materialWrite = actor.role === "supply" && ["POST", "PUT"].includes(request.method ?? "") &&
+      /^\/api\/v1\/projects\/[0-9a-f-]{36}\/material-batches(\/[0-9a-f-]{36}(\/documents\/[0-9a-f-]{36}\/content)?)?\/?$/i.test(request.path ?? "");
+    // These exceptions reach only their services, which reload role and project scope from the database.
+    if (readOnlyCabinetRoles.has(actor.role) && !routeConfigurationWrite && !materialWrite &&
         !["GET", "HEAD"].includes(request.method ?? "") && request.path !== "/api/v1/auth/logout") {
       throw httpError(403, "role_denied");
     }
