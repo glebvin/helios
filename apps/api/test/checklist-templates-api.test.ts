@@ -198,3 +198,13 @@ test("template draft follows PTO, both reviews and ZDS, then a new edition leave
   assert.equal((await call("zds", "POST", `${template}/submit`, { requestId: randomUUID(), expectedVersion: returned.body.version })).status, 403);
   assert.equal((await admin.query("SELECT count(*)::int n FROM audit_log WHERE tenant_id=$1 AND action LIKE 'checklist.%'", [tenant])).rows[0].n > 0, true);
 });
+
+test("an old template receipt cannot bypass revoked project access", async () => {
+  const path = `/api/v1/projects/${project}/checklist-templates`;
+  const body = {requestId:randomUUID(),title:"Replay permission proof",items:[yes("one","Ready",true)]};
+  const saved = await call("engineer","POST",path,body);
+  assert.equal(saved.status,201,JSON.stringify(saved.body));
+  await admin.query("UPDATE project_memberships SET status='revoked' WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3",[tenant,project,ids.get("engineer")]);
+  try {assert.equal((await call("engineer","POST",path,body)).status,403);}
+  finally {await admin.query("UPDATE project_memberships SET status='active' WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3",[tenant,project,ids.get("engineer")]);}
+});

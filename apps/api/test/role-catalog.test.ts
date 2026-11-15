@@ -51,6 +51,13 @@ test('self and crew contracts keep people, crews and employers separate',()=>{
   for(const target of [{...resource,crewId:other},{...resource,employerId:other},{...resource,crewId:undefined}])assert.equal(allow('brigadier','crew.volume.report',target),false);
   assert.equal(allow('worker','crew.volume.report'),false);
 });
+test('orders belong to personnel and stay inside the company and object',()=>{
+  assert.ok(allow('hr','orders.manage'));
+  assert.equal(allow('hr','orders.manage',{...resource,projectId:other}),false);
+  assert.equal(allow('hr','orders.manage',{...resource,employerId:other}),false);
+  assert.equal(allow('director','orders.manage'),false);
+  assert.equal(allow('admin','orders.manage'),false);
+});
 test('admin config is scoped and never a blanket editor of confirmed production data',()=>{
   assert.ok(allow('admin','routes.configure'));assert.equal(allow('admin','routes.configure',{...resource,projectId:other}),false);
   assert.equal(allow('director','routes.configure'),false);
@@ -93,4 +100,8 @@ test('existing role guard behaviour remains unchanged',async()=>{
   for(const role of roleCatalog.filter(r=>isExistingRuntimeRole(r.code)))assert.equal(await guard(role.code,'GET','/api/desk'),true);
   assert.equal(await guard('director','POST','/api/tasks'),true);
   for(const role of ['gd','admin','hr','customer'])await assert.rejects(guard(role,'POST','/api/tasks'),{message:'role_denied'});
+  assert.equal(await guard('hr','POST','/api/v1/responsibility-orders'),true);
+  assert.equal(await guard('hr','POST',`/api/v1/responsibility-orders/${project}/revoke`),true);
+  await assert.rejects(guard('admin','POST','/api/v1/responsibility-orders'),{message:'role_denied'});
+  await assert.rejects(guard('hr','POST','/api/v1/responsibility-orders/not-an-order'),{message:'role_denied'});
 });

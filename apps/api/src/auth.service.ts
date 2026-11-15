@@ -176,9 +176,12 @@ export class TenantGuard implements CanActivate {
       /^\/api\/v1\/projects\/[0-9a-f-]{36}\/route-config\/?$/i.test(path);
     const checklistDecision = (actor.role === "safety" || actor.role === "zds-soso") && method === "POST" &&
       /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates\/[0-9a-f-]{36}\/decision\/?$/i.test(path);
+    const responsibilityOrderWrite = actor.role === "hr" && method === "POST" &&
+      /^\/api\/v1\/responsibility-orders(?:\/[0-9a-f-]{36}(?:\/revoke)?)?$/i.test(path);
     // This exception reaches only the route or checklist service, which reloads role/project scope from DB.
-    if (readOnlyCabinetRoles.has(actor.role) && !routeConfigurationWrite && !checklistDecision &&
+    if (readOnlyCabinetRoles.has(actor.role) && !routeConfigurationWrite && !checklistDecision && !responsibilityOrderWrite &&
         !["GET", "HEAD"].includes(method) && path !== "/api/v1/auth/logout") {
+
       throw httpError(403, "role_denied");
     }
     request.actor = actor;

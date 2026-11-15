@@ -21,11 +21,14 @@ import { amount, dayTasks, laneOf, laneTone, personName, progress, statusLabel, 
 import { LiveInbox, LiveToday } from "./today";
 import { PtoFacts, PtoFiles } from "./facts";
 import { ChecklistTemplates } from "./checklist-templates-panel";
+import { ResponsibilityOrders } from "./responsibility-orders-panel";
+
 
 const icons: Record<Section, string> = {
   overview: paths.home,
   mine: paths.check,
   people: paths.people,
+  orders: paths.file,
   tasks: paths.list,
   quality: paths.shield,
   materials: paths.box,
@@ -241,6 +244,7 @@ export function DirectorDesk({
               sheetDay={taskDay}
             />
           ) : null}
+          {page === "orders" ? <ResponsibilityOrders session={session} projectId={templateProjectId} /> : null}
           {page === "tasks" ? (hasV1ProjectScope(session.role) ? <TaskRead key={`${session.tenantId}:${templateProjectId}:${taskDay}`} session={session} projectId={templateProjectId} day={taskDay} notice={scope.notice} openTaskId={openTask?.id ?? ""} openToken={openTask?.token ?? 0} /> : <WorkBoard
               data={data}
               tasks={tasks}
