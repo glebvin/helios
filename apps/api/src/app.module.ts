@@ -1,3 +1,5 @@
+import { MaterialBatchService } from "./material-batches.service.js";
+import { MaterialBatchController, MaterialBatchProjectController } from "./material-batches.controller.js";
 import { StaffImportService } from "./staff-import.service.js";
 import { StaffImportController } from "./staff-import.controller.js";
 import "reflect-metadata";
@@ -166,10 +168,11 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [StaffImportController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [MaterialBatchController, MaterialBatchProjectController, StaffImportController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
 
 
   providers: [
+    { provide: MaterialBatchService, useFactory: (pool: Pool, storage: EvidenceBlobStore) => new MaterialBatchService(pool, storage), inject: [APP_POOL, EvidenceStorage] },
     { provide: StaffImportService, useFactory: (pool: Pool) => new StaffImportService(pool), inject: [APP_POOL] },
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,

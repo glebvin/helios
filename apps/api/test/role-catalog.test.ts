@@ -122,3 +122,13 @@ test('existing role guard behaviour remains unchanged',async()=>{
   await assert.rejects(guard('admin','POST','/api/v1/responsibility-orders'),{message:'role_denied'});
   await assert.rejects(guard('hr','POST','/api/v1/responsibility-orders/not-an-order'),{message:'role_denied'});
 });
+test('supply writes only its material batch routes',async()=>{
+  assert.ok(allow('master','materials.record'));assert.ok(allow('supply','materials.read'));assert.ok(allow('pto','materials.read'));
+  assert.equal(allow('pto','materials.record'),false);assert.equal(allow('director','materials.read'),false);
+  assert.equal(allow('supply','materials.record',{...resource,projectId:other}),false);
+  assert.equal(await guard('supply','POST',`/api/v1/projects/${project}/material-batches`),true);
+  assert.equal(await guard('supply','PUT',`/api/v1/projects/${project}/material-batches/${employer}/documents/${employee}/content`),true);
+  await assert.rejects(guard('supply','POST','/api/v1/employees'),{message:'role_denied'});
+  await assert.rejects(guard('supply','POST','/api/tasks'),{message:'role_denied'});
+  await assert.rejects(guard('supply','POST',`/api/v1/projects/${project}/tasks`),{message:'role_denied'});
+});
