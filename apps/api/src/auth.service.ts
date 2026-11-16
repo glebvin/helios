@@ -176,8 +176,9 @@ export class TenantGuard implements CanActivate {
     const routeConfigurationWrite = actor.role === "admin" && method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/route-config\/?$/i.test(path);
     const responsibilityOrderWrite = actor.role === "hr" && method === "POST" && /^\/api\/v1\/responsibility-orders(?:\/[0-9a-f-]{36}(?:\/revoke)?)?$/i.test(path);
     const checklistDecision = ["safety", "zds-soso"].includes(actor.role) && method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates\/[0-9a-f-]{36}\/decision\/?$/i.test(path);
+    const primaryDayWrite = actor.role === "hr" && method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/time\/consolidated\/\d{4}-\d{2}-\d{2}\/revisions\/?$/i.test(path);
     // Each module service reloads current role and project scope before writing/replaying.
-    if (readOnlyCabinetRoles.has(actor.role) && !routeConfigurationWrite && !responsibilityOrderWrite && !checklistDecision && !["GET", "HEAD"].includes(method) && path !== "/api/v1/auth/logout") throw httpError(403, "role_denied");
+    if (readOnlyCabinetRoles.has(actor.role) && !routeConfigurationWrite && !responsibilityOrderWrite && !checklistDecision && !primaryDayWrite && !["GET", "HEAD"].includes(method) && path !== "/api/v1/auth/logout") throw httpError(403, "role_denied");
     request.actor = actor;
     request.sessionToken = token;
     return true;
