@@ -9,8 +9,7 @@ export type ContractPermission =
   | 'summary.company.read' | 'summary.project.read'
   | 'personnel.company.read' | 'personnel.project.read' | 'personnel.employer.read'
   | 'tasks.self.read' | 'tasks.employer.read' | 'crew.volume.report'
-  | 'routes.configure' | 'orders.manage' | 'confirmed.production.edit' | 'prices.maintain';
-
+  | 'routes.configure' | 'orders.manage' | 'confirmed.production.edit' | 'prices.maintain' | 'materials.record' | 'materials.read';
 export type AuthorizedScope = {
   tenantId: string; role: string; employeeId?: string;
   projectIds?: readonly string[]; employerIds?: readonly string[]; crewIds?: readonly string[];
@@ -54,6 +53,10 @@ export function roleContractAllows(actor: AuthorizedScope, permission: ContractP
       return actor.role === 'brigadier' && project && employer && listed(actor.crewIds, resource.crewId);
     case 'routes.configure':
       return actor.role === 'admin' && project;
+    case 'materials.record':
+      return (actor.role === 'master' || actor.role === 'supply') && project;
+    case 'materials.read':
+      return (actor.role === 'master' || actor.role === 'supply' || actor.role === 'pto') && project;
     case 'prices.maintain':
       return actor.role === 'cost' && (resource.projectId === undefined || project);
     case 'orders.manage':

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
@@ -10,7 +11,7 @@ const password = "checklist-run-browser";
 const dbPort = Number(process.env.HELIOS_CHECKLIST_RUN_DB_PORT ?? 54621);
 const apiPort = Number(process.env.HELIOS_CHECKLIST_RUN_API_PORT ?? 4423);
 const webPort = Number(process.env.HELIOS_CHECKLIST_RUN_WEB_PORT ?? 5297);
-assert.equal(dbPort, 54621);
+assert.ok([54621,54635].includes(dbPort));
 const db = `postgres://helios:helios@127.0.0.1:${dbPort}/helios`;
 const web = `http://localhost:${webPort}`;
 const admin = new pg.Pool({ connectionString: db });
@@ -33,7 +34,7 @@ jpeg[0] = 0xff; jpeg[1] = 0xd8; jpeg[2] = 0xff;
 const pdf = Buffer.from("%PDF-1.7\nchecklist\n%%EOF");
 
 const directory = (await admin.query("SHOW data_directory")).rows[0].data_directory;
-assert.equal(realpathSync(directory), realpathSync(fileURLToPath(new URL("../.data/pg-54621", import.meta.url))));
+assert.equal(realpathSync(directory), realpathSync(fileURLToPath(new URL(`../.data/pg-${dbPort}`, import.meta.url))));
 const hash = hashPassword(password);
 await admin.query("INSERT INTO tenants(id,name) VALUES($1,'Прохождение')", [tenant]);
 const day = (await admin.query("SELECT to_char(now() AT TIME ZONE timezone, 'YYYY-MM-DD') AS day FROM tenants WHERE id=$1", [tenant])).rows[0].day;
@@ -107,19 +108,26 @@ try {
   await checklist.getByText("шов.jpg").waitFor();
   await page.unroute("**/api/v1/**");
   let dropped = false;
+  let committed; const committedReply = new Promise(resolve => { committed=resolve; });
   await page.route("**/checklist-runs", async (route) => {
     if (!dropped && route.request().method() === "POST") {
       dropped = true;
-      await route.abort();
+      const response = await route.fetch(); assert.equal(response.status(),201);
+      await route.abort(); committed();
       return;
     }
+    if (route.request().method() === "POST") return route.abort();
     await route.continue();
   });
   await checklist.getByRole("button", { name: "Сохранить на сервере" }).click();
   await checklist.getByText("Ожидает отправки. Это ещё не запись на сервере.").waitFor();
-  assert.equal((await admin.query("SELECT count(*)::int AS n FROM checklist_runs WHERE tenant_id=$1", [tenant])).rows[0].n, 0);
+  await committedReply;
+  assert.equal((await admin.query("SELECT count(*)::int AS n FROM checklist_runs WHERE tenant_id=$1", [tenant])).rows[0].n, 1);
+  await admin.query("INSERT INTO checklist_template_editions(tenant_id,project_id,template_id,edition,title,items,status,version,created_by) VALUES($1,$2,$3,2,'Другой шаблон',$4,'approved',1,$5)",[tenant,project,template,JSON.stringify([{id:"changed",prompt:"Новый пункт",kind:"yes_no",required:true,critical:true,pass:"yes"}]),byKey.master.id]);
+  await page.reload(); await openTask(page);
+  await checklist.getByText("Редакция 1, версия 3.").waitFor();
+  assert.equal(await checklist.getByRole("group",{name:"Шов свободен",exact:true}).count(),1);
   await page.unroute("**/checklist-runs");
-  await checklist.getByRole("button", { name: "Сохранить на сервере" }).click();
   await checklist.getByText("Сервер принял ответы").waitFor();
   await page.reload();
   await openTask(page);
@@ -148,6 +156,8 @@ try {
   await login(page, byKey.hr);
   assert.equal(await page.getByRole("button", { name: "Задания" }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "Сохранить на сервере" }).count(), 0);
+  const out=fileURLToPath(new URL("../.data/checklist-browser",import.meta.url)); await mkdir(out,{recursive:true});
+  await writeFile(out+"/result.json",JSON.stringify({ok:true,lost201:true,reloadDraft:true,photoBytes:true,oneRun:true,ptoRead:true,pinnedQueuedEdition:true,hrDenied:true,mobile390:true,overflow,ptoOverflow},null,2));
   console.log("checklist run browser ok");
 } finally {
   await browser.close();

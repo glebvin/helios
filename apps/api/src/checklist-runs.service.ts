@@ -126,8 +126,8 @@ export class ChecklistRunsService {
         createdAt: new Date(row.createdAt).toISOString(),
         files: (await c.query(
           `SELECT id AS "fileId", item_id AS "itemId", filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256
-           FROM checklist_run_files WHERE project_id=$1 AND task_id=$2 AND item_id=ANY($3::text[]) ORDER BY created_at, id`,
-          [projectId, taskId, row.answers.map((answer) => answer.itemId)],
+           FROM checklist_run_files WHERE project_id=$1 AND task_id=$2 AND id=ANY($3::uuid[]) ORDER BY created_at, id`,
+          [projectId, taskId, row.answers.filter((answer) => row.items.some((item) => item.id === answer.itemId && (item.kind === "photo" || item.kind === "document"))).map((answer) => answer.value)],
         )).rows,
       });
     }
@@ -139,6 +139,7 @@ export class ChecklistRunsService {
       if (item.kind !== "photo" && item.kind !== "document") continue;
       const answer = answers.find((row) => row.itemId === item.id);
       if (!answer) continue;
+      if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(answer.value)) throw httpError(422, "file_denied");
       const file = (await c.query(
         `SELECT content_type FROM checklist_run_files WHERE project_id=$1 AND task_id=$2 AND id=$3 AND item_id=$4`,
         [projectId, taskId, answer.value, item.id],
@@ -153,12 +154,13 @@ export class ChecklistRunsService {
     if (!member || member.role !== a.role || !(write ? writers : readers).has(member.role)) throw httpError(403, "role_denied");
     if (!(await c.query(`SELECT 1 FROM project_memberships WHERE project_id=$1 AND user_id=$2 AND status='active' FOR SHARE`, [projectId, a.userId])).rowCount) throw httpError(403, "role_denied");
     await c.query(`SELECT id FROM daily_tasks WHERE project_id=$1 AND id=$2 FOR NO KEY UPDATE`, [projectId, taskId]);
-    const task = (await c.query(`SELECT id, project_id AS "projectId", assignee_employee_id AS "assigneeEmployeeId" FROM daily_tasks WHERE project_id=$1 AND id=$2`, [projectId, taskId])).rows[0];
+    const task = (await c.query(`SELECT id, project_id AS "projectId", assignee_employee_id AS "assigneeEmployeeId", workflow_kind AS "workflowKind", status FROM daily_tasks WHERE project_id=$1 AND id=$2`, [projectId, taskId])).rows[0];
     if (!task) throw httpError(404, "not_found");
     if (task.projectId !== projectId) throw httpError(422, "task_denied");
-    if (write && member.role === "worker") {
-      const employee = (await c.query(`SELECT id FROM employees WHERE user_id=$1`, [a.userId])).rows[0];
-      if (employee?.id !== task.assigneeEmployeeId) throw httpError(403, "role_denied");
+    if (member.role === "worker") {
+      const employee = (await c.query(`SELECT id FROM employees WHERE user_id=$1 AND status='active' FOR SHARE`, [a.userId])).rows[0];
+      if (employee?.id !== task.assigneeEmployeeId || (task.workflowKind !== "legacy" && task.status !== "published")) throw httpError(403, "role_denied");
+      if (!(await c.query(`SELECT employee_id FROM employee_project_assignments WHERE project_id=$1 AND employee_id=$2 AND status='active' FOR SHARE`, [projectId, employee.id])).rowCount) throw httpError(403, "role_denied");
     }
     return task as { id: string; projectId: string; assigneeEmployeeId: string };
   }

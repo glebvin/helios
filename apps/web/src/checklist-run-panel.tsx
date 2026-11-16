@@ -50,6 +50,13 @@ export function ChecklistRunPanel({ session, projectId, taskId, title, day }: { 
   const [pulse, setPulse] = useState(0);
   const [busy, setBusy] = useState(false);
   const [pass, setPass] = useState(0);
+  const active = useRef(true);
+  const submitting = useRef(false);
+  const filePicks = useRef(new Map<string, number>());
+  const filesRef = useRef(files); filesRef.current = files;
+  const answersRef = useRef(answers); answersRef.current = answers;
+  const chosenRef = useRef(chosen); chosenRef.current = chosen;
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   const chain = useRef<Promise<unknown>>(Promise.resolve());
   const confirmed = useRef("");
   const readable = canReadChecklist(session.role);
@@ -57,18 +64,19 @@ export function ChecklistRunPanel({ session, projectId, taskId, title, day }: { 
   const status = checklistStatus(local);
   const frozen = local?.phase === "queued" && (local.state === "pending" || local.state === "sending" || local.state === "retry_wait");
 
-  function remember(next: { templateId: string; edition: number; version: number; items: ChecklistItem[]; answers: ChecklistAnswer[]; files: LocalFile[] }, heading = title, workDay = day) {
+  function remember(next: { templateId: string; edition: number; version: number; items: ChecklistItem[]; answers: ChecklistAnswer[]; files: LocalFile[] }, heading = title, workDay = day, expectedVersion = runs?.latest?.version ?? local?.expectedVersion ?? 0) {
     if (!heading || !workDay) return;
-    const draft = { projectId, taskId, title: heading, projectName: "Объект", day: workDay, templateId: next.templateId, edition: next.edition, templateVersion: next.version, expectedVersion: runs?.latest?.version ?? local?.expectedVersion ?? 0, items: next.items, answers: next.answers, files: next.files };
-    chain.current = chain.current.then(() => openDelivery(session).then(() => saveChecklist(draft))).then((row) => setLocal(row)).catch((reason: unknown) => {
-      setError(reason instanceof Error && reason.message === "local_identity_conflict" ? "Команда уже ждёт отправки." : "Черновик не записан на устройстве.");
+    const draft = { projectId, taskId, title: heading, projectName: "Объект", day: workDay, templateId: next.templateId, edition: next.edition, templateVersion: next.version, expectedVersion, items: next.items, answers: next.answers, files: next.files };
+    chain.current = chain.current.then(() => active.current ? openDelivery(session).then(() => active.current ? saveChecklist(draft) : null) : null).then((row) => { if (active.current && row) setLocal(row); }).catch((reason: unknown) => {
+      if (active.current) setError(reason instanceof Error && reason.message === "local_identity_conflict" ? "Команда уже ждёт отправки." : "Черновик не записан на устройстве.");
     });
   }
 
   useEffect(() => {
     if (!readable) return;
-    const stop = watchDelivery(() => { void readChecklist(projectId, taskId).then((row) => { if (row) setLocal(row); }); });
-    return () => { stop(); };
+    let live = true;
+    const stop = watchDelivery(() => { void readChecklist(projectId, taskId).then((row) => { if (live && row) setLocal(row); }); });
+    return () => { live = false; stop(); };
   }, [readable, projectId, taskId]);
 
   useEffect(() => {
@@ -98,13 +106,13 @@ export function ChecklistRunPanel({ session, projectId, taskId, title, day }: { 
         const listed = await v1<Listed>(session, `/projects/${projectId}/tasks/${taskId}/checklist-runs`);
         if (!live) return;
         setRuns(listed);
-        setApproved(listed.approved);
-        const current = stored?.templateId && listed.approved.some((item) => item.templateId === stored.templateId) ? stored.templateId : listed.approved[0]?.templateId ?? "";
+        const held = stored?.phase === "queued" && stored.state !== "synced" && stored.state !== "blocked";
+        setApproved(held ? [{templateId: stored.templateId, edition: stored.edition, title: stored.title, version: stored.templateVersion, items: stored.items as ChecklistItem[]}] : listed.approved);
+        const current = held ? stored.templateId : stored?.templateId && listed.approved.some((item) => item.templateId === stored.templateId) ? stored.templateId : listed.approved[0]?.templateId ?? "";
         setChosen(current);
         setError("");
         const edition = listed.approved.find((item) => item.templateId === current);
-        const held = stored?.phase === "queued" && stored.state !== "synced" && stored.state !== "blocked";
-        if (edition && title && day && !held) remember({ templateId: edition.templateId, edition: edition.edition, version: edition.version, items: edition.items, answers: stored?.answers ?? [], files: stored?.files ?? [] });
+        if (writable && edition && title && day && !held) remember({ templateId: edition.templateId, edition: edition.edition, version: edition.version, items: edition.items, answers: stored?.answers ?? [], files: stored?.files ?? [] }, title, day, listed.latest?.version ?? 0);
       } catch (reason) {
         if (live && !stored?.items.length) setError(reason instanceof ApiError ? "Прохождение прочитать не удалось." : "Нет ответа сервера.");
       }
@@ -123,7 +131,7 @@ export function ChecklistRunPanel({ session, projectId, taskId, title, day }: { 
     if (frozen || !detail) return;
     const next = answers.filter((answer) => answer.itemId !== itemId);
     if (value) next.push({ itemId, value });
-    setAnswers(next);
+    answersRef.current = next; setAnswers(next);
     remember({ templateId: detail.templateId, edition: detail.edition, version: detail.version, items, answers: next, files });
   }
 
@@ -134,26 +142,34 @@ export function ChecklistRunPanel({ session, projectId, taskId, title, day }: { 
       setError("Нужен файл JPEG, PNG или PDF не больше 8 МБ.");
       return;
     }
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const next = [...files.filter((row) => row.itemId !== item.id), { itemId: item.id, filename: file.name, contentType: type, bytes }];
-    setFiles(next);
+    const pick = (filePicks.current.get(item.id) ?? 0) + 1; filePicks.current.set(item.id, pick);
+    const selectedTemplate = chosen;
+    let bytes: Uint8Array;
+    try { bytes = new Uint8Array(await file.arrayBuffer()); }
+    catch { if (active.current) setError("Файл не прочитан. Выберите его ещё раз."); return; }
+    if (!active.current || chosenRef.current !== selectedTemplate || filePicks.current.get(item.id) !== pick || submitting.current) return;
+    const next = [...filesRef.current.filter((row) => row.itemId !== item.id), { itemId: item.id, filename: file.name, contentType: type, bytes }];
+    filesRef.current = next; setFiles(next);
     setError("");
-    remember({ templateId: detail.templateId, edition: detail.edition, version: detail.version, items, answers, files: next });
+    remember({ templateId: detail.templateId, edition: detail.edition, version: detail.version, items, answers: answersRef.current, files: next });
   }
 
   async function submit() {
-    if (!detail || frozen) return;
-    setBusy(true);
+    if (!detail || frozen || submitting.current) return;
+    submitting.current = true; setBusy(true);
     setError("");
     try {
+      await chain.current;
+      if (!active.current) return;
       await openDelivery(session);
+      if (!active.current) return;
       const stored = await saveChecklist({ projectId, taskId, title: title || local?.title || "Задание", projectName: "Объект", day: day || local?.day || "", templateId: detail.templateId, edition: detail.edition, templateVersion: detail.version, expectedVersion: runs?.latest?.version ?? local?.expectedVersion ?? 0, items, answers, files });
       setLocal(stored);
       const sent = await sendChecklist(projectId, taskId);
       setLocal(sent);
     } catch (reason) {
       setError(reason instanceof Error && reason.message === "local_identity_conflict" ? "Команда уже ждёт отправки." : "Отправка не началась.");
-    } finally { setBusy(false); }
+    } finally { submitting.current = false; if (active.current) setBusy(false); }
   }
 
   return <section className="panel checklist-run" aria-label="Чек-лист задания">
@@ -166,7 +182,11 @@ export function ChecklistRunPanel({ session, projectId, taskId, title, day }: { 
     {status ? <p role={status === "Ошибка" || status === "Конфликт" ? "alert" : "status"}>{status}{status === "Ожидает отправки" ? ". Это ещё не запись на сервере." : ""}</p> : null}
     {approved.length === 0 ? <p className="quiet">Утверждённой редакции для этого объекта нет.</p> : null}
     {approved.length > 1 ? <label className="field">Шаблон
-      <select value={chosen} onChange={(event) => { setChosen(event.target.value); setPage(0); setAnswers([]); }}>
+      <select value={chosen} disabled={frozen || busy} onChange={(event) => {
+        const edition = approved.find(row => row.templateId === event.target.value); if (!edition) return;
+        chosenRef.current = edition.templateId; setChosen(edition.templateId); setPage(0); answersRef.current = []; filesRef.current = []; setAnswers([]); setFiles([]);
+        remember({templateId: edition.templateId, edition: edition.edition, version: edition.version, items: edition.items, answers: [], files: []});
+      }}>
         {approved.map((card) => <option key={card.templateId} value={card.templateId}>{card.title}</option>)}
       </select>
     </label> : null}
@@ -183,7 +203,7 @@ export function ChecklistRunPanel({ session, projectId, taskId, title, day }: { 
         const value = answers.find((answer) => answer.itemId === item.id)?.value ?? "";
         const kind = fileKind(item);
         const file = files.find((row) => row.itemId === item.id);
-        return <fieldset className="checklist-item" key={item.id} disabled={frozen}>
+        return <fieldset className="checklist-item" key={item.id} disabled={frozen || busy}>
           <legend>{page * 10 + index + 1}. {item.prompt}{item.critical ? " · критичный" : ""}</legend>
           {item.kind === "yes_no" ? <div className="checklist-choice" role="group" aria-label={item.prompt}>
             <button className={value === "yes" ? "is-on" : ""} type="button" onClick={() => change(item.id, "yes")}>Да</button>

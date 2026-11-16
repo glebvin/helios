@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import { NestFactory } from "@nestjs/core";
@@ -10,7 +12,9 @@ import { AllExceptionsFilter } from "../src/http.js";
 import { hashPassword } from "../src/password.js";
 
 const ci = process.env.GITHUB_ACTIONS === "true";
-const expectedPort = ci ? "54339" : "54621";
+const localPort = process.env.HELIOS_CHECKLIST_QA_DB_PORT ?? "54621";
+assert.ok(["54621", "54635"].includes(localPort));
+const expectedPort = ci ? "54339" : localPort;
 const expectedDir = ci ? /codex-api\/\.data\/pg-54339$/ : /checklist-execution\/\.data\/pg-54621$/;
 const password = "checklist-run-test";
 const tenant = randomUUID();
@@ -49,7 +53,8 @@ before(async () => {
   assert.equal(adminTarget.hostname, "127.0.0.1");
   assert.equal(live.rows[0].port, expectedPort);
   if (!ci) assert.match(live.rows[0].host, /^127\.0\.0\.1/);
-  assert.match(live.rows[0].directory, expectedDir);
+  if (ci) assert.match(live.rows[0].directory, expectedDir);
+  else assert.equal(realpathSync(live.rows[0].directory), realpathSync(fileURLToPath(new URL(`../../../.data/pg-${localPort}`, import.meta.url))));
   const hash = hashPassword(password);
   await admin.query(`INSERT INTO tenants(id,name) VALUES($1,'Своя'),($2,'Чужая')`, [tenant, otherTenant]);
   for (const person of people) {
@@ -68,6 +73,7 @@ before(async () => {
   const other = people.find((person) => person.key === "other")!;
   const master = people.find((person) => person.key === "master")!;
   await admin.query(`INSERT INTO employees(tenant_id,id,organization_id,full_name,user_id) VALUES($1,$2,$3,'Работник',$4),($1,$5,$3,'Чужой',$6)`, [tenant, employee, org, worker.id, otherEmployee, other.id]);
+  await admin.query(`INSERT INTO employee_project_assignments(tenant_id,project_id,employee_id,status) VALUES($1,$2,$3,'active')`, [tenant, project, employee]);
   await admin.query(`INSERT INTO daily_tasks(tenant_id,id,project_id,title,work_date,planned_quantity,unit,assignee_employee_id) VALUES($1,$2,$3,'Шов','2026-11-15',1,'м2',$4),($1,$5,$6,'Чужое','2026-11-15',1,'м2',$7)`, [tenant, task, project, employee, otherTask, otherProject, otherEmployee]);
   await admin.query(`INSERT INTO employees(tenant_id,id,organization_id,full_name) VALUES($1,$2,$3,'Чужая компания')`, [otherTenant, foreignEmployee, foreignOrg]);
   await admin.query(`INSERT INTO daily_tasks(tenant_id,id,project_id,title,work_date,planned_quantity,unit,assignee_employee_id) VALUES($1,$2,$3,'Чужая компания','2026-11-15',1,'м2',$4)`, [otherTenant, foreignTask, foreignProject, foreignEmployee]);
@@ -234,7 +240,7 @@ test("критичный отказ блокирует объём по HTTP, к�
   const master = people.find((person) => person.key === "master")!;
   const templateBody = await created(`/projects/${project}/admission-template`, command({ code: "safe", title: "Допуск", items: [{ id: "safe", label: "Безопасно", critical: true }], requiredQualificationCodes: [] }));
   const check = await created(`/employees/${employee}/admission-checks`, command({ projectId: project, templateVersion: templateBody.version, answers: [{ itemId: "safe", value: true }] }));
-  await created(`/projects/${project}/assignments/${employee}`, command({ expectedVersion: 0, status: "active", admissionCheckId: check.id }), "director", "PUT");
+  await created(`/projects/${project}/assignments/${employee}`, command({ expectedVersion: 1, status: "active", admissionCheckId: check.id }), "director", "PUT");
   const zone = await created(`/projects/${project}/zones`, command({ name: "Зона шва" }));
   const type = await created(`/projects/${project}/work-types`, command({ name: "Шов", unit: "м2", requiresRd: false, requiresMaterialControl: false, requiresPredecessorAcceptance: false, requiresId: false }));
   const front = await created(`/projects/${project}/front-template`, command({ code: "front", title: "Фронт", items: [{ id: "ready", label: "Готово", critical: true }] }));
@@ -319,3 +325,31 @@ async function send(path: string, body: unknown, key: string, method = body === 
   const text = await response.text();
   return { status: response.status, body: text ? JSON.parse(text) : {}, requestId: (body as { requestId?: string } | undefined)?.requestId };
 }
+
+
+test("история хранит только файл своего ответа, поздняя загрузка её не переписывает", async () => {
+  const before = await send(`/projects/${project}/tasks/${task}/checklist-runs`, undefined, "pto", "GET");
+  const late = await upload(task, "shot", "late.jpg", "image/jpeg", Buffer.concat([jpeg, Buffer.from("later")]), "master");
+  assert.equal(late.status, 201);
+  const read = await send(`/projects/${project}/tasks/${task}/checklist-runs`, undefined, "pto", "GET");
+  for (let i=0; i<before.body.history.length; i++) {
+    assert.deepEqual(read.body.history[i].files, before.body.history[i].files);
+    assert.equal(read.body.history[i].files.some((f: {fileId: string}) => f.fileId === late.body.fileId), false);
+  }
+});
+
+test("чужой работник не читает ответы и файл; отозванное назначение закрывает свой доступ", async () => {
+  const path = `/projects/${project}/tasks/${task}/checklist-runs`;
+  assert.equal((await send(path, undefined, "other", "GET")).status, 403);
+  const file = (await admin.query(`SELECT id FROM checklist_run_files WHERE tenant_id=$1 LIMIT 1`, [tenant])).rows[0].id;
+  assert.equal((await fetch(`${base}/api/v1/projects/${project}/tasks/${task}/checklist-files/${file}`, {headers:headers("other")})).status, 403);
+  await admin.query(`UPDATE employee_project_assignments SET status='revoked' WHERE tenant_id=$1 AND employee_id=$2`, [tenant, employee]);
+  try { assert.equal((await send(path, undefined, "worker", "GET")).status, 403); }
+  finally { await admin.query(`UPDATE employee_project_assignments SET status='active' WHERE tenant_id=$1 AND employee_id=$2`, [tenant, employee]); }
+});
+
+test("произвольный номер вместо файла возвращает отказ, а не ошибку БД", async () => {
+  const version=Number((await admin.query(`SELECT max(version) AS n FROM checklist_runs WHERE tenant_id=$1 AND task_id=$2`,[tenant,task])).rows[0].n);
+  const response=await send(`/projects/${project}/tasks/${task}/checklist-runs`,{requestId:randomUUID(),templateId:template,edition:1,expectedVersion:version,answers:[{itemId:"seam",value:"yes"},{itemId:"thick",value:"12"},{itemId:"shot",value:"not-a-file"}]},"master");
+  assert.equal(response.status,422); assert.equal(response.body.error,"file_denied");
+});
