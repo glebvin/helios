@@ -81,7 +81,7 @@ export function frontReason(reason: string, items: FrontItem[] = []) {
   const value = tail.join(":");
   const label = items.find((item) => item.id === value)?.label ?? value;
   const text: Record<string, string> = {
-    material_control_unsupported: "Вид работ требует контроль материалов. Модуля нет, поэтому задание не готово.",
+    material_not_accepted: "Для этого вида нужна принятая партия этой зоны. Непроверенная и отклонённая не подходят.",
     predecessor_acceptance_unsupported: "Вид работ требует приёмку предшественника. Модуля нет, поэтому задание не готово.",
     id_unsupported: "Вид работ требует исполнительную документацию. Модуля нет, поэтому задание не готово.",
     front_missing: "Проверки фронта ещё нет.",

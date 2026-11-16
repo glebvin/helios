@@ -6,7 +6,7 @@ export function readMaterialCommand(key: string, storage: () => Store = () => se
   if (memory.has(key)) return memory.get(key)!;
   try {
     const row = JSON.parse(storage().getItem(key) ?? "null") as MaterialCommand | null;
-    if (row && typeof row.path === "string" && /^\/projects\/[0-9a-f-]{36}\/material-batches(?:\/[0-9a-f-]{36})?$/.test(row.path) && row.body && /^[0-9a-f-]{36}$/i.test(row.body.requestId)) {
+    if (row && typeof row.path === "string" && /^\/projects\/[0-9a-f-]{36}\/material-batches(?:\/[0-9a-f-]{36}(?:\/control)?)?$/.test(row.path) && row.body && /^[0-9a-f-]{36}$/i.test(row.body.requestId)) {
       memory.set(key, row); return row;
     }
   } catch { /* Memory retains uncertain commands when browser storage is unavailable. */ }

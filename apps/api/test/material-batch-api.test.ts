@@ -64,7 +64,7 @@ function withoutEmployer(over: Record<string, unknown>) {
 test.before(async () => {
   const ci = process.env.GITHUB_ACTIONS === 'true';
   const localPort = process.env.HELIOS_MATERIAL_QA_DB_PORT ?? '54541';
-  assert.ok(['54541', '54633'].includes(localPort));
+  assert.ok(['54541', '54633', '54637'].includes(localPort));
   const target = new URL(adminUrl);
   assert.equal(target.hostname, '127.0.0.1'); assert.equal(target.port, ci ? '54339' : localPort);
   const directory = (await admin.query('SHOW data_directory')).rows[0].data_directory;
@@ -133,7 +133,8 @@ test('simultaneous byte uploads finalize and audit one document once', async () 
 
 test('publication still refuses unverified material control', async () => {
   const source = await readFile(new URL('../src/tasks.service.ts', import.meta.url), 'utf8');
-  assert.match(source, /requiresMaterialControl','material_control_unsupported'/);
+  assert.match(source, /material_not_accepted/);
+  assert.match(source, /predecessor_acceptance_unsupported/);
 });
 
 test('master records a batch, reloads it, and PTO opens the same document', async () => {

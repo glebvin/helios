@@ -6,6 +6,8 @@ import { DeskEmpty } from "./kit";
 import { NoteMark } from "./note-mark";
 import { ApiError, v1 } from "./v1";
 import { clearMaterialCommand, keepMaterialCommand, readMaterialCommand, type MaterialCommand } from "./material-command";
+import { MaterialControl, controlStepLabel, type ControlCard } from "./material-control";
+import { roleTitle } from "./roles";
 
 type Doc = { id: string; filename: string; contentType: string; sizeBytes: number; sha256: string; state: "pending" | "ready" };
 type Item = {
@@ -15,7 +17,7 @@ type Item = {
 };
 type Page = { total: number; limit: number; offset: number; employers: { id: string; name: string }[]; items: Item[] };
 type History = { version: number; materialName: string; batchCode: string; deliveredQuantity: string; unit: string; deliveredOn: string; createdAt: string };
-type Card = Item & { history: History[] };
+type Card = Item & { history: History[]; control: ControlCard | null; intake: { zones: { id: string; name: string }[]; workTypes: { id: string; name: string }[]; templates: { id: string; title: string; edition: number; items: ControlCard["items"] }[] } };
 type Draft = { organizationId: string; materialName: string; unit: string; batchCode: string; supplierName: string; deliveryDocument: string; deliveredOn: string; deliveredQuantity: string };
 type Prepared = { filename: string; contentType: string; sizeBytes: number; sha256: string; bytes: ArrayBuffer };
 
@@ -198,7 +200,7 @@ export function Materials({ session, projectId, canEdit }: { session: Session; p
     <section className="page">
       <div className="documents-title">
         <h1>Материалы</h1>
-        <NoteMark label="Что это за запись">Партия ждёт входного контроля. Принять её здесь нельзя, и в задание она не выбирается. Это не склад, не закупка и не оплата.</NoteMark>
+        <NoteMark label="Что это за запись">Результат считает сервер по утверждённому чек-листу и маршруту. Кнопки «Принять» нет. В задание попадает только принятая партия. Это не склад, не закупка и не оплата.</NoteMark>
       </div>
       <p className="sub">Реестр партий и документов качества на объекте.</p>
       <Flash message={flash} pulse={pulse} />
@@ -231,7 +233,7 @@ export function Materials({ session, projectId, canEdit }: { session: Session; p
           <section className="panel material-hold">
             {mode === "create" ? form : selected && card?.id === selected ? (
               <motion.div key={card.id + card.version} initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.22, ease }}>
-                <div className="panel-head"><h2>{card.materialName}</h2><span>{card.statusLabel}</span></div>
+                <div className="panel-head"><h2>{card.materialName}</h2><span>{card.control?.verdictLabel ?? card.statusLabel}</span></div>
                 {mode === "edit" ? form : (
                   <>
                     <dl className="task-facts">
@@ -253,13 +255,21 @@ export function Materials({ session, projectId, canEdit }: { session: Session; p
                     <ol className="timeline">
                       {card.history.map((item, index) => (
                         <li className="timeline-item" key={item.version}>
-                          <span className="timeline-rail" aria-hidden="true">{index < card.history.length - 1 ? <i /> : null}<b className="is-on" /></span>
+                          <span className="timeline-rail" aria-hidden="true">{index < card.history.length - 1 || (card.control?.steps.length ?? 0) > 0 ? <i /> : null}<b className="is-on" /></span>
                           <span><strong>Версия {item.version}</strong><small>{item.materialName} · {item.batchCode} · {item.deliveredQuantity} {item.unit}</small></span>
                           <time dateTime={item.createdAt}>{item.deliveredOn}</time>
                         </li>
                       ))}
+                      {(card.control?.steps ?? []).map((step, index, list) => (
+                        <li className="timeline-item" key={`control-${step.version}`}>
+                          <span className="timeline-rail" aria-hidden="true">{index < list.length - 1 ? <i /> : null}<b className="is-on" /></span>
+                          <span><strong>{controlStepLabel(step)}</strong><small>{roleTitle(step.actorRole)}{step.reason ? ` · ${step.reason}` : ""}</small></span>
+                          <time dateTime={step.createdAt}>{new Date(step.createdAt).toLocaleDateString("ru-RU")}</time>
+                        </li>
+                      ))}
                     </ol>
                     {canEdit ? <button className="desk-action" type="button" disabled={writing || Boolean(pending)} onClick={() => { setMode("edit"); setDraft({ organizationId: card.organizationId, materialName: card.materialName, unit: card.unit, batchCode: card.batchCode, supplierName: card.supplierName, deliveryDocument: card.deliveryDocument, deliveredOn: card.deliveredOn, deliveredQuantity: card.deliveredQuantity }); setFile(null); }}>Изменить</button> : null}
+                    <MaterialControl key={`${session.userId}:${projectId}:${card.id}`} onRefresh={() => setPulse(value => value + 1)} session={session} projectId={projectId} batchId={card.id} documents={card.documents} control={card.control} intake={card.intake} onDone={(message) => { setFlash(message); setPulse((value) => value + 1); setSelected(card.id); }} />
                   </>
                 )}
               </motion.div>

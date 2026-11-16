@@ -35,6 +35,7 @@ export function TaskDraftDialog({ session, projectId, day, task, onClose, onSave
   const [loadError, setLoadError] = useState("");
   const [pass, setPass] = useState(0);
   const [error, setError] = useState("");
+  const [batches, setBatches] = useState<{ id: string; materialName: string; batchCode: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [stored, setStored] = useState(true);
   const lock = useRef(false);
@@ -42,7 +43,7 @@ export function TaskDraftDialog({ session, projectId, day, task, onClose, onSave
   const alertRef = useRef<HTMLParagraphElement>(null);
   const pendingKey = `helios.task-draft:${session.tenantId}:${session.userId}:${projectId}:${source?.id ?? "new"}`;
   const workType = types.find((item) => item.id === draft.workTypeId) ?? null;
-  const problem = ready ? taskDraftValidation(draft, !!workType?.requiresRd) : "";
+  const problem = ready ? taskDraftValidation(draft, !!workType?.requiresRd, !!workType?.requiresMaterialControl) : "";
   useEffect(() => {
     let live = true;
     setReady(false); setLoadError("");
@@ -71,6 +72,14 @@ export function TaskDraftDialog({ session, projectId, day, task, onClose, onSave
     })();
     return () => { live = false; };
   }, [session, projectId, day, task, pass]);
+  useEffect(() => {
+    if (!workType?.requiresMaterialControl || !draft.zoneId || !draft.workTypeId) { setBatches([]); return; }
+    let live = true;
+    void v1<{ items: { id: string; materialName: string; batchCode: string }[] }>(session, `/projects/${projectId}/material-batches?usable=1&zoneId=${draft.zoneId}&workTypeId=${draft.workTypeId}&limit=100`)
+      .then((page) => { if (live) setBatches(page.items); })
+      .catch(() => { if (live) setBatches([]); });
+    return () => { live = false; };
+  }, [session, projectId, draft.zoneId, draft.workTypeId, workType?.requiresMaterialControl]);
   useEffect(() => { if (error) alertRef.current?.focus(); }, [error]);
   const responsibles = responsibleOptions(session, people, members);
   if (source?.responsibleUserId && !responsibles.some((item) => item.value === source.responsibleUserId)) {
@@ -113,8 +122,9 @@ export function TaskDraftDialog({ session, projectId, day, task, onClose, onSave
       {!ready && !loadError ? <p className="quiet" role="status">Читаем зоны, виды и людей…</p> : null}
       {loadError ? <p role="alert">{loadError} <button className="ghost desk-action" type="button" onClick={() => setPass((value) => value + 1)}>Повторить загрузку</button></p> : null}
       {ready ? <fieldset className="employee-fields" disabled={busy}>
-        <DeskSelect label="Зона" value={draft.zoneId} options={selectOptions(zones.map((item) => ({ value: item.id, label: item.name })), "Выберите зону")} onChange={(zoneId) => setDraft({ ...draft, zoneId })} />
-        <DeskSelect label="Вид работ" value={draft.workTypeId} options={selectOptions(types.map((item) => ({ value: item.id, label: item.name })), "Выберите вид")} onChange={(workTypeId) => setDraft({ ...draft, workTypeId })} />
+        <DeskSelect label="Зона" value={draft.zoneId} options={selectOptions(zones.map((item) => ({ value: item.id, label: item.name })), "Выберите зону")} onChange={(zoneId) => setDraft({ ...draft, zoneId, materialBatchId: "" })} />
+        <DeskSelect label="Вид работ" value={draft.workTypeId} options={selectOptions(types.map((item) => ({ value: item.id, label: item.name })), "Выберите вид")} onChange={(workTypeId) => setDraft({ ...draft, workTypeId, materialBatchId: "" })} />
+        {workType?.requiresMaterialControl ? <DeskSelect label="Принятая партия" value={draft.materialBatchId} options={selectOptions(batches.map((item) => ({ value: item.id, label: `${item.materialName} · ${item.batchCode}` })), batches.length ? "Выберите партию" : "Принятых партий нет")} onChange={(materialBatchId) => setDraft({ ...draft, materialBatchId })} /> : null}
         <p className="quiet">Единица берётся из вида работ{workType ? `: ${workType.unit}` : ""}.</p>
         <label className="field"><span>Название</span><input required maxLength={200} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
         <label className="field"><span>День</span><input type="date" required value={draft.workDate} onChange={(event) => setDraft({ ...draft, workDate: event.target.value })} /></label>

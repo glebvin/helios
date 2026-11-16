@@ -31,7 +31,7 @@ test("a check sends every explicit answer and never a client pass", () => {
 
 test("missing material and ID modules stay visible blockers", () => {
   assert.match(frontReason("id_unsupported"), /исполнительную документацию/);
-  assert.match(frontReason("material_control_unsupported"), /материалов/);
+  assert.match(frontReason("material_not_accepted"), /принятая партия/);
   assert.match(frontReason("predecessor_acceptance_unsupported"), /предшественника/);
   assert.match(frontReason("critical_failed:a", template.items), /Ограждение/);
   assert.doesNotMatch(frontReason("id_unsupported"), /отключен/);
