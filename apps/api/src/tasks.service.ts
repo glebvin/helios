@@ -137,7 +137,7 @@ export class TasksService {
   private planOf(t:Row) {return {zoneId:t.zoneId,workTypeId:t.workTypeId,title:t.title,workDate:t.workDate,plannedQuantity:t.plannedQuantity,assigneeEmployeeId:t.assigneeEmployeeId,responsibleUserId:t.responsibleUserId,plannedStart:t.plannedStart,plannedEnd:t.plannedEnd,rdReference:t.rdReference,materialBatchId:t.materialBatchId};}
   private async acceptedMaterial(c:PoolClient,p:string,t:{materialBatchId?:string|null;zoneId?:string|null;workTypeId?:string|null}) {
     if(!t.materialBatchId || !t.zoneId || !t.workTypeId)return false;
-    return Boolean((await c.query(`SELECT 1 FROM material_controls mc JOIN material_control_steps s ON s.control_id=mc.id AND s.version=(SELECT max(version) FROM material_control_steps WHERE control_id=mc.id) WHERE mc.project_id=$1 AND mc.batch_id=$2 AND mc.zone_id=$3 AND mc.work_type_id=$4 AND s.verdict='accepted'`,[p,t.materialBatchId,t.zoneId,t.workTypeId])).rowCount);
+    return Boolean((await c.query(`SELECT 1 FROM material_controls mc JOIN material_control_steps s ON s.control_id=mc.id AND s.version=(SELECT max(version) FROM material_control_steps WHERE control_id=mc.id) WHERE mc.project_id=$1 AND mc.batch_id=$2 AND mc.zone_id=$3 AND mc.work_type_id=$4 AND s.verdict='accepted' AND (SELECT batch_version FROM material_control_steps WHERE control_id=mc.id AND action='prepare' ORDER BY version DESC LIMIT 1)=(SELECT max(version) FROM material_batch_revisions WHERE batch_id=mc.batch_id)`,[p,t.materialBatchId,t.zoneId,t.workTypeId])).rowCount);
   }
   private async latestFrontTemplate(c:PoolClient,a:Actor,p:string) {
     const row=(await c.query(`SELECT snapshot FROM front_template_versions WHERE tenant_id=$1 AND project_id=$2 ORDER BY version DESC LIMIT 1`,[a.tenantId,p])).rows[0];
@@ -197,7 +197,8 @@ export class TasksService {
   // Ordinary GETs deliberately do not acquire this lock set and are informational only.
   private async readiness(c:PoolClient,a:Actor,p:string,t:Row) {
     const reasons:string[]=[],warnings:string[]=[];
-    const employee=(await c.query(`SELECT * FROM employees WHERE tenant_id=$1 AND id=$2`,[a.tenantId,t.assigneeEmployeeId])).rows[0];
+    // Publication evidence lists the accepted employee columns.
+    const employee=(await c.query(`SELECT tenant_id,id,organization_id,full_name,phone,document_number,user_id,status,version FROM employees WHERE tenant_id=$1 AND id=$2`,[a.tenantId,t.assigneeEmployeeId])).rows[0];
     const assignment=(await c.query(`SELECT employee_id AS "employeeId",status,version,admission_check_id AS "admissionCheckId" FROM employee_project_assignments WHERE tenant_id=$1 AND project_id=$2 AND employee_id=$3`,[a.tenantId,p,t.assigneeEmployeeId])).rows[0];
     if(!assignment || assignment.status!=='active')reasons.push('assignment_inactive');
     if(!employee || employee.status!=='active')reasons.push('employee_archived');

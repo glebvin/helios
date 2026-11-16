@@ -39,6 +39,10 @@ export function canWriteStaff(role: string) {
   return role === "director";
 }
 
+export function canImportStaff(role: string) {
+  return role === "director" || role === "hr";
+}
+
 export function staffRequest(previous: { id: string; key: string }, key: string, createId: () => string) {
   return previous.id && previous.key === key ? previous : { id: createId(), key };
 }

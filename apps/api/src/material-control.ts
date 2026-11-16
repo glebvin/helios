@@ -22,6 +22,7 @@ export function materialControlCommand(input: unknown): MaterialControlCommand {
   const requestId = uuid(body.requestId).toLowerCase();
   const expectedVersion = integer(body.expectedVersion, 0);
   if (action === "prepare") {
+    if (body.dataMark !== undefined || body.decision !== undefined || body.reason !== undefined) throw httpError(400, "invalid_body");
     return {
       requestId, expectedVersion, action: "prepare",
       zoneId: uuid(body.zoneId).toLowerCase(),
@@ -48,7 +49,7 @@ export function materialControlCommand(input: unknown): MaterialControlCommand {
 }
 
 function answers(value: unknown): ChecklistAnswer[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 40) throw httpError(400, "invalid_answers");
+  if (!Array.isArray(value) || value.length > 40) throw httpError(400, "invalid_answers");
   return value.map((row) => {
     const body = object(row, ["itemId", "value"]);
     return { itemId: text(body.itemId, 64), value: text(body.value, 80) };

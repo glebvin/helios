@@ -29,17 +29,17 @@ type DocumentRow = { id: string; filename: string; contentType: EvidenceType; si
 export class MaterialBatchService {
   constructor(private readonly pool: Pool, private readonly storage: EvidenceBlobStore) {}
 
-  private async membership(c: PoolClient, actor: Actor, projectId: string, write: boolean) {
-    const role = (await c.query(`SELECT role FROM memberships WHERE user_id=$1 AND status='active'`, [actor.userId])).rows[0]?.role as string | undefined;
-    const project = (await c.query(`SELECT project_id FROM project_memberships WHERE project_id=$1 AND user_id=$2 AND status='active'`, [projectId, actor.userId])).rows[0];
+  private async membership(c: PoolClient, actor: Actor, projectId: string, write: boolean, lock = write) {
+    const role = (await c.query(`SELECT role FROM memberships WHERE user_id=$1 AND status='active'${lock ? ' FOR SHARE' : ''}`, [actor.userId])).rows[0]?.role as string | undefined;
+    const project = (await c.query(`SELECT project_id FROM project_memberships WHERE project_id=$1 AND user_id=$2 AND status='active'${lock ? ' FOR SHARE' : ''}`, [projectId, actor.userId])).rows[0];
     const permission = write ? 'materials.record' : 'materials.read';
-    if (!role || !roleContractAllows({ role, tenantId: actor.tenantId, projectIds: project ? [project.project_id] : [] }, permission, { tenantId: actor.tenantId, projectId })) throw httpError(403, 'role_denied');
+    if (!role || role !== actor.role || !roleContractAllows({ role, tenantId: actor.tenantId, projectIds: project ? [project.project_id] : [] }, permission, { tenantId: actor.tenantId, projectId })) throw httpError(403, 'role_denied');
     return role!;
   }
 
   private async employerIds(c: PoolClient, actor: Actor, role: string) {
     if (role !== 'supply') return null;
-    return (await c.query(`SELECT organization_id FROM employees WHERE user_id=$1 AND status='active'`, [actor.userId])).rows.map((row) => row.organization_id as string);
+    return (await c.query(`SELECT organization_id FROM employees WHERE user_id=$1 AND status='active' FOR SHARE`, [actor.userId])).rows.map((row) => row.organization_id as string);
   }
 
   private async owns(c: PoolClient, actor: Actor, role: string, organizationId: string) {
@@ -66,7 +66,7 @@ export class MaterialBatchService {
       const employers = await this.employerIds(c, actor, role);
       const like = `%${q.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
       const filter = `b.project_id=$1 AND ($2='' OR r.material_name ILIKE $3 ESCAPE '\\' OR r.batch_code ILIKE $3 ESCAPE '\\' OR r.supplier_name ILIKE $3 ESCAPE '\\') AND ($4::uuid[] IS NULL OR b.organization_id=ANY($4))
-        AND ($5::uuid IS NULL OR EXISTS (SELECT 1 FROM material_controls mc JOIN material_control_steps s ON s.control_id=mc.id AND s.version=(SELECT max(version) FROM material_control_steps WHERE control_id=mc.id) WHERE mc.batch_id=b.id AND mc.zone_id=$5 AND mc.work_type_id=$6 AND s.verdict='accepted'))`;
+        AND ($5::uuid IS NULL OR EXISTS (SELECT 1 FROM material_controls mc JOIN material_control_steps s ON s.control_id=mc.id AND s.version=(SELECT max(version) FROM material_control_steps WHERE control_id=mc.id) WHERE mc.batch_id=b.id AND mc.zone_id=$5 AND mc.work_type_id=$6 AND s.verdict='accepted' AND (SELECT batch_version FROM material_control_steps WHERE control_id=mc.id AND action='prepare' ORDER BY version DESC LIMIT 1)=r.version))`;
       const scope = [project, q, like, employers, usable?.zoneId ?? null, usable?.workTypeId ?? null];
       const total = Number((await c.query(
         `SELECT count(*)::int n FROM material_batches b JOIN material_batch_revisions r ON r.batch_id=b.id AND r.version=(SELECT max(version) FROM material_batch_revisions WHERE batch_id=b.id) WHERE ${filter}`,
@@ -100,12 +100,12 @@ export class MaterialBatchService {
     const project = uuid(projectId);
     const command = materialBatchCreate(input);
     return withTenant(this.pool, actor.tenantId, actor.userId, async (c) => {
-      const role = await this.membership(c, actor, project, true);
+      const role = await this.membership(c, actor, project, false);
       const { inserted, hash } = await reserveCommand(c, actor, `POST /projects/${project}/material-batches`, command);
       if (!(await c.query(`SELECT id FROM projects WHERE id=$1 FOR NO KEY UPDATE`, [project])).rowCount) throw httpError(404, 'not_found');
       await this.membership(c, actor, project, true);
-      if (!inserted) return replayCommand(c, actor, command.requestId, hash);
       await this.owns(c, actor, role, command.organizationId);
+      if (!inserted) return replayCommand(c, actor, command.requestId, hash);
       if (!(await c.query(`SELECT 1 FROM organizations WHERE id=$1 AND kind<>'customer'`, [command.organizationId])).rowCount) throw httpError(404, 'not_found');
       await this.codeFree(c, project, command.organizationId, command.batchCode, null);
       const id = randomUUID();
@@ -122,14 +122,15 @@ export class MaterialBatchService {
     const batch = uuid(batchId);
     const command = materialBatchEdit(input);
     return withTenant(this.pool, actor.tenantId, actor.userId, async (c) => {
-      const role = await this.membership(c, actor, project, true);
+      const role = await this.membership(c, actor, project, false);
       const { inserted, hash } = await reserveCommand(c, actor, `POST /projects/${project}/material-batches/${batch}`, command);
+      if (!(await c.query(`SELECT id FROM projects WHERE id=$1 FOR NO KEY UPDATE`, [project])).rowCount) throw httpError(404, 'not_found');
       const head = (await c.query(`SELECT organization_id FROM material_batches WHERE project_id=$1 AND id=$2`, [project, batch])).rows[0];
       if (!head) throw httpError(404, 'not_found');
       await c.query(`SELECT pg_advisory_xact_lock(hashtext('material-batch'), hashtext($1::text))`, [batch]);
       await this.membership(c, actor, project, true);
-      if (!inserted) return replayCommand(c, actor, command.requestId, hash);
       await this.owns(c, actor, role, head.organization_id);
+      if (!inserted) return replayCommand(c, actor, command.requestId, hash);
       const current = Number((await c.query(`SELECT max(version) AS version FROM material_batch_revisions WHERE batch_id=$1`, [batch])).rows[0].version);
       if (current !== command.expectedVersion) throw httpError(409, 'stale_version');
       await this.codeFree(c, project, head.organization_id, command.batchCode, batch);
@@ -146,7 +147,7 @@ export class MaterialBatchService {
     const document = uuid(documentId);
     const pending = await withTenant(this.pool, actor.tenantId, actor.userId, async (c) => {
       const role = await this.membership(c, actor, project, true);
-      const row = await this.document(c, actor, role, project, batch, document);
+      const row = await this.document(c, actor, role, project, batch, document, true);
       if (row.state === 'ready') return row;
       return row;
     });
@@ -158,9 +159,9 @@ export class MaterialBatchService {
     await this.storage.put(actor.tenantId, document, bytes, { sizeBytes: pending.sizeBytes, sha256: pending.sha256, contentType: pending.contentType });
     return withTenant(this.pool, actor.tenantId, actor.userId, async (c) => {
       const role = await this.membership(c, actor, project, true);
-      const row = await this.document(c, actor, role, project, batch, document);
+      const row = await this.document(c, actor, role, project, batch, document, true);
       if (row.state !== 'ready') {
-        await c.query(`UPDATE material_batch_documents SET state='ready' WHERE id=$1`, [document]);
+        await c.query(`UPDATE material_batch_documents SET state='ready' WHERE project_id=$1 AND batch_id=$2 AND id=$3`, [project, batch, document]);
         await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'materials.document','material_batch_document',$3,'ok',$4)`, [actor.tenantId, actor.userId, document, JSON.stringify({ batchId: batch, sha256: row.sha256 })]);
       }
       return { id: document, state: 'ready' };
@@ -178,6 +179,10 @@ export class MaterialBatchService {
       return found;
     });
     const bytes = await this.storage.get(actor.tenantId, document, { sizeBytes: row.sizeBytes, sha256: row.sha256, contentType: row.contentType });
+    await withTenant(this.pool, actor.tenantId, actor.userId, async (c) => {
+      const role = await this.membership(c, actor, project, false);
+      await this.document(c, actor, role, project, batch, document);
+    });
     return { bytes, filename: row.filename, contentType: row.contentType };
   }
 
@@ -249,12 +254,12 @@ export class MaterialBatchService {
     return { ...this.item(project, row, documents), history: history.map((item) => ({ ...item, createdAt: new Date(item.createdAt).toISOString() })), control, intake };
   }
 
-  private async document(c: PoolClient, actor: Actor, role: string, project: string, batch: string, document: string) {
+  private async document(c: PoolClient, actor: Actor, role: string, project: string, batch: string, document: string, lock = false) {
     const head = (await c.query(`SELECT organization_id FROM material_batches WHERE project_id=$1 AND id=$2`, [project, batch])).rows[0];
     if (!head) throw httpError(404, 'not_found');
     await this.owns(c, actor, role, head.organization_id);
     const row = (await c.query(
-      `SELECT id, filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256, state FROM material_batch_documents WHERE project_id=$1 AND batch_id=$2 AND id=$3`,
+      `SELECT id, filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256, state FROM material_batch_documents WHERE project_id=$1 AND batch_id=$2 AND id=$3${lock ? ' FOR UPDATE' : ''}`,
       [project, batch, document],
     )).rows[0] as DocumentRow | undefined;
     if (!row) throw httpError(404, 'not_found');
@@ -266,21 +271,25 @@ export class MaterialBatchService {
     const batch = uuid(batchId);
     const command = materialControlCommand(input);
     return withTenant(this.pool, actor.tenantId, actor.userId, async (c) => {
-      const role = await this.membership(c, actor, project, false);
+      if (!(await c.query(`SELECT id FROM projects WHERE id=$1 FOR NO KEY UPDATE`, [project])).rowCount) throw httpError(404, 'not_found');
+      const role = await this.membership(c, actor, project, false, true);
       const operation = `POST /projects/${project}/material-batches/${batch}/control`;
       const { inserted, hash } = await reserveCommand(c, actor, operation, command);
       const head = (await c.query(`SELECT organization_id FROM material_batches WHERE project_id=$1 AND id=$2`, [project, batch])).rows[0];
       if (!head) throw httpError(404, 'not_found');
       await c.query(`SELECT pg_advisory_xact_lock(hashtext('material-control'), hashtext($1::text))`, [batch]);
-      await this.membership(c, actor, project, false);
-      if (!inserted) return replayCommand(c, actor, command.requestId, hash);
+      await this.membership(c, actor, project, false, true);
       await this.owns(c, actor, role, head.organization_id);
       const route = await this.incomingRoute(c, project);
       const allowed = { prepare: route.prepare, data: route.data, responsible: route.responsible, review: route.review }[command.action];
       if (!allowed.includes(role)) throw httpError(403, 'route_denied');
+      if (!inserted) return replayCommand(c, actor, command.requestId, hash);
       const current = await this.controlRow(c, project, batch);
       if ((current?.version ?? 0) !== command.expectedVersion) throw httpError(409, 'stale_version');
       if (command.action !== 'prepare' && !current) throw httpError(409, 'control_missing');
+      const batchVersion = Number((await c.query(`SELECT max(version) AS version FROM material_batch_revisions WHERE batch_id=$1`, [batch])).rows[0].version);
+      if (command.action !== 'prepare' && current?.batchVersion !== batchVersion) throw httpError(409, 'control_outdated');
+      if (command.action !== 'prepare' && current?.steps.at(-1)?.verdict === 'accepted') throw httpError(409, 'control_completed');
       let snapshot = current?.snapshot;
       let answers = current?.answers ?? [];
       let controlId = current?.id;
@@ -302,8 +311,8 @@ export class MaterialBatchService {
       const verdict = controlVerdict(checklist, steps);
       if (command.action === 'review' && command.decision === 'agree' && verdict !== 'accepted') throw httpError(409, 'route_incomplete');
       await c.query(
-        `INSERT INTO material_control_steps(tenant_id,project_id,control_id,version,action,answers,data_mark,decision,verdict,actor_user_id,actor_role,reason,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-        [actor.tenantId, project, controlId, command.expectedVersion + 1, command.action, command.action === 'prepare' ? JSON.stringify(answers) : null, 'dataMark' in command ? command.dataMark : null, 'decision' in command ? command.decision : null, verdict, actor.userId, role, 'reason' in command ? command.reason : null, command.requestId],
+        `INSERT INTO material_control_steps(tenant_id,project_id,control_id,version,action,answers,data_mark,decision,verdict,actor_user_id,actor_role,reason,request_id,snapshot,batch_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        [actor.tenantId, project, controlId, command.expectedVersion + 1, command.action, command.action === 'prepare' ? JSON.stringify(answers) : null, 'dataMark' in command ? command.dataMark : null, 'decision' in command ? command.decision : null, verdict, actor.userId, role, 'reason' in command ? command.reason : null, command.requestId, command.action === 'prepare' ? JSON.stringify(snapshot) : null, command.action === 'prepare' ? batchVersion : null],
       );
       await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'materials.control','material_batch',$3,'ok',$4)`, [actor.tenantId, actor.userId, batch, JSON.stringify({ requestId: command.requestId, version: command.expectedVersion + 1, verdict })]);
       return completeCommand(c, actor, command.requestId, 201, await this.card(c, actor, role, project, batch));
@@ -324,7 +333,6 @@ export class MaterialBatchService {
     if (!(await c.query(`SELECT 1 FROM project_work_types WHERE project_id=$1 AND id=$2 AND status='active'`, [project, command.workTypeId])).rowCount) throw httpError(404, 'not_found');
     if (current) {
       if (current.zoneId !== command.zoneId || current.workTypeId !== command.workTypeId || current.templateId !== command.templateId) throw httpError(409, 'control_scope');
-      return current.snapshot;
     }
     const edition = (await c.query(`SELECT edition, items FROM checklist_template_editions WHERE project_id=$1 AND template_id=$2 AND status='approved' ORDER BY edition DESC LIMIT 1`, [project, command.templateId])).rows[0];
     if (!edition) throw httpError(404, 'template_not_approved');
@@ -338,8 +346,8 @@ export class MaterialBatchService {
       if (item.kind === 'batch' && answer.value !== batch) throw httpError(422, 'batch_mismatch');
       if (item.kind === 'document' || item.kind === 'photo') {
         const document = uuid(answer.value);
-        const ready = (await c.query(`SELECT 1 FROM material_batch_documents WHERE project_id=$1 AND batch_id=$2 AND id=$3 AND state='ready'`, [project, batch, document])).rowCount;
-        if (!ready) throw httpError(422, 'document_not_ready');
+        const ready = (await c.query(`SELECT content_type FROM material_batch_documents WHERE project_id=$1 AND batch_id=$2 AND id=$3 AND state='ready'`, [project, batch, document])).rows[0];
+        if (!ready || (item.kind === 'photo' ? !String(ready.content_type).startsWith('image/') : ready.content_type !== 'application/pdf')) throw httpError(422, 'document_not_ready');
       }
     }
   }
@@ -347,15 +355,16 @@ export class MaterialBatchService {
   private async controlRow(c: PoolClient, project: string, batch: string) {
     const row = (await c.query(`SELECT id, zone_id AS "zoneId", work_type_id AS "workTypeId", template_id AS "templateId", edition, snapshot FROM material_controls WHERE project_id=$1 AND batch_id=$2`, [project, batch])).rows[0] as { id: string; zoneId: string; workTypeId: string; templateId: string; edition: number; snapshot: ChecklistSnapshot } | undefined;
     if (!row) return null;
-    const steps = (await c.query(`SELECT version, action, answers, data_mark AS "dataMark", decision, verdict, actor_role AS "actorRole", reason, created_at AS "createdAt" FROM material_control_steps WHERE control_id=$1 ORDER BY version`, [row.id])).rows as { version: number; action: 'prepare' | 'data' | 'responsible' | 'review'; answers: ChecklistAnswer[] | null; dataMark: string | null; decision: string | null; verdict: ControlVerdict; actorRole: string; reason: string | null; createdAt: string }[];
+    const steps = (await c.query(`SELECT version, action, answers, snapshot, batch_version AS "batchVersion", data_mark AS "dataMark", decision, verdict, actor_role AS "actorRole", reason, created_at AS "createdAt" FROM material_control_steps WHERE control_id=$1 ORDER BY version`, [row.id])).rows as { version: number; action: 'prepare' | 'data' | 'responsible' | 'review'; answers: ChecklistAnswer[] | null; snapshot: ChecklistSnapshot | null; batchVersion: number | null; dataMark: string | null; decision: string | null; verdict: ControlVerdict; actorRole: string; reason: string | null; createdAt: string }[];
     const prepared = [...steps].reverse().find((step) => step.action === 'prepare');
-    return { ...row, version: steps.at(-1)?.version ?? 0, steps, answers: prepared?.answers ?? [] };
+    return { ...row, snapshot: prepared?.snapshot ?? row.snapshot, edition: prepared?.snapshot?.templateVersion ?? row.edition, batchVersion: prepared?.batchVersion ?? 0, version: steps.at(-1)?.version ?? 0, steps, answers: prepared?.answers ?? [] };
   }
 
   private async controlView(c: PoolClient, project: string, batch: string) {
     const row = await this.controlRow(c, project, batch);
     if (!row) return null;
-    const verdict = row.steps.at(-1)?.verdict ?? 'awaiting';
+    const batchVersion = Number((await c.query(`SELECT max(version) AS version FROM material_batch_revisions WHERE batch_id=$1`, [batch])).rows[0].version);
+    const verdict = row.batchVersion === batchVersion ? row.steps.at(-1)?.verdict ?? 'awaiting' : 'awaiting';
     return {
       id: row.id, version: row.version, zoneId: row.zoneId, workTypeId: row.workTypeId, templateId: row.templateId, edition: row.edition,
       verdict, verdictLabel: controlLabels[verdict], items: row.snapshot.items,

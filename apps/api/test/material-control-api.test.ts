@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { NestFactory } from '@nestjs/core';
@@ -29,6 +31,10 @@ async function call(user: string, path: string, body?: unknown, method = body ? 
 const step = (user: string, target: string, body: Record<string, unknown>) => call(user, `/api/v1/projects/${project}/material-batches/${target}/control`, { requestId: id(), ...body });
 
 test.before(async () => {
+  const ci=process.env.GITHUB_ACTIONS==='true'; const port=process.env.HELIOS_CONTROL_QA_DB_PORT??'54561'; assert.ok(['54561','54637'].includes(port));
+  assert.equal(new URL(adminUrl).hostname,'127.0.0.1'); assert.equal(new URL(adminUrl).port,ci?'54339':port);
+  const dir=(await admin.query('SHOW data_directory')).rows[0].data_directory;
+  if(ci)assert.match(dir,/codex-api\/\.data\/pg-54339$/); else assert.equal(realpathSync(dir),realpathSync(fileURLToPath(new URL(`../../../.data/pg-${port}`,import.meta.url))));
   const hash = hashPassword(password);
   await admin.query(`INSERT INTO tenants(id,name) VALUES($1,'Контроль')`, [tenant]);
   await admin.query(`INSERT INTO organizations(tenant_id,id,kind,name) VALUES($1,$2,'own','Своя'),($1,$3,'own','Чужая')`, [tenant, org, foreignOrg]);
@@ -112,4 +118,37 @@ test('a failed critical item, a repeated command and a foreign scope cannot make
   assert.equal((await call(director, `/api/v1/projects/${project}/tasks`, { ...task, requestId: id(), materialBatchId: batch })).status, 201);
   const usable = await call(director, `/api/v1/projects/${project}/material-batches?usable=1&zoneId=${zone}&workTypeId=${work}`);
   assert.equal(usable.body.items.some((item: { id: string }) => item.id === rejectedBatch), false);
+});
+
+
+test('изменённая партия ждёт новый контроль; подготовка закрепляет новую редакцию',async()=>{
+  const requestId=id();
+  const changed=await call(master,`/api/v1/projects/${project}/material-batches/${batch}`,{requestId,expectedVersion:1,materialName:'Кирпич другой марки',unit:'шт',batchCode:batch.slice(0,8),supplierName:'Завод',deliveryDocument:'УПД',deliveredOn:'2026-11-16',deliveredQuantity:'2.000',documents:[]});
+  assert.equal(changed.status,201,JSON.stringify(changed.body));assert.equal(changed.body.control.verdict,'awaiting');
+  assert.equal(changed.body.control.steps.at(-1).verdict,'accepted','прошлое согласование сохранено');
+  const usable=await call(director,`/api/v1/projects/${project}/material-batches?usable=1&zoneId=${zone}&workTypeId=${work}`);
+  assert.equal(usable.body.items.some((b:{id:string})=>b.id===batch),false);
+  const stale=await step(pto,batch,{expectedVersion:4,action:'review',decision:'agree'});assert.equal(stale.status,409);assert.equal(stale.body.error,'control_outdated');
+  const task=(await admin.query('SELECT id FROM daily_tasks WHERE tenant_id=$1 AND material_batch_id=$2',[tenant,batch])).rows[0].id;
+  const ready=await call(director,`/api/v1/projects/${project}/tasks/${task}/readiness`);assert.equal(ready.status,200);assert.ok(ready.body.reasons.includes('material_not_accepted'));
+  await admin.query(`INSERT INTO checklist_template_editions(tenant_id,project_id,template_id,edition,title,items,status,version,created_by) VALUES($1,$2,$3,2,'Новая упаковка',$4,'approved',1,$5)`,[tenant,project,template,JSON.stringify([{...items[0],prompt:'Упаковка новой партии'}]),director]);
+  const prepared=await step(master,batch,{expectedVersion:4,action:'prepare',zoneId:zone,workTypeId:work,templateId:template,answers:[{itemId:'seal',value:'yes'}]});
+  assert.equal(prepared.status,201,JSON.stringify(prepared.body));assert.equal(prepared.body.control.edition,2);assert.equal(prepared.body.control.items[0].prompt,'Упаковка новой партии');
+  assert.equal(prepared.body.control.verdict,'awaiting');
+  assert.equal((await step(pto,batch,{expectedVersion:5,action:'review',decision:'agree'})).status,409);
+  assert.equal((await step(supply,batch,{expectedVersion:5,action:'data',dataMark:'provided'})).status,201);
+  assert.equal((await step(director,batch,{expectedVersion:6,action:'responsible'})).status,201);
+  assert.equal((await step(pto,batch,{expectedVersion:7,action:'review',decision:'agree'})).body.control.verdict,'accepted');
+  const snapshots=(await admin.query(`SELECT snapshot FROM material_control_steps WHERE tenant_id=$1 AND action='prepare' AND control_id=$2 ORDER BY version`,[tenant,prepared.body.control.id])).rows;
+  assert.equal(snapshots[0].snapshot.items[0].prompt,'Упаковка цела');assert.equal(snapshots[1].snapshot.items[0].prompt,'Упаковка новой партии');
+});
+
+test('повтор шага снабжения заново проверяет работодателя',async()=>{
+  const requestId=id();
+  const body={requestId,expectedVersion:8,action:'prepare',zoneId:zone,workTypeId:work,templateId:template,answers:[{itemId:'seal',value:'yes'}]};
+  const path=`/api/v1/projects/${project}/material-batches/${batch}/control`;
+  assert.equal((await call(supply,path,body)).status,201);
+  await admin.query('UPDATE employees SET organization_id=$1 WHERE tenant_id=$2 AND user_id=$3',[foreignOrg,tenant,supply]);
+  try {assert.equal((await call(supply,path,body)).status,403);}
+  finally {await admin.query('UPDATE employees SET organization_id=$1 WHERE tenant_id=$2 AND user_id=$3',[org,tenant,supply]);}
 });

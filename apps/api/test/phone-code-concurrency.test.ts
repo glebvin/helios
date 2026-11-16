@@ -28,9 +28,11 @@ async function waiting(count:number){
  throw new Error('QA PostgreSQL lock barrier did not fill');
 }
 test.before(async()=>{
- const url=new URL(adminUrl),port=process.env.GITHUB_ACTIONS==='true'?'54339':'54575';
+ const localPort=process.env.HELIOS_PHONE_CONCURRENCY_QA_DB_PORT??'54575';
+ assert.ok(['54575','54597'].includes(localPort));
+ const url=new URL(adminUrl),port=process.env.GITHUB_ACTIONS==='true'?'54339':localPort;
  assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,port);
- if(process.env.GITHUB_ACTIONS!=='true')assert.equal(realpathSync((await admin.query('SHOW data_directory')).rows[0].data_directory),realpathSync(fileURLToPath(new URL('../../../.data/pg-54575',import.meta.url))));
+ if(process.env.GITHUB_ACTIONS!=='true')assert.equal(realpathSync((await admin.query('SHOW data_directory')).rows[0].data_directory),realpathSync(fileURLToPath(new URL('../../../.data/pg-'+localPort,import.meta.url))));
  mkdirSync(qa,{recursive:true,mode:0o700});
  process.env.HELIOS_PHONE_PROVIDER='synthetic';process.env.HELIOS_PHONE_QA_DIR=qa;process.env.HELIOS_PHONE_CODE_SECRET='qa-concurrency-secret-0123456789abcdef';
  await admin.query("INSERT INTO tenants(id,name) VALUES($1,'Phone concurrency QA')",[tenant]);
@@ -52,7 +54,24 @@ test.after(async()=>{
  }finally{await app.end();await admin.end();}
 });
 
-test('five wrong OTPs queued before a valid code lock it atomically across connections',async()=>{
+test('five completed wrong OTPs lock the code atomically across connections',async()=>{
+ const number=phone();await admin.query('INSERT INTO phone_identities(phone,user_id) VALUES($1,$2)',[number,worker]);
+ await auth.phoneChallenge({phone:number,requestId:randomUUID()});const good=code(number),bad=good==='000000'?'111111':'000000';
+ const blocker=await admin.connect();const pending:Promise<unknown>[]=[];
+ try{
+  await blocker.query('BEGIN');await blocker.query("SELECT id FROM phone_challenges WHERE phone=$1 AND purpose='login' FOR UPDATE",[number]);
+  const failures=Array.from({length:6},()=>result(auth.phoneLogin({phone:number,code:bad})));pending.push(...failures);await waiting(6);
+  await blocker.query('COMMIT');
+  const wrong=await Promise.all(failures);wrong.forEach(r=>assert.equal(r.status,401));
+  const row=(await admin.query('SELECT attempts,consumed_at FROM phone_challenges WHERE phone=$1',[number])).rows[0];
+  assert.equal(row.attempts,5,'concurrent failed guesses must not lose increments or exceed the budget');assert.ok(row.consumed_at);
+  assert.equal((await result(auth.phoneLogin({phone:number,code:good}))).status,401,'a valid code after exhausted guesses must not create a session');
+  assert.equal((await admin.query('SELECT count(*)::int n FROM sessions WHERE user_id=$1',[worker])).rows[0].n,0);
+ }finally{await blocker.query('ROLLBACK').catch(()=>{});blocker.release();await Promise.allSettled(pending);}
+});
+
+test('a valid OTP racing wrong guesses succeeds only before the five-attempt budget is exhausted',async()=>{
+ await admin.query('DELETE FROM phone_identities WHERE user_id=$1',[worker]);
  const number=phone();await admin.query('INSERT INTO phone_identities(phone,user_id) VALUES($1,$2)',[number,worker]);
  await auth.phoneChallenge({phone:number,requestId:randomUUID()});const good=code(number),bad=good==='000000'?'111111':'000000';
  const blocker=await admin.connect();const pending:Promise<unknown>[]=[];
@@ -61,10 +80,16 @@ test('five wrong OTPs queued before a valid code lock it atomically across conne
   const failures=Array.from({length:6},()=>result(auth.phoneLogin({phone:number,code:bad})));pending.push(...failures);await waiting(6);
   const success=result(auth.phoneLogin({phone:number,code:good}));pending.push(success);await waiting(7);
   await blocker.query('COMMIT');
-  const wrong=await Promise.all(failures);wrong.forEach(r=>assert.equal(r.status,401));
-  assert.equal((await success).status,401,'a valid code queued after exhausted guesses must not create a session');
-  assert.equal((await admin.query('SELECT count(*)::int n FROM sessions WHERE user_id=$1',[worker])).rows[0].n,0);
- }finally{await blocker.query('ROLLBACK').catch(()=>{});blocker.release();await Promise.allSettled(pending);}
+  (await Promise.all(failures)).forEach(r=>assert.equal(r.status,401));
+  const outcome=await success;
+  const row=(await admin.query('SELECT attempts,consumed_at FROM phone_challenges WHERE phone=$1',[number])).rows[0];
+  // Waiting on an old tuple does not establish transaction execution order after an UPDATE.
+  // Assert the committed security invariant, independent of which connection acquires the new tuple first.
+  assert.ok(row.consumed_at);assert.ok(row.attempts>=0 && row.attempts<=5);
+  assert.equal(outcome.status,row.attempts<5?201:401);
+  assert.equal((await admin.query('SELECT count(*)::int n FROM sessions WHERE user_id=$1',[worker])).rows[0].n,outcome.status===201?1:0);
+  assert.equal((await result(auth.phoneLogin({phone:number,code:good}))).status,401,'even a winning code cannot be reused');
+ }finally{await blocker.query('ROLLBACK').catch(()=>{});blocker.release();await Promise.allSettled(pending);await admin.query('DELETE FROM sessions WHERE user_id=$1',[worker]);}
 });
 
 test('concurrent distinct commands cannot create several active invitations for the same phone',async()=>{

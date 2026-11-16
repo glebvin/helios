@@ -11,6 +11,237 @@
     }
   ],
   "paths": {
+    "/api/v1/staff-imports/checks": {
+      "post": {
+        "operationId": "checkStaffImport",
+        "summary": "checkStaffImport",
+        "description": "Re-reads the synthetic preview workbook for one employer. Compares personnel numbers and phones with existing cards. A full name is not an identity. Nothing is written.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffImportCheckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server verdict. acceptable false writes nothing.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffImportCheck"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role cannot import",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Employer is not in this company or the file is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/staff-imports": {
+      "get": {
+        "operationId": "listStaffImports",
+        "summary": "listStaffImports",
+        "description": "Import results for the company: actor, time, created cards and rows that did not need creation.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffImportList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role cannot read imports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "confirmStaffImport",
+        "summary": "confirmStaffImport",
+        "description": "Explicit confirm after checkStaffImport. One employer. Atomic: a rejected row writes no card. Same requestId replays the stored result. A new requestId does not overwrite an existing card. Personnel number is not stored as document_number. No account, role, invitation, admission or assignment is created. Director or HR only.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StaffImportConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created or replayed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffImportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, invalid or expired session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role cannot import",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The check no longer matches the database, or the request id belongs to another payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The package is rejected. No card from it is saved.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "operationId": "login",
@@ -77,14 +308,65 @@
         "security": [],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PhoneChallengeInput" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhoneChallengeInput"
+              }
+            }
+          }
         },
         "responses": {
-          "201": { "description": "Accepted for delivery", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PhoneChallengeResult" } } } },
-          "400": { "description": "Malformed input", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "409": { "description": "The same command was reused with different parameters", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "429": { "description": "Too many sends", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "503": { "description": "Delivery is not configured", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+          "201": {
+            "description": "Accepted for delivery",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneChallengeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The same command was reused with different parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many sends",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Delivery is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -95,13 +377,55 @@
         "security": [],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PhoneLoginInput" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PhoneLoginInput"
+              }
+            }
+          }
         },
         "responses": {
-          "201": { "description": "Success", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Login" } } } },
-          "400": { "description": "Malformed input", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "401": { "description": "The code was not accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "429": { "description": "Too many attempts", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Login"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The code was not accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -6368,7 +6692,12 @@
             "required": false,
             "schema": {
               "type": "string",
-              "enum": ["unapproved", "current", "stale", "revoked"]
+              "enum": [
+                "unapproved",
+                "current",
+                "stale",
+                "revoked"
+              ]
             }
           },
           {
@@ -7495,18 +7824,128 @@
         "operationId": "requestInvitationCode",
         "summary": "Send a code to the phone stored on the invitation",
         "security": [],
-        "parameters": [{ "name": "code", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[A-HJ-NP-Z2-9]{12}$" } }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["requestId"], "properties": { "requestId": { "type": "string", "format": "uuid" } } } } } },
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-HJ-NP-Z2-9]{12}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "requestId"
+                ],
+                "properties": {
+                  "requestId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
-          "201": { "description": "Accepted for delivery", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PhoneChallengeResult" } } } },
-          "400": { "description": "Malformed input", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "401": { "description": "The code was not accepted", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "403": { "description": "The inviter can no longer issue this invitation", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "404": { "description": "Unknown invitation", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "409": { "description": "Conflicting command", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "410": { "description": "Invitation is no longer active", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "429": { "description": "Too many sends", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "503": { "description": "Delivery is not configured", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+          "201": {
+            "description": "Accepted for delivery",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneChallengeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The code was not accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The inviter can no longer issue this invitation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Unknown invitation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflicting command",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Invitation is no longer active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many sends",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Delivery is not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -7742,8 +8181,12 @@
             "application/json": {
               "schema": {
                 "oneOf": [
-                  { "$ref": "#/components/schemas/InvitationRegistration" },
-                  { "$ref": "#/components/schemas/InvitationPhoneRegistration" }
+                  {
+                    "$ref": "#/components/schemas/InvitationRegistration"
+                  },
+                  {
+                    "$ref": "#/components/schemas/InvitationPhoneRegistration"
+                  }
                 ]
               }
             }
@@ -7754,51 +8197,265 @@
     "/api/v1/contract-prices/projects": {
       "get": {
         "operationId": "listContractPriceProjects",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "Projects the cost role may price", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContractPriceProjects" } } } },
-          "400": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "401": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "403": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "404": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+          "200": {
+            "description": "Projects the cost role may price",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractPriceProjects"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
         }
       }
     },
     "/api/v1/projects/{projectId}/contract-prices": {
       "get": {
         "operationId": "readContractPrices",
-        "security": [{ "bearerAuth": [] }],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
-          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "Work types and immutable price revisions", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContractPriceRegister" } } } },
-          "400": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "401": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "403": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "404": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+          "200": {
+            "description": "Work types and immutable price revisions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractPriceRegister"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
         }
       },
       "post": {
         "operationId": "recordContractPrice",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        "security": [
+          {
+            "bearerAuth": []
+          }
         ],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContractPriceCommand" } } } },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContractPriceCommand"
+              }
+            }
+          }
+        },
         "responses": {
-          "201": { "description": "Stored revision", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContractPriceRevision" } } } },
-          "400": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "401": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "403": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "404": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "409": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "422": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+          "201": {
+            "description": "Stored revision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractPriceRevision"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -8279,29 +8936,6 @@
               }
             }
           }
-        }
-      }
-    },
-    "/api/v1/projects/{projectId}/material-batches/{batchId}/control": {
-      "post": {
-        "operationId": "recordMaterialControl",
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-          { "name": "batchId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MaterialControlInput" } } }
-        },
-        "responses": {
-          "201": { "description": "Incoming control step recorded. The server computes the verdict.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MaterialBatchCard" } } } },
-          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "401": { "description": "Unauthenticated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "409": { "description": "Conflict", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
@@ -8788,63 +9422,608 @@
       }
     },
     "/api/v1/responsibility-orders": {
-      "get": {"operationId":"listResponsibilityOrders","security":[{"bearerAuth":[]}],"parameters":[{"name":"x-tenant-id","in":"header","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"projectId","in":"query","required":false,"schema":{"type":"string","format":"uuid"}}],"responses":{
-          "200": {"description":"Orders of one object","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ResponsibilityOrderList"}}}},
-          "400": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "401": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "403": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "409": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "422": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}
-      }},
-      "post": {"operationId":"createResponsibilityOrder","security":[{"bearerAuth":[]}],"parameters":[{"name":"x-tenant-id","in":"header","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{
-          "201": {"description":"Created order","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ResponsibilityOrderDetail"}}}},
-          "400": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "401": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "403": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "409": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "422": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}
-      }}
+      "get": {
+        "operationId": "listResponsibilityOrders",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Orders of one object",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsibilityOrderList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createResponsibilityOrder",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsibilityOrderDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "/api/v1/responsibility-orders/applicability": {
-      "get": {"operationId":"checkResponsibilityOrder","security":[{"bearerAuth":[]}],"parameters":[{"name":"x-tenant-id","in":"header","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"employeeId","in":"query","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"organizationId","in":"query","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"projectId","in":"query","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"documentType","in":"query","required":true,"schema":{"type":"string"}},{"name":"on","in":"query","required":true,"schema":{"type":"string","format":"date"}}],"responses":{
-          "200": {"description":"Applicability without signing","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ResponsibilityApplicability"}}}},
-          "400": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "401": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "403": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "409": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "422": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}
-      }}
+      "get": {
+        "operationId": "checkResponsibilityOrder",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "employeeId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "projectId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "documentType",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "on",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Applicability without signing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsibilityApplicability"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "/api/v1/responsibility-orders/{id}": {
-      "get": {"operationId":"readResponsibilityOrder","security":[{"bearerAuth":[]}],"parameters":[{"name":"x-tenant-id","in":"header","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{
-          "200": {"description":"Order and history","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ResponsibilityOrderDetail"}}}},
-          "404": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "400": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "401": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "403": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "409": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "422": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}
-      }},
-      "post": {"operationId":"correctResponsibilityOrder","security":[{"bearerAuth":[]}],"parameters":[{"name":"x-tenant-id","in":"header","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{
-          "201": {"description":"Corrected order","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ResponsibilityOrderDetail"}}}},
-          "404": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "400": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "401": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "403": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "409": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "422": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}
-      }}
+      "get": {
+        "operationId": "readResponsibilityOrder",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order and history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsibilityOrderDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "correctResponsibilityOrder",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Corrected order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsibilityOrderDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "/api/v1/responsibility-orders/{id}/revoke": {
-      "post": {"operationId":"revokeResponsibilityOrder","security":[{"bearerAuth":[]}],"parameters":[{"name":"x-tenant-id","in":"header","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"id","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{
-          "201": {"description":"Revoked order","content":{"application/json":{"schema":{"$ref":"#/components/schemas/ResponsibilityOrderDetail"}}}},
-          "404": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "400": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "401": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "403": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "409": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}},
-          "422": {"description":"Validation, authorization or conflict","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Error"}}}}
-      }}
+      "post": {
+        "operationId": "revokeResponsibilityOrder",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Revoked order",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsibilityOrderDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation, authorization or conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "/api/v1/projects/{id}/tasks/{task}/route": {
       "get": {
@@ -9692,6 +10871,651 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{p}/time/primary-days/{day}": {
+      "get": {
+        "operationId": "readPrimaryDay",
+        "summary": "Read one employer's civil day beside its immutable primary close",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          },
+          {
+            "name": "organizationId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Live facts and, once closed, the frozen snapshot.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrimaryDay"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed day or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or employer is outside this command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project or employer is not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Recorded execution does not match its events.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/time/primary-days/{day}/close": {
+      "post": {
+        "operationId": "closePrimaryDay",
+        "summary": "Master closes the primary day for their employer",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrimaryDayCloseInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Immutable close stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrimaryDay"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or employer is outside this command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project is not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version, source or idempotency conflict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Nothing recorded, an interval is open, or the day is still in the future.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/time/primary-days/{day}/corrections": {
+      "post": {
+        "operationId": "preparePrimaryDayCorrection",
+        "summary": "Master prepares a correction of a closed primary day after a consolidated revision",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrimaryDayCorrectionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Correction stored. The close and issued revisions stay unchanged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrimaryDay"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role or employer is outside this command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project is not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No issued revision, version conflict, or a correction is already waiting.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/time/consolidated/{day}": {
+      "get": {
+        "operationId": "readConsolidatedTime",
+        "summary": "Read issued consolidated revisions for a project day",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Issued revisions. Missing history is an empty list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsolidatedTime"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed day or query.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role is outside this read.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project is not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/time/consolidated/{day}/revisions": {
+      "post": {
+        "operationId": "issueConsolidatedTime",
+        "summary": "Personnel issues the next consolidated revision",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "p",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "day",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date",
+              "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsolidatedTimeInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "New revision stored. Previous revisions stay.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsolidatedTime"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role is outside this command.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Project or correction is not visible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Version conflict or the correction does not cite the frozen close.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "No primary close exists for this day.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/material-batches/{batchId}/control": {
+      "post": {
+        "operationId": "recordMaterialControl",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MaterialControlInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Incoming control step recorded. The server computes the verdict.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MaterialBatchCard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -10456,54 +12280,592 @@
         ],
         "additionalProperties": false
       },
+      "StaffImportCheckRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "organizationId",
+          "fileBase64"
+        ],
+        "properties": {
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fileBase64": {
+            "type": "string"
+          }
+        }
+      },
+      "StaffImportConfirmRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "organizationId",
+          "fileBase64",
+          "verdictHash"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fileBase64": {
+            "type": "string"
+          },
+          "verdictHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "StaffImportCheckedRow": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "row",
+          "personnelNumber",
+          "fullName",
+          "phone",
+          "disposition",
+          "detail",
+          "employeeId"
+        ],
+        "properties": {
+          "row": {
+            "type": "integer",
+            "minimum": 2
+          },
+          "personnelNumber": {
+            "type": "string"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "disposition": {
+            "type": "string",
+            "enum": [
+              "create",
+              "present",
+              "invalid",
+              "conflict",
+              "ambiguous",
+              "foreign"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        }
+      },
+      "StaffImportCheck": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "organizationId",
+          "fileSha256",
+          "verdictHash",
+          "acceptable",
+          "fileError",
+          "rows"
+        ],
+        "properties": {
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fileSha256": {
+            "type": "string"
+          },
+          "verdictHash": {
+            "type": "string"
+          },
+          "acceptable": {
+            "type": "boolean"
+          },
+          "fileError": {
+            "type": "string"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffImportCheckedRow"
+            }
+          }
+        }
+      },
+      "StaffImportSavedRow": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "row",
+          "personnelNumber",
+          "fullName",
+          "phone",
+          "outcome",
+          "employeeId"
+        ],
+        "properties": {
+          "row": {
+            "type": "integer"
+          },
+          "personnelNumber": {
+            "type": "string"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "created",
+              "present"
+            ]
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "StaffImportResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "organizationId",
+          "actorUserId",
+          "actorName",
+          "createdAt",
+          "createdCount",
+          "presentCount",
+          "rows"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actorUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actorName": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "createdCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "presentCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffImportSavedRow"
+            }
+          }
+        }
+      },
+      "StaffImportList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaffImportResult"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          }
+        }
+      },
       "ResponsibilityOrder": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id","employeeId","employeeName","organizationId","organizationName","projectId","projectName","documentTypes","orderNumber","orderDate","validFrom","validUntil","status","revocationReason","version","expiringWithin30Days"],
+        "required": [
+          "id",
+          "employeeId",
+          "employeeName",
+          "organizationId",
+          "organizationName",
+          "projectId",
+          "projectName",
+          "documentTypes",
+          "orderNumber",
+          "orderDate",
+          "validFrom",
+          "validUntil",
+          "status",
+          "revocationReason",
+          "version",
+          "expiringWithin30Days"
+        ],
         "properties": {
-          "id": {"type":"string","format":"uuid"}, "employeeId": {"type":"string","format":"uuid"}, "employeeName": {"type":"string"},
-          "organizationId": {"type":"string","format":"uuid"}, "organizationName": {"type":"string"},
-          "projectId": {"type":"string","format":"uuid"}, "projectName": {"type":"string"},
-          "documentTypes": {"type":"array","minItems":1,"items":{"type":"string"}},
-          "orderNumber": {"type":"string"}, "orderDate": {"type":"string","format":"date"}, "validFrom": {"type":"string","format":"date"}, "validUntil": {"type":"string","format":"date"},
-          "status": {"type":"string","enum":["active","revoked"]}, "revocationReason": {"type":"string","nullable":true},
-          "version": {"type":"integer","minimum":1}, "expiringWithin30Days": {"type":"boolean"}
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeName": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organizationName": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "documentTypes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "orderNumber": {
+            "type": "string"
+          },
+          "orderDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "revoked"
+            ]
+          },
+          "revocationReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expiringWithin30Days": {
+            "type": "boolean"
+          }
         }
       },
       "ResponsibilityOrderDetail": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id","employeeId","employeeName","organizationId","organizationName","projectId","projectName","documentTypes","orderNumber","orderDate","validFrom","validUntil","status","revocationReason","version","expiringWithin30Days","history"],
+        "required": [
+          "id",
+          "employeeId",
+          "employeeName",
+          "organizationId",
+          "organizationName",
+          "projectId",
+          "projectName",
+          "documentTypes",
+          "orderNumber",
+          "orderDate",
+          "validFrom",
+          "validUntil",
+          "status",
+          "revocationReason",
+          "version",
+          "expiringWithin30Days",
+          "history"
+        ],
         "properties": {
-          "id": {"type":"string","format":"uuid"}, "employeeId": {"type":"string","format":"uuid"}, "employeeName": {"type":"string"},
-          "organizationId": {"type":"string","format":"uuid"}, "organizationName": {"type":"string"},
-          "projectId": {"type":"string","format":"uuid"}, "projectName": {"type":"string"},
-          "documentTypes": {"type":"array","minItems":1,"items":{"type":"string"}},
-          "orderNumber": {"type":"string"}, "orderDate": {"type":"string","format":"date"}, "validFrom": {"type":"string","format":"date"}, "validUntil": {"type":"string","format":"date"},
-          "status": {"type":"string","enum":["active","revoked"]}, "revocationReason": {"type":"string","nullable":true},
-          "version": {"type":"integer","minimum":1}, "expiringWithin30Days": {"type":"boolean"},
-          "history": {"type":"array","items":{"type":"object","additionalProperties":false,"required":["version","action","createdAt"],"properties":{"version":{"type":"integer","minimum":1},"action":{"type":"string","enum":["created","corrected","revoked"]},"createdAt":{"type":"string","format":"date-time"}}}}
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employeeName": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organizationName": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "documentTypes": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "orderNumber": {
+            "type": "string"
+          },
+          "orderDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "validFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "validUntil": {
+            "type": "string",
+            "format": "date"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "revoked"
+            ]
+          },
+          "revocationReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "expiringWithin30Days": {
+            "type": "boolean"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "version",
+                "action",
+                "createdAt"
+              ],
+              "properties": {
+                "version": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "created",
+                    "corrected",
+                    "revoked"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          }
         }
       },
       "ResponsibilityOrderList": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["today","projectId","items","catalog"],
+        "required": [
+          "today",
+          "projectId",
+          "items",
+          "catalog"
+        ],
         "properties": {
-          "today": {"type":"string","format":"date"}, "projectId": {"type":"string","format":"uuid","nullable":true},
-          "items": {"type":"array","items":{"$ref":"#/components/schemas/ResponsibilityOrder"}},
-          "catalog": {"type":"object","additionalProperties":false,"required":["employees","projects","documentTypes"],"properties":{
-            "employees": {"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","name","organizationId","organizationName"],"properties":{"id":{"type":"string","format":"uuid"},"name":{"type":"string"},"organizationId":{"type":"string","format":"uuid"},"organizationName":{"type":"string"}}}},
-            "projects": {"type":"array","items":{"type":"object","additionalProperties":false,"required":["id","name"],"properties":{"id":{"type":"string","format":"uuid"},"name":{"type":"string"}}}},
-            "documentTypes": {"type":"array","items":{"type":"object","additionalProperties":false,"required":["code","title"],"properties":{"code":{"type":"string"},"title":{"type":"string"}}}}
-          }}
+          "today": {
+            "type": "string",
+            "format": "date"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResponsibilityOrder"
+            }
+          },
+          "catalog": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "employees",
+              "projects",
+              "documentTypes"
+            ],
+            "properties": {
+              "employees": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "name",
+                    "organizationId",
+                    "organizationName"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "organizationName": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "projects": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "documentTypes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "code",
+                    "title"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       },
       "ResponsibilityApplicability": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["applicable","reason","orderId"],
-        "properties": {"applicable":{"type":"boolean"},"reason":{"type":"string","enum":["active","revoked","expired","not_started","type","object","company","person"]},"orderId":{"type":"string","format":"uuid","nullable":true}}
+        "required": [
+          "applicable",
+          "reason",
+          "orderId"
+        ],
+        "properties": {
+          "applicable": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "active",
+              "revoked",
+              "expired",
+              "not_started",
+              "type",
+              "object",
+              "company",
+              "person"
+            ]
+          },
+          "orderId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          }
+        }
       },
       "Ok": {
         "type": "object",
@@ -15821,7 +18183,12 @@
           },
           "status": {
             "type": "string",
-            "enum": ["unapproved", "current", "stale", "revoked"]
+            "enum": [
+              "unapproved",
+              "current",
+              "stale",
+              "revoked"
+            ]
           },
           "sourceHash": {
             "type": "string",
@@ -16068,7 +18435,12 @@
           },
           "status": {
             "type": "string",
-            "enum": ["unapproved", "current", "stale", "revoked"]
+            "enum": [
+              "unapproved",
+              "current",
+              "stale",
+              "revoked"
+            ]
           }
         },
         "required": [
@@ -16223,8 +18595,13 @@
           "role": {
             "$ref": "#/components/schemas/InvitationRole"
           },
-          "phone": { "type": "string" },
-          "employeeId": { "type": "string", "format": "uuid" }
+          "phone": {
+            "type": "string"
+          },
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          }
         }
       },
       "InvitationRefresh": {
@@ -16243,11 +18620,24 @@
       "InvitationPhoneRegistration": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "code"],
+        "required": [
+          "name",
+          "code"
+        ],
         "properties": {
-          "name": { "type": "string", "minLength": 1, "maxLength": 120 },
-          "code": { "type": "string", "pattern": "^[0-9]{6}$" },
-          "requestId": { "type": "string", "format": "uuid" }
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          }
         }
       },
       "InvitationRegistration": {
@@ -16327,7 +18717,9 @@
             "type": "string",
             "nullable": true
           },
-          "phoneMasked": { "type": "string" }
+          "phoneMasked": {
+            "type": "string"
+          }
         }
       },
       "InvitationInfo": {
@@ -16349,32 +18741,56 @@
             "type": "string",
             "format": "date-time"
           },
-          "phoneMasked": { "type": "string" }
+          "phoneMasked": {
+            "type": "string"
+          }
         }
       },
       "PhoneChallengeInput": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["phone", "requestId"],
+        "required": [
+          "phone",
+          "requestId"
+        ],
         "properties": {
-          "phone": { "type": "string" },
-          "requestId": { "type": "string", "format": "uuid" }
+          "phone": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          }
         }
       },
       "PhoneLoginInput": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["phone", "code"],
+        "required": [
+          "phone",
+          "code"
+        ],
         "properties": {
-          "phone": { "type": "string" },
-          "code": { "type": "string", "pattern": "^[0-9]{6}$" }
+          "phone": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$"
+          }
         }
       },
       "PhoneChallengeResult": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["sent"],
-        "properties": { "sent": { "type": "boolean" } }
+        "required": [
+          "sent"
+        ],
+        "properties": {
+          "sent": {
+            "type": "boolean"
+          }
+        }
       },
       "InvitationRoster": {
         "type": "object",
@@ -16596,17 +19012,27 @@
       "ContractPriceProjects": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["projects"],
+        "required": [
+          "projects"
+        ],
         "properties": {
           "projects": {
             "type": "array",
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["id", "name"],
+              "required": [
+                "id",
+                "name"
+              ],
               "properties": {
-                "id": { "type": "string", "format": "uuid" },
-                "name": { "type": "string" }
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -16615,51 +19041,149 @@
       "ContractPriceRevision": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["projectId", "workTypeId", "version", "unit", "price", "start", "end"],
+        "required": [
+          "projectId",
+          "workTypeId",
+          "version",
+          "unit",
+          "price",
+          "start",
+          "end"
+        ],
         "properties": {
-          "projectId": { "type": "string", "format": "uuid" },
-          "workTypeId": { "type": "string", "format": "uuid" },
-          "version": { "type": "integer", "minimum": 1 },
-          "unit": { "type": "string" },
-          "price": { "type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,6})?$" },
-          "start": { "type": "string", "format": "date" },
-          "end": { "type": "string", "format": "date" }
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "unit": {
+            "type": "string"
+          },
+          "price": {
+            "type": "string",
+            "pattern": "^(?:0|[1-9][0-9]*)(?:\\.[0-9]{1,6})?$"
+          },
+          "start": {
+            "type": "string",
+            "format": "date"
+          },
+          "end": {
+            "type": "string",
+            "format": "date"
+          }
         }
       },
       "ContractPriceCommand": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["requestId", "workTypeId", "price", "start", "end", "expectedVersion"],
+        "required": [
+          "requestId",
+          "workTypeId",
+          "price",
+          "start",
+          "end",
+          "expectedVersion"
+        ],
         "properties": {
-          "requestId": { "type": "string", "format": "uuid" },
-          "workTypeId": { "type": "string", "format": "uuid" },
-          "price": { "type": "string" },
-          "start": { "type": "string", "format": "date" },
-          "end": { "type": "string", "format": "date" },
-          "expectedVersion": { "type": "integer", "minimum": 0 }
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "price": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string",
+            "format": "date"
+          },
+          "end": {
+            "type": "string",
+            "format": "date"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0
+          }
         }
       },
       "ContractPriceRegister": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["projectId", "asOf", "workTypes"],
+        "required": [
+          "projectId",
+          "asOf",
+          "workTypes"
+        ],
         "properties": {
-          "projectId": { "type": "string", "format": "uuid" },
-          "asOf": { "type": "string", "format": "date" },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date"
+          },
           "workTypes": {
             "type": "array",
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["id", "name", "unit", "status", "headVersion", "acting", "revisions"],
+              "required": [
+                "id",
+                "name",
+                "unit",
+                "status",
+                "headVersion",
+                "acting",
+                "revisions"
+              ],
               "properties": {
-                "id": { "type": "string", "format": "uuid" },
-                "name": { "type": "string" },
-                "unit": { "type": "string" },
-                "status": { "type": "string", "enum": ["active", "archived"] },
-                "headVersion": { "type": "integer", "minimum": 0 },
-                "acting": { "nullable": true, "allOf": [{ "$ref": "#/components/schemas/ContractPriceHistoryItem" }] },
-                "revisions": { "type": "array", "items": { "$ref": "#/components/schemas/ContractPriceHistoryItem" } }
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "active",
+                    "archived"
+                  ]
+                },
+                "headVersion": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "acting": {
+                  "nullable": true,
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/ContractPriceHistoryItem"
+                    }
+                  ]
+                },
+                "revisions": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ContractPriceHistoryItem"
+                  }
+                }
               }
             }
           }
@@ -16668,14 +19192,37 @@
       "ContractPriceHistoryItem": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["version", "unit", "price", "start", "end", "createdAt"],
+        "required": [
+          "version",
+          "unit",
+          "price",
+          "start",
+          "end",
+          "createdAt"
+        ],
         "properties": {
-          "version": { "type": "integer", "minimum": 1 },
-          "unit": { "type": "string" },
-          "price": { "type": "string" },
-          "start": { "type": "string", "format": "date" },
-          "end": { "type": "string", "format": "date" },
-          "createdAt": { "type": "string", "format": "date-time" }
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "unit": {
+            "type": "string"
+          },
+          "price": {
+            "type": "string"
+          },
+          "start": {
+            "type": "string",
+            "format": "date"
+          },
+          "end": {
+            "type": "string",
+            "format": "date"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "MaterialBatchDocument": {
@@ -16881,23 +19428,6 @@
             "type": "string",
             "format": "date-time"
           }
-        }
-      },
-      "MaterialControlInput": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["requestId", "expectedVersion", "action"],
-        "properties": {
-          "requestId": { "type": "string", "format": "uuid" },
-          "expectedVersion": { "type": "integer", "minimum": 0 },
-          "action": { "type": "string", "enum": ["prepare", "data", "responsible", "review"] },
-          "zoneId": { "type": "string", "format": "uuid" },
-          "workTypeId": { "type": "string", "format": "uuid" },
-          "templateId": { "type": "string", "format": "uuid" },
-          "answers": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["itemId", "value"], "properties": { "itemId": { "type": "string" }, "value": { "type": "string" } } } },
-          "dataMark": { "type": "string", "enum": ["provided", "overdue"] },
-          "decision": { "type": "string", "enum": ["agree", "return"] },
-          "reason": { "type": "string" }
         }
       },
       "MaterialBatchCard": {
@@ -17942,6 +20472,590 @@
           "taskVersion": {
             "type": "integer",
             "minimum": 1
+          }
+        }
+      },
+      "PrimaryDayFacts": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sourceHash",
+          "presenceMs",
+          "idleMs",
+          "workMs",
+          "breakMs",
+          "downtimeMs",
+          "shifts"
+        ],
+        "properties": {
+          "sourceHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "presenceMs": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "idleMs": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "workMs": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "breakMs": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "downtimeMs": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "shifts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrimaryDayShift"
+            }
+          }
+        }
+      },
+      "PrimaryDayShift": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "shiftId",
+          "mode",
+          "ms",
+          "open"
+        ],
+        "properties": {
+          "shiftId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "work",
+              "break",
+              "downtime"
+            ]
+          },
+          "ms": {
+            "type": "string",
+            "pattern": "^(0|[1-9][0-9]*)$"
+          },
+          "open": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PrimaryDayEmployee": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "employeeId",
+          "fullName",
+          "live",
+          "snapshot",
+          "consolidated"
+        ],
+        "properties": {
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "live": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrimaryDayFacts"
+              }
+            ]
+          },
+          "snapshot": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrimaryDayFacts"
+              }
+            ]
+          },
+          "consolidated": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrimaryDayFacts"
+              }
+            ]
+          }
+        }
+      },
+      "PrimaryDayCorrection": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "reason",
+          "correctsVersion",
+          "correctsHash",
+          "recordedAt",
+          "recordedBy",
+          "recordedByName",
+          "acceptedRevision",
+          "sourceHash"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "correctsVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1
+          },
+          "correctsHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recordedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "recordedByName": {
+            "type": "string"
+          },
+          "acceptedRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "nullable": true
+          },
+          "sourceHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "ConsolidatedClose": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "organizationId",
+          "sourceHash",
+          "version",
+          "snapshot"
+        ],
+        "properties": {
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1
+          },
+          "correctionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/PrimaryDaySnapshot"
+          }
+        }
+      },
+      "ConsolidatedRevision": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "revision",
+          "previousRevision",
+          "issuedAt",
+          "issuedBy",
+          "issuedByName",
+          "correctionId",
+          "closes"
+        ],
+        "properties": {
+          "revision": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "previousRevision": {
+            "type": "integer",
+            "minimum": 1,
+            "nullable": true
+          },
+          "issuedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "issuedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "issuedByName": {
+            "type": "string"
+          },
+          "correctionId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "closes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConsolidatedClose"
+            }
+          }
+        }
+      },
+      "PrimaryDay": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projectId",
+          "organizationId",
+          "organizationName",
+          "day",
+          "timezone",
+          "closeVersion",
+          "closedAt",
+          "closedBy",
+          "closedByName",
+          "liveHash",
+          "snapshotHash",
+          "diverged",
+          "employees",
+          "revision",
+          "revisions",
+          "correction",
+          "correctionVersion"
+        ],
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organizationName": {
+            "type": "string"
+          },
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "closeVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "closedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "closedBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "closedByName": {
+            "type": "string",
+            "nullable": true
+          },
+          "liveHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "snapshotHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "nullable": true
+          },
+          "diverged": {
+            "type": "boolean"
+          },
+          "employees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrimaryDayEmployee"
+            }
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "revisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConsolidatedRevision"
+            }
+          },
+          "correction": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrimaryDayCorrection"
+              }
+            ]
+          },
+          "correctionVersion": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "ConsolidatedTime": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "projectId",
+          "day",
+          "revision",
+          "revisions"
+        ],
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "revision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "revisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConsolidatedRevision"
+            }
+          }
+        }
+      },
+      "PrimaryDayCloseInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "expectedCloseVersion",
+          "organizationId",
+          "sourceHash"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedCloseVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sourceHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "PrimaryDayCorrectionInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "organizationId",
+          "reason",
+          "expectedCorrectionVersion",
+          "sourceHash"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "expectedCorrectionVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sourceHash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "ConsolidatedTimeInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "expectedRevision"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "correctionId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "PrimaryDaySnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "timezone",
+          "employees"
+        ],
+        "properties": {
+          "timezone": {
+            "type": "string"
+          },
+          "employees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrimaryDaySnapshotEmployee"
+            }
+          }
+        }
+      },
+      "PrimaryDaySnapshotEmployee": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "employeeId",
+          "fullName",
+          "facts"
+        ],
+        "properties": {
+          "employeeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "facts": {
+            "$ref": "#/components/schemas/PrimaryDayFacts"
+          }
+        }
+      },
+      "MaterialControlInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "expectedVersion",
+          "action"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "prepare",
+              "data",
+              "responsible",
+              "review"
+            ]
+          },
+          "zoneId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "templateId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "answers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "itemId",
+                "value"
+              ],
+              "properties": {
+                "itemId": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "dataMark": {
+            "type": "string",
+            "enum": [
+              "provided",
+              "overdue"
+            ]
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "agree",
+              "return"
+            ]
+          },
+          "reason": {
+            "type": "string"
           }
         }
       }
