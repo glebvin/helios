@@ -1,3 +1,5 @@
+import { StaffImportService } from "./staff-import.service.js";
+import { StaffImportController } from "./staff-import.controller.js";
 import "reflect-metadata";
 import {
   Body,
@@ -164,10 +166,11 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [StaffImportController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
 
 
   providers: [
+    { provide: StaffImportService, useFactory: (pool: Pool) => new StaffImportService(pool), inject: [APP_POOL] },
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
     { provide: BOSS, useFactory: (host: BossHost) => host.boss, inject: [BossHost] },
