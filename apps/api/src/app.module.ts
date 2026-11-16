@@ -49,6 +49,8 @@ import {RouteConfigService} from "./route-config.service.js";
 import {RouteConfigController} from "./route-config.controller.js";
 import { ChecklistTemplatesController } from "./checklist-templates.controller.js";
 import { ChecklistTemplatesService } from "./checklist-templates.service.js";
+import { ChecklistRunsController } from "./checklist-runs.controller.js";
+import { ChecklistRunsService } from "./checklist-runs.service.js";
 import {ContractPriceService} from "./contract-prices.service.js";
 import {ContractPriceController, ContractPriceProjectController} from "./contract-prices.controller.js";
 
@@ -168,7 +170,7 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [MaterialBatchController, MaterialBatchProjectController, StaffImportController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [MaterialBatchController, MaterialBatchProjectController, StaffImportController, ChecklistRunsController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
 
 
   providers: [
@@ -194,6 +196,7 @@ class WorkforceController {
     {provide:InvitationsService,useFactory:(pool:Pool)=>new InvitationsService(pool),inject:[APP_POOL]},
     {provide:RouteConfigService,useFactory:(pool:Pool)=>new RouteConfigService(pool),inject:[APP_POOL]},
     { provide: ChecklistTemplatesService, useFactory: (pool: Pool) => new ChecklistTemplatesService(pool), inject: [APP_POOL] },
+    { provide: ChecklistRunsService, useFactory: (pool: Pool) => new ChecklistRunsService(pool), inject: [APP_POOL] },
     {provide:ContractPriceService,useFactory:(pool:Pool)=>new ContractPriceService(pool),inject:[APP_POOL]},
 
     {provide:ResponsibilityOrdersService,useFactory:(pool:Pool)=>new ResponsibilityOrdersService(pool),inject:[APP_POOL]},

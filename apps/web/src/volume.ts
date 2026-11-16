@@ -159,6 +159,7 @@ export function volumeBatchError(row: VolumeBatchRow | undefined, httpStatus: nu
   if (code === "positive_closed_task_work_required") return "В этой смене нет закрытой работы по заданию.";
   if (code === "published_managed_task_required") return "Задание не опубликовано. Объём не записан.";
   if (code === "admission_required") return "Допуск не позволяет сдать объём.";
+  if (code === "checklist_blocked") return "Критичный пункт чек-листа не пройден. Объём не записан.";
   if (code === "on_behalf_reason_required") return "Для записи за работника нужна причина.";
   if (code === "role_denied" || row.status === 403) return "Этому входу объём не разрешён.";
   return `Сервер не записал объём${code ? `: ${code}` : ""}.`;
