@@ -1,0 +1,18 @@
+export type InspectionAction = 'submit' | 'responsible' | 'approve' | 'return';
+export type InspectionCommand = {path:string;body:{requestId:string;expectedVersion:number;action:InspectionAction;expectedRouteVersion?:number;reason?:string}};
+type Store=Pick<Storage,'getItem'|'setItem'|'removeItem'>;
+const memory=new Map<string,InspectionCommand>();
+export function readInspectionCommand(key:string,storage:()=>Store=()=>sessionStorage):InspectionCommand|null {
+ if(memory.has(key))return memory.get(key)!;
+ try{
+  const row=JSON.parse(storage().getItem(key)??'null') as InspectionCommand|null,b=row?.body;
+  if(row&&/^\/projects\/[0-9a-f-]{36}\/accepted-parts\/[0-9a-f-]{36}\/internal-inspection$/i.test(row.path)&&b&&/^[0-9a-f-]{36}$/i.test(b.requestId)&&Number.isSafeInteger(b.expectedVersion)&&b.expectedVersion>=0&&['submit','responsible','approve','return'].includes(b.action)&&(b.action!=='submit'||Number.isSafeInteger(b.expectedRouteVersion))&&(b.action!=='return'||typeof b.reason==='string')){memory.set(key,row);return row;}
+ }catch{/* Retain a live command in memory if storage is unavailable. */}
+ return null;
+}
+export function keepInspectionCommand(key:string,command:InspectionCommand,storage:()=>Store=()=>sessionStorage){
+ const copy=JSON.parse(JSON.stringify(command)) as InspectionCommand;memory.set(key,copy);try{storage().setItem(key,JSON.stringify(copy));}catch{}return copy;
+}
+export function clearInspectionCommand(key:string,requestId:string,storage:()=>Store=()=>sessionStorage){
+ if(readInspectionCommand(key,storage)?.body.requestId!==requestId)return;memory.delete(key);try{storage().removeItem(key);}catch{}
+}

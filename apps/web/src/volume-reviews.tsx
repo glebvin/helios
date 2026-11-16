@@ -1,3 +1,4 @@
+import { InternalInspection } from './internal-inspection';
 import { useEffect, useRef, useState } from 'react';
 import type { Session } from './api';
 import { ApiError, v1 } from './v1';
@@ -26,7 +27,7 @@ export function VolumeReviews({session,projectId,projectName,day,notice,onBack}:
   return <section className="page">
     <div className="documents-heading"><button className="ghost desk-action" type="button" onClick={onBack}>К фактам</button></div>
     <div><h1>Приёмка</h1><p className="sub">{blocked||`${projectName} · ${civilLabel(pickedDay)}`}</p></div>
-    <div className="panel-head"><h2>Самоконтроль мастера</h2><NoteMark label="Этап приёмки"><p>Мастер подтверждает фактический объём после самоконтроля. Решение нашего ПТО и внешнего СК записываются отдельно на следующих этапах.</p></NoteMark></div>
+    <div className="panel-head"><h2>Самоконтроль мастера</h2><NoteMark label="Этап приёмки"><p>Мастер подтверждает фактический объём после самоконтроля. После решения мастера часть передаётся нашему ПТО. Внешний СК — отдельный этап.</p></NoteMark></div>
     <label className="field" style={{maxWidth:220}}><span>День предъявления</span><input type="date" aria-label="День предъявления" value={pickedDay} onChange={event=>{setPickedDay(event.target.value);setOffset(0);setSelected('');}}/></label>
     {blocked?<DeskEmpty title="День не подтверждён" description={blocked}/>:null}
     {read.loading?<p role="status" className="quiet">Читаем предъявления…</p>:null}
@@ -88,7 +89,7 @@ function ReviewDialog({session,projectId,reportId,onClose,onSaved}: {session:Ses
           <button className="fill desk-action" type="submit" disabled={!row.checklist?.passed||row.checklist.blocksNext}>Подтвердить объём</button>
         </fieldset>
       </form>:null}
-      {session.role!=='master'?<p className="quiet">Этот вход читает решение мастера. Здесь не записывается приёмка ПТО.</p>:null}
+      {row.review?.acceptedPartId?<InternalInspection key={`${session.userId}:${projectId}:${row.review.acceptedPartId}`} session={session} projectId={projectId} partId={row.review.acceptedPartId}/>:null}
     </>:null}
     <div className="dialog-actions"><button className="ghost desk-action" type="button" disabled={busy} onClick={onClose}>Закрыть</button></div>
   </Dialog>;

@@ -10743,6 +10743,218 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{project}/accepted-parts/{part}/internal-inspection": {
+      "get": {
+        "operationId": "readInternalInspection",
+        "summary": "readInternalInspection",
+        "description": "Initial inspection of the entire positive immutable master-accepted part. Assigned master submits, pinned project director confirms responsibility, pinned PTO accepts or returns with a reason. Route version and participants are snapshotted at submission; later configuration does not reassign an existing inspection. Current role and project scope are checked even for retries. Latest successful task self-control is required for submit/approve. No partial PTO decision, correction, resubmission, external inspection, observer delivery or skip policy in this slice.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "part",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalInspectionCard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "recordInternalInspection",
+        "summary": "recordInternalInspection",
+        "description": "Initial inspection of the entire positive immutable master-accepted part. Assigned master submits, pinned project director confirms responsibility, pinned PTO accepts or returns with a reason. Route version and participants are snapshotted at submission; later configuration does not reassign an existing inspection. Current role and project scope are checked even for retries. Latest successful task self-control is required for submit/approve. No partial PTO decision, correction, resubmission, external inspection, observer delivery or skip policy in this slice.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "part",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalInspectionCard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalInspectionInput"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -20139,6 +20351,428 @@
             "nullable": true
           }
         }
+      },
+      "InternalInspectionParticipant": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "userId",
+          "role",
+          "name"
+        ],
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "InternalInspectionRoute": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "ready",
+          "preparer",
+          "responsible",
+          "approver"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "preparer": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InternalInspectionParticipant"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "responsible": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InternalInspectionParticipant"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "approver": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InternalInspectionParticipant"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "InternalInspectionPart": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "reportId",
+          "taskId",
+          "title",
+          "unit",
+          "quantity"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reportId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "string",
+            "pattern": "^\\d+\\.\\d{3}$"
+          }
+        }
+      },
+      "InternalInspectionControl": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version",
+          "passed",
+          "blocksNext"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "passed": {
+            "type": "boolean"
+          },
+          "blocksNext": {
+            "type": "boolean"
+          }
+        }
+      },
+      "InternalInspectionSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "acceptedPart",
+          "configurationVersion",
+          "preparer",
+          "responsible",
+          "approver",
+          "selfControl"
+        ],
+        "properties": {
+          "acceptedPart": {
+            "$ref": "#/components/schemas/InternalInspectionPart"
+          },
+          "configurationVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "preparer": {
+            "$ref": "#/components/schemas/InternalInspectionParticipant"
+          },
+          "responsible": {
+            "$ref": "#/components/schemas/InternalInspectionParticipant"
+          },
+          "approver": {
+            "$ref": "#/components/schemas/InternalInspectionParticipant"
+          },
+          "selfControl": {
+            "$ref": "#/components/schemas/InternalInspectionControl"
+          }
+        }
+      },
+      "InternalInspectionCard": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "acceptedPart",
+          "version",
+          "state",
+          "currentRoute",
+          "selfControl",
+          "record",
+          "history",
+          "allowedActions"
+        ],
+        "properties": {
+          "acceptedPart": {
+            "$ref": "#/components/schemas/InternalInspectionPart"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "not_submitted",
+              "awaiting_responsibility",
+              "awaiting_pto",
+              "accepted",
+              "returned"
+            ]
+          },
+          "currentRoute": {
+            "$ref": "#/components/schemas/InternalInspectionRoute"
+          },
+          "selfControl": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InternalInspectionControl"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "record": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "snapshot",
+                  "createdAt"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "snapshot": {
+                    "$ref": "#/components/schemas/InternalInspectionSnapshot"
+                  },
+                  "createdAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "version",
+                "action",
+                "fromState",
+                "toState",
+                "actorUserId",
+                "actorName",
+                "actorRole",
+                "reason",
+                "requestId",
+                "createdAt"
+              ],
+              "properties": {
+                "version": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "submit",
+                    "responsible",
+                    "approve",
+                    "return"
+                  ]
+                },
+                "fromState": {
+                  "type": "string",
+                  "enum": [
+                    "not_submitted",
+                    "awaiting_responsibility",
+                    "awaiting_pto",
+                    "accepted",
+                    "returned"
+                  ]
+                },
+                "toState": {
+                  "type": "string",
+                  "enum": [
+                    "not_submitted",
+                    "awaiting_responsibility",
+                    "awaiting_pto",
+                    "accepted",
+                    "returned"
+                  ]
+                },
+                "actorUserId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "actorName": {
+                  "type": "string"
+                },
+                "actorRole": {
+                  "type": "string"
+                },
+                "reason": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "requestId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          },
+          "allowedActions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "submit",
+                "responsible",
+                "approve",
+                "return"
+              ]
+            }
+          }
+        }
+      },
+      "InternalInspectionInput": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "requestId",
+              "expectedVersion",
+              "action",
+              "expectedRouteVersion"
+            ],
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "action": {
+                "const": "submit",
+                "type": "string"
+              },
+              "expectedRouteVersion": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "requestId",
+              "expectedVersion",
+              "action"
+            ],
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "action": {
+                "enum": [
+                  "responsible",
+                  "approve"
+                ],
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "requestId",
+              "expectedVersion",
+              "action",
+              "reason"
+            ],
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "action": {
+                "const": "return",
+                "type": "string"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
+            }
+          }
+        ]
       }
     }
   }
