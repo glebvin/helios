@@ -115,11 +115,11 @@ export function MaterialControl({ session, projectId, batchId, documents, contro
 }
 
 function field(item: Item, batchId: string, documents: ReadyDoc[], value: string, change: (value: string) => void) {
-  if (item.kind === "yes_no") return <select value={value} onChange={(event) => change(event.target.value)}><option value="">Выберите</option><option value="yes">Да</option><option value="no">Нет</option></select>;
+  if (item.kind === "yes_no") return <select aria-label={item.prompt} value={value} onChange={(event) => change(event.target.value)}><option value="">Выберите</option><option value="yes">Да</option><option value="no">Нет</option></select>;
   if (item.kind === "batch") return <input value={batchId} readOnly />;
   if (item.kind === "document" || item.kind === "photo") {
     const ready = documents.filter((document) => document.state === "ready" && (item.kind === "photo" ? document.contentType?.startsWith("image/") : document.contentType === "application/pdf"));
-    return <select value={value} onChange={(event) => change(event.target.value)}><option value="">Документ не выбран</option>{ready.map((document) => <option key={document.id} value={document.id}>{document.filename}</option>)}</select>;
+    return <select aria-label={item.prompt} value={value} onChange={(event) => change(event.target.value)}><option value="">Документ не выбран</option>{ready.map((document) => <option key={document.id} value={document.id}>{document.filename}</option>)}</select>;
   }
-  return <input value={value} onChange={(event) => change(event.target.value)} />;
+  return <input aria-label={item.prompt} value={value} onChange={(event) => change(event.target.value)} />;
 }

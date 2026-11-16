@@ -41,15 +41,23 @@ export class NativeStore {
     if (!globalThis.indexedDB) return Promise.reject(new OfflineQueueError('unsupported_storage'));
     return new Promise((resolve, reject) => {
       let settled = false;
-      const request = indexedDB.open(DATABASE_NAME, 1);
+      const request = indexedDB.open(DATABASE_NAME, 2);
       request.onupgradeneeded = () => {
         const db = request.result;
-        const events = db.createObjectStore('events', {keyPath: 'key'});
-        events.createIndex('scope', 'scope');
-        events.createIndex('employee', ['scope', 'employeeId', 'sequence']);
-        const evidence = db.createObjectStore('evidence', {keyPath: 'key'});
-        evidence.createIndex('scope', 'scope');
-        db.createObjectStore('meta', {keyPath: 'key'});
+        if (!db.objectStoreNames.contains('events')) {
+          const events = db.createObjectStore('events', {keyPath: 'key'});
+          events.createIndex('scope', 'scope');
+          events.createIndex('employee', ['scope', 'employeeId', 'sequence']);
+        }
+        if (!db.objectStoreNames.contains('evidence')) {
+          const evidence = db.createObjectStore('evidence', {keyPath: 'key'});
+          evidence.createIndex('scope', 'scope');
+        }
+        if (!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', {keyPath: 'key'});
+        if (!db.objectStoreNames.contains('checklist')) {
+          const checklist = db.createObjectStore('checklist', {keyPath: 'key'});
+          checklist.createIndex('scope', 'scope');
+        }
       };
       request.onblocked = () => { settled = true; reject(new OfflineQueueError('storage_upgrade_blocked')); };
       request.onerror = () => { settled = true; reject(request.error ?? new OfflineQueueError('storage_open_failed')); };
@@ -66,14 +74,15 @@ export class NativeStore {
       let tx: IDBTransaction;
       try {
         check();
+        const stores = ['meta', 'events', 'evidence', 'checklist'];
         if (mode === 'readwrite') {
-          try { tx = this.db.transaction(['meta', 'events', 'evidence'], mode, {durability: 'strict'}); }
+          try { tx = this.db.transaction(stores, mode, {durability: 'strict'}); }
           catch (error) {
             if (!(error instanceof TypeError) && !(error instanceof DOMException && error.name === 'NotSupportedError')) throw error;
-            tx = this.db.transaction(['meta', 'events', 'evidence'], mode);
+            tx = this.db.transaction(stores, mode);
           }
           this.durability = tx.durability ?? 'unsupported';
-        } else tx = this.db.transaction(['meta', 'events', 'evidence'], mode);
+        } else tx = this.db.transaction(stores, mode);
       } catch (error) { reject(error); return; }
       this.active.add(tx);
       let value: T; let failure: unknown;

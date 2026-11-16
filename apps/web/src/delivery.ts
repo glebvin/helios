@@ -1,4 +1,5 @@
-import { OfflineQueueError, openOfflineQueue, type EventPayload, type EvidenceInput, type OfflineQueue, type QueueState } from "../../../packages/offline/src/index.js";
+import { OfflineQueueError, openOfflineQueue, type ChecklistCard, type ChecklistDetail, type ChecklistDraftInput, type EventPayload, type EvidenceInput, type OfflineQueue, type QueueState } from "../../../packages/offline/src/index.js";
+export type { ChecklistCard, ChecklistDetail, ChecklistDraftInput };
 import type { Session } from "./api";
 
 type Live = { token: string; tenantId: string; actorUserId: string; generation: number };
@@ -176,9 +177,36 @@ export async function reportFiles(reportId: string) {
   if (!active) return [];
   const wanted = reportId.toLowerCase();
   const rows = await active.list();
-  return rows.flatMap((row) => "event" in row || row.target.kind !== "final_report" || row.target.reportId.toLowerCase() !== wanted ? [] : [{
+  return rows.flatMap((row) => "event" in row || !("target" in row) || row.target.kind !== "final_report" || row.target.reportId.toLowerCase() !== wanted ? [] : [{
     id: row.id, filename: row.reserve.filename, stage: row.stage, state: row.state, code: row.lastError,
   }]);
+}
+
+export async function listChecklistCards(): Promise<ChecklistCard[]> {
+  await opening;
+  return queue?.checklistCards() ?? [];
+}
+
+export async function readChecklist(projectId: string, taskId: string): Promise<ChecklistDetail | null> {
+  await opening;
+  return queue?.readChecklist(projectId, taskId) ?? null;
+}
+
+export async function saveChecklist(input: ChecklistDraftInput): Promise<ChecklistDetail> {
+  const active = queue;
+  if (!active) throw new OfflineQueueError("auth_required");
+  const saved = await active.saveChecklist(input);
+  notify();
+  return saved;
+}
+
+export async function sendChecklist(projectId: string, taskId: string): Promise<ChecklistDetail> {
+  const active = queue;
+  if (!active) throw new OfflineQueueError("auth_required");
+  await active.queueChecklist(projectId, taskId);
+  notify();
+  await flushDelivery();
+  return (await active.readChecklist(projectId, taskId)) ?? await active.queueChecklist(projectId, taskId);
 }
 
 export async function sendEvidence(input: EvidenceInput) {
@@ -186,7 +214,7 @@ export async function sendEvidence(input: EvidenceInput) {
   if (!active) throw new OfflineQueueError("auth_required");
   // Confirmed files no longer need their Blob on this device. Keep identity
   // tombstones so an identical retry still resolves to the original server file.
-  const acknowledged = (await active.list()).filter(row => !("event" in row) && row.state === "synced").map(row => row.id);
+  const acknowledged = (await active.list()).filter(row => "reserve" in row && row.state === "synced").map(row => row.id);
   if (acknowledged.length) {
     try { await active.cleanupAcknowledged(acknowledged); }
     catch (error) { if (!(error instanceof OfflineQueueError) || error.code !== "cleanup_requires_acknowledgement") throw error; }

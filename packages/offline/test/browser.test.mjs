@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {createHash} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
 import {test as browserTest} from 'node:test';
 import {createServer} from 'node:http';
 import {mkdtemp, readFile, rm} from 'node:fs/promises';
@@ -25,7 +25,7 @@ const temporary = await mkdtemp(join(tmpdir(), 'helios-offline-tracer-'));
 const journal = [];
 const wrongIds = new Set();
 const receipts = new Map();
-const evidenceReceipts = new Map(), evidenceFiles = new Map();
+const evidenceReceipts = new Map(), evidenceFiles = new Map(), checklistFiles = new Map(), checklistRuns = new Map();
 const actions = new Map();
 const gates = new Set(), fixtureErrors = [];
 let meAction = null;
@@ -114,6 +114,26 @@ const server = createServer(async (req,res) => {
         if(action?.status){res.statusCode=action.status;if(action.retryAfter)res.setHeader('Retry-After',action.retryAfter);res.end(action.raw??'');return;}
         res.statusCode=stage==='content'?200:201;res.setHeader('Content-Type','application/json');res.end(JSON.stringify(action?.body?action.body(answer):answer));return;
       }
+      const checklist=/^\/api\/v1\/projects\/([0-9a-f-]+)\/tasks\/([0-9a-f-]+)\/checklist-(files|runs)(?:\?|$)/.exec(req.url);
+      if(checklist){
+        const [,projectId,taskId,kind]=checklist;
+        if(kind==='files'){
+          assert.equal(req.method,'POST');assert.equal(req.headers['content-type'],'application/octet-stream');
+          const query=new URL(req.url,'http://fixture').searchParams,requestId=query.get('requestId');assert.ok(requestId);
+          let stored=checklistFiles.get(requestId);
+          if(stored)assert.deepEqual(stored.bytes,bytes);else{stored={bytes:Buffer.from(bytes),answer:{fileId:randomUUID(),itemId:query.get('itemId'),filename:query.get('filename'),contentType:query.get('contentType'),sizeBytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),projectId,taskId}};checklistFiles.set(requestId,stored);}
+          const action=actions.get(requestId);
+          if(action?.drop){res.writeHead(201,{'Content-Type':'application/json','Content-Length':'10000'});res.write('{',()=>req.socket.destroy());return;}
+          if(action?.status){res.statusCode=action.status;res.end(action.raw??'');return;}
+          res.statusCode=201;res.setHeader('Content-Type','application/json');res.end(JSON.stringify(stored.answer));return;
+        }
+        assert.equal(req.method,'POST');const body=JSON.parse(raw);let stored=checklistRuns.get(body.requestId);
+        if(stored)assert.deepEqual(stored.body,body);else{stored={body,answer:{id:randomUUID(),requestId:body.requestId,projectId,taskId,passed:true,blocksNext:false,version:body.expectedVersion+1}};checklistRuns.set(body.requestId,stored);}
+        const action=actions.get(body.requestId);
+        if(action?.drop){res.writeHead(201,{'Content-Type':'application/json','Content-Length':'10000'});res.write('{',()=>req.socket.destroy());return;}
+        if(action?.status){res.statusCode=action.status;res.end(action.raw??'');return;}
+        res.statusCode=201;res.setHeader('Content-Type','application/json');res.end(JSON.stringify(stored.answer));return;
+      }
       assert.equal(req.url,'/api/v1/execution/events');assert.equal(req.method,'POST');
       const body = JSON.parse(raw);assert.equal(body.events.length,1);
       const command = body.events[0];
@@ -134,7 +154,7 @@ const server = createServer(async (req,res) => {
       res.end(JSON.stringify({results:[{requestId,outcome:previous?'duplicate':'success',status:201,result:resultFor(command)}]}));return;
     }
     if (req.url==='/') {res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>Native offline queue tests</title>');return;}
-    if (/^\/(index|store|transport|evidence)\.js$/.test(req.url)) {
+    if (/^\/(index|store|transport|evidence|checklist)\.js$/.test(req.url)) {
       res.setHeader('Content-Type','text/javascript');res.end(await readFile(join(compiled,req.url.slice(1))));return;
     }
     res.statusCode=404;res.end();
@@ -428,7 +448,7 @@ if(suite==='mechanics'||suite==='all') tests.push(
       } finally {
         if(descriptor)Object.defineProperty(navigator,'storage',descriptor);else delete navigator.storage;
       }
-      await new Promise((resolve,reject)=>{const r=indexedDB.open('helios-managed-offline',2);r.onsuccess=()=>{r.result.close();resolve();};r.onerror=()=>reject(r.error);r.onblocked=()=>reject(new Error('versionchange did not release connection'));});
+      await new Promise((resolve,reject)=>{const r=indexedDB.open('helios-managed-offline',3);r.onsuccess=()=>{r.result.close();resolve();};r.onerror=()=>reject(r.error);r.onblocked=()=>reject(new Error('versionchange did not release connection'));});
       const closed=await queue.list().then(()=>null,e=>e.code);return {quota,absent,strict,info,explicit,failure,closed};
     },command);assert.equal(result.quota,'QuotaExceededError');assert.equal(result.absent,null);assert.equal(result.strict,1);assert.equal(result.info.indexedDB,true);assert.equal(result.info.webLocks,true);assert.deepEqual(result.explicit.estimate,{usage:123,quota:456});assert.equal(result.explicit.persisted,true);assert.equal(result.explicit.persistenceGranted,false);assert.equal(result.failure.error,'storage_info_failed');assert.equal(result.closed,'storage_closed');
   }],
@@ -451,6 +471,50 @@ if(suite==='mechanics'||suite==='all') tests.push(
       let code;try{code=await NativeStore.open().then(store=>{store.close();return null;},e=>e.code);}finally{IDBFactory.prototype.open=original;blocker.close();}
       await completed;return {code,info,managerPresent:!!manager};
     });assert.equal(result.code,'storage_upgrade_blocked');assert.equal(result.info.persistenceSupported,false);assert.equal(result.info.persisted,null);assert.equal(result.info.estimate,null);assert.equal(result.info.persistenceGranted,null);assert.equal(result.info.error,null);
+  }],
+  ['checklist answers, photo and command survive reload, another user, a lost reply and a version conflict', async (engine, profile, origin) => {
+    const draft = {projectId:'55555555-5555-4555-8555-555555555555', taskId:'77777777-7777-4777-8777-777777777777', title:'Шов', projectName:'Объект', day:'2026-11-16', templateId:'88888888-8888-4888-8888-888888888888', edition:1, templateVersion:3, expectedVersion:0, items:[{id:'shot', prompt:'Фото', kind:'photo'}], answers:[{itemId:'seam', value:'yes'}], files:[]};
+    const photo = Array.from({length: 70_000}, (_, index) => index < 3 ? [255, 216, 255][index] : 1);
+    let {page, context} = await openPage(engine, profile, origin);
+    const saved = await page.evaluate(async ({draft, photo}) => {const row = await queue.saveChecklist({...draft, files:[{itemId:'shot', filename:'шов.jpg', contentType:'image/jpeg', bytes:new Uint8Array(photo)}]}); return {phase:row.phase, bytes:[...row.files[0].bytes]};}, {draft, photo});
+    assert.equal(saved.phase, 'device');assert.deepEqual(saved.bytes, photo);
+    assert.equal(await page.evaluate(async draft => queue.saveChecklist({...draft, files:[{itemId:'shot', filename:'big.jpg', contentType:'image/jpeg', bytes:new Uint8Array(8*1024*1024+1)}]}).then(()=>null, error => error.code), draft), 'invalid_size');
+    await closeContext(context);
+    ({page, context} = await openPage(engine, profile, origin));
+    const reopened = await page.evaluate(async draft => {const row = await queue.readChecklist(draft.projectId, draft.taskId); return {phase:row.phase, answers:row.answers, bytes:[...row.files[0].bytes]};}, draft);
+    assert.equal(reopened.phase, 'device');assert.deepEqual(reopened.answers, draft.answers);assert.deepEqual(reopened.bytes, photo);
+    const hidden = await page.evaluate(async draft => {const {openOfflineQueue}=await import('/index.js'); const actor=crypto.randomUUID(); const scoped=await openOfflineQueue({audience:`${location.origin}/api/v1`, tenantId:session.tenantId, actorUserId:actor, getSession:()=>({...session, actorUserId:actor})}); try {return await scoped.readChecklist(draft.projectId, draft.taskId);} finally {scoped.close();}}, draft);
+    assert.equal(hidden, null);
+    const requestId = await page.evaluate(async draft => (await queue.queueChecklist(draft.projectId, draft.taskId)).requestId, draft);
+    const fileRequest = await page.evaluate(async draft => (await queue.readChecklist(draft.projectId, draft.taskId)).files[0].requestId, draft);
+    const start = journal.length;
+    actions.set(fileRequest, {drop:true});
+    await page.evaluate(() => queue.flush());
+    const waiting = await page.evaluate(async draft => queue.readChecklist(draft.projectId, draft.taskId), draft);
+    assert.equal(waiting.state, 'retry_wait');assert.equal(waiting.requestId, requestId);
+    actions.delete(fileRequest);
+    await page.evaluate(id => queue.retry(id), requestId);
+    await page.evaluate(() => queue.flush());
+    const synced = await page.evaluate(async draft => queue.readChecklist(draft.projectId, draft.taskId), draft);
+    assert.equal(synced.state, 'synced');assert.equal(synced.requestId, requestId);
+    const calls = journal.slice(start);
+    const files = calls.filter(row => row.path.includes('/checklist-files'));
+    const runs = calls.filter(row => row.path.includes('/checklist-runs'));
+    assert.equal(files.length, 2);assert.equal(runs.length, 1);
+    assert.equal(new URL(files[0].path, 'http://fixture').searchParams.get('requestId'), fileRequest);
+    assert.equal(new URL(files[1].path, 'http://fixture').searchParams.get('requestId'), fileRequest);
+    assert.equal(checklistFiles.get(fileRequest).bytes.length, 70_000);
+    assert.equal(JSON.parse(runs[0].raw).requestId, requestId);
+    assert.equal(checklistRuns.get(requestId).body.requestId, requestId);
+    actions.set((await page.evaluate(async ({draft, photo}) => {await queue.saveChecklist({...draft, expectedVersion:1, files:[{itemId:'shot', filename:'шов.jpg', contentType:'image/jpeg', bytes:new Uint8Array(photo)}]}); return (await queue.queueChecklist(draft.projectId, draft.taskId)).requestId;}, {draft, photo})), {status:409});
+    const conflictId = [...actions.keys()].at(-1);
+    await page.evaluate(() => queue.flush());
+    const conflict = await page.evaluate(async draft => queue.readChecklist(draft.projectId, draft.taskId), draft);
+    assert.equal(conflict.state, 'blocked');assert.equal(conflict.lastError, 'http_409');assert.notEqual(conflict.requestId, requestId);assert.equal(conflict.requestId, conflictId);
+    await page.evaluate(() => queue.closeSession());
+    ({page, context} = await openPage(engine, profile, origin));
+    assert.equal((await page.evaluate(async draft => queue.readChecklist(draft.projectId, draft.taskId), draft)).requestId, conflictId);
+    await closeContext(context);
   }],
 );
 async function savePhoto(page,command,options={}){

@@ -61,16 +61,19 @@ function retryAfter(value: string | null): number | null {
 }
 
 export type EvidenceRoute = {kind: 'reserve' | 'upload' | 'attach'; projectId: string; fileId: string};
+export type ChecklistRoute =
+  | {kind: 'checklist-file'; projectId: string; taskId: string; itemId: string; requestId: string; filename: string; contentType: string}
+  | {kind: 'checklist-run'; projectId: string; taskId: string};
 /** Fixed execution/evidence routes only. Credentials are captured in memory immediately before each send. */
 export function createTransport(base: string, tenantId: string, session: () => Session,
   beforeSend: (check: () => void) => Promise<unknown>, aborters: Set<AbortController>) {
-  return async function request(route: '/me' | '/execution/events' | EvidenceRoute, check: () => void, body?: string | Blob) {
+  return async function request(route: '/me' | '/execution/events' | EvidenceRoute | ChecklistRoute, check: () => void, body?: string | Blob) {
     check();
     // WebKit may stall fetch on an IDB-backed Blob after reopening its persistent context.
     // Read the bounded original bytes outside IDB, then give fetch a fresh native Blob.
     const requestBody = body instanceof Blob ? new Blob([await body.arrayBuffer()], {type: 'application/octet-stream'}) : body;
     check();await beforeSend(check);check();const current = session();
-    const path = typeof route === 'string' ? route : `/projects/${uuid(route.projectId)}/evidence${route.kind === 'reserve' ? '' : `/${uuid(route.fileId)}/${route.kind === 'upload' ? 'content' : 'attachment'}`}`;
+    const path = typeof route === 'string' ? route : route.kind === 'checklist-file' || route.kind === 'checklist-run' ? checklistPath(route) : `/projects/${uuid(route.projectId)}/evidence${route.kind === 'reserve' ? '' : `/${uuid(route.fileId)}/${route.kind === 'upload' ? 'content' : 'attachment'}`}`;
     const method = typeof route !== 'string' && route.kind === 'upload' ? 'PUT' : body === undefined ? 'GET' : 'POST';
     const controller = new AbortController();aborters.add(controller);
     const timeout = setTimeout(() => controller.abort(), 30_000);
@@ -88,4 +91,10 @@ export function createTransport(base: string, tenantId: string, session: () => S
       check();return {status: response.status, body: payload, retryAfterMs: retryAfter(response.headers.get('Retry-After'))};
     } finally {clearTimeout(timeout);aborters.delete(controller);}
   };
+}
+function checklistPath(route: ChecklistRoute): string {
+  const project = uuid(route.projectId), task = uuid(route.taskId);
+  if (route.kind === 'checklist-run') return `/projects/${project}/tasks/${task}/checklist-runs`;
+  const query = new URLSearchParams({requestId: uuid(route.requestId), itemId: route.itemId, filename: route.filename, contentType: route.contentType});
+  return `/projects/${project}/tasks/${task}/checklist-files?${query}`;
 }

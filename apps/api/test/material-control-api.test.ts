@@ -68,7 +68,7 @@ test.before(async () => {
 
 test.after(async () => {
   try { await app?.close(); } finally {
-    for (const table of ['material_control_steps', 'material_controls', 'daily_tasks', 'material_batch_revisions', 'material_batches', 'checklist_template_editions', 'checklist_templates', 'project_work_types', 'project_work_zones', 'people_command_receipts', 'employees', 'project_memberships', 'memberships', 'organizations', 'projects', 'audit_log']) {
+    for (const table of ['material_control_steps', 'material_controls', 'daily_tasks', 'material_batch_documents', 'material_batch_revisions', 'material_batches', 'checklist_template_editions', 'checklist_templates', 'project_work_types', 'project_work_zones', 'people_command_receipts', 'employees', 'project_memberships', 'memberships', 'organizations', 'projects', 'audit_log']) {
       await admin.query(`DELETE FROM ${table} WHERE tenant_id=$1`, [tenant]);
     }
     await admin.query(`DELETE FROM sessions WHERE user_id=ANY($1::uuid[])`, [users]);
@@ -151,4 +151,19 @@ test('повтор шага снабжения заново проверяет �
   await admin.query('UPDATE employees SET organization_id=$1 WHERE tenant_id=$2 AND user_id=$3',[foreignOrg,tenant,supply]);
   try {assert.equal((await call(supply,path,body)).status,403);}
   finally {await admin.query('UPDATE employees SET organization_id=$1 WHERE tenant_id=$2 AND user_id=$3',[org,tenant,supply]);}
+});
+
+test('PDF не подменяет фотографию, а необязательный пустой пункт разрешён',async()=>{
+  const key=id(),target=id(),document=id();
+  await admin.query(`INSERT INTO checklist_templates(tenant_id,project_id,id,created_by) VALUES($1,$2,$3,$4)`,[tenant,project,key,master]);
+  const photo={id:'photo',prompt:'Фотография',kind:'photo',required:true,critical:true};
+  await admin.query(`INSERT INTO checklist_template_editions(tenant_id,project_id,template_id,edition,title,items,status,version,created_by) VALUES($1,$2,$3,1,'Фото',$4,'approved',1,$5)`,[tenant,project,key,JSON.stringify([photo]),master]);
+  await admin.query(`INSERT INTO material_batches(tenant_id,project_id,id,organization_id) VALUES($1,$2,$3,$4)`,[tenant,project,target,org]);
+  await admin.query(`INSERT INTO material_batch_revisions(tenant_id,project_id,batch_id,version,material_name,unit,batch_code,supplier_name,delivery_document,delivered_on,delivered_quantity,created_by) VALUES($1,$2,$3,1,'Фото','шт',$4,'QA','QA','2026-11-16','1.000',$5)`,[tenant,project,target,target.slice(0,8),master]);
+  await admin.query(`INSERT INTO material_batch_documents(tenant_id,project_id,batch_id,id,filename,content_type,size_bytes,sha256,state,created_by) VALUES($1,$2,$3,$4,'quality.pdf','application/pdf',16,$5,'ready',$6)`,[tenant,project,target,document,'a'.repeat(64),master]);
+  const body={expectedVersion:0,action:'prepare',zoneId:zone,workTypeId:work,templateId:key,answers:[{itemId:'photo',value:document}]};
+  const denied=await step(master,target,body);assert.equal(denied.status,422);assert.equal(denied.body.error,'document_not_ready');
+  assert.equal((await admin.query('SELECT count(*)::int n FROM material_controls WHERE tenant_id=$1 AND batch_id=$2',[tenant,target])).rows[0].n,0);
+  await admin.query(`INSERT INTO checklist_template_editions(tenant_id,project_id,template_id,edition,title,items,status,version,created_by) VALUES($1,$2,$3,2,'Фото необязательно',$4,'approved',1,$5)`,[tenant,project,key,JSON.stringify([{...photo,required:false,critical:false}]),master]);
+  const optional=await step(master,target,{...body,answers:[]});assert.equal(optional.status,201,JSON.stringify(optional.body));assert.equal(optional.body.control.edition,2);assert.equal(optional.body.control.verdict,'awaiting');
 });

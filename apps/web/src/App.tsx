@@ -1,7 +1,7 @@
 import {JoinPage} from "./invitations";
 import { useEffect, useRef, useState } from "react";
 import { acceptReport, createTask, desk, loadSession, login, loginByPhone, phoneLoginEnabled, requestPhoneCode, savePlace, saveSession, syncEvents, type Desk, type NewTask, type Session } from "./api";
-import { bindRemoteClose, closeDelivery, openDelivery } from "./delivery";
+import { bindRemoteClose, closeDelivery, listChecklistCards, openDelivery, type ChecklistCard } from "./delivery";
 import { clearShiftSnapshot, readShiftSnapshot, type ShiftSnapshot } from "./shift-snapshot";
 import { DirectorDesk, type Section } from "./director";
 import { BookProvider } from "./book";
@@ -29,6 +29,22 @@ function explain(code: string) {
     not_found: "Объект не найден.",
   };
   return text[code] ?? code;
+}
+
+function checklistDesk(session: Session, card: ChecklistCard): Desk {
+  return {
+    actor: { role: session.role, name: session.name || session.email },
+    projectId: card.projectId,
+    cabinet: { name: card.projectName },
+    organizations: [],
+    projects: [{ id: card.projectId, name: card.projectName, address: "", latitude: null, longitude: null }],
+    files: [],
+    employees: [],
+    tasks: [],
+    shifts: [],
+    reports: [],
+    summary: { sample: false, label: "", rings: [], live: { tasksToday: 0, openShifts: 0 } },
+  };
 }
 
 function offlineDesk(session: Session, saved: ShiftSnapshot): Desk {
@@ -105,14 +121,17 @@ export function App() {
     if (!session || joinCode || session.role === "cost") return;
     let live = true;
     setDeskFailed(false);
-    void refresh(session).then(() => { if (live) setDeskFailed(false); }).catch((reason: Error) => {
+    void refresh(session).then(() => { if (live) setDeskFailed(false); }).catch(async (reason: Error) => {
       if (!live) return;
       if (reason.message === "unauthorized" || reason.message === "tenant_denied") {
         expire();
         return;
       }
+      const cards = await openDelivery(session).then(() => listChecklistCards()).catch(() => []);
+      if (!live) return;
+      if (cards[0]) setData(checklistDesk(session, cards[0]));
       setDeskFailed(true);
-      if (session.role === "worker" && readShiftSnapshot(session.tenantId, session.userId)) return;
+      if (cards[0] || (session.role === "worker" && readShiftSnapshot(session.tenantId, session.userId))) return;
       setError(explain(reason.message));
     });
     return () => { live = false; };
