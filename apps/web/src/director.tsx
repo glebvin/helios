@@ -225,6 +225,8 @@ export function DirectorDesk({
           {page === "objects" ? <Objects lead={hasV1ProjectScope(session.role) ? <ProjectCatalogs session={session} projectId={templateProjectId} writable={!preview && session.role === "director"} /> : null} data={data} canEdit={canPlace} normsNote={access.normsNote} onSavePlace={onSavePlace} onTasks={() => onSection("tasks")} /> : null}
           {page === "people" ? (
             <People
+              primaryDay={taskDay}
+              primaryWritable={!preview}
               projectId={templateProjectId}
               key={view}
               session={session}

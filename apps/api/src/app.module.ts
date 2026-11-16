@@ -52,6 +52,9 @@ import {ResponsibilityOrdersService} from "./responsibility-orders.service.js";
 import {ResponsibilityOrdersController} from "./responsibility-orders.controller.js";
 
 
+import { PrimaryDayController } from "./primary-day.controller.js";
+import { PrimaryDayService } from "./primary-day.service.js";
+
 export const APP_POOL = "APP_POOL";
 export const BOSS = "BOSS";
 
@@ -161,7 +164,7 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
 
 
   providers: [
@@ -189,6 +192,7 @@ class WorkforceController {
 
     {provide:ResponsibilityOrdersService,useFactory:(pool:Pool)=>new ResponsibilityOrdersService(pool),inject:[APP_POOL]},
 
+    { provide: PrimaryDayService, useFactory: (pool: Pool) => new PrimaryDayService(pool), inject: [APP_POOL] },
     TenantGuard,
   ],
 })
