@@ -1,3 +1,4 @@
+import { VolumeReviews } from "./volume-reviews";
 import { useEffect, useRef, useState } from "react";
 import type { Desk, NewTask, Session } from "./api";
 import { WorkBoard } from "./board";
@@ -114,6 +115,8 @@ export function DirectorDesk({
   const [openTask, setOpenTask] = useState<{ id: string; token: number } | null>(null);
   const [sheetTick, setSheetTick] = useState(0);
   const liveHome = !preview && (session.role === "director" || session.role === "master");
+  const [qualityReview, setQualityReview] = useState(false);
+  const liveVolumeReview = !preview && ["master", "director", "pto"].includes(session.role);
   const livePto = !preview && session.role === "pto";
   const openSheet = () => { setSheetTick((value) => value + 1); onSection("people"); };
   const access = accessOf(view);
@@ -263,7 +266,8 @@ export function DirectorDesk({
               onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
             />) : null}
           {page === "materials" ? <Materials key={`${session.tenantId}:${session.userId}:${session.token}:${templateProjectId}`} session={session} projectId={templateProjectId} canEdit={canRecordSupply} /> : null}
-          {page === "quality" ? (livePto ? (
+          {page === "quality" && liveVolumeReview && !qualityReview ? <div className="documents-heading"><button className="ghost desk-action" type="button" onClick={() => setQualityReview(true)}>Самоконтроль мастера</button></div> : null}
+          {page === "quality" ? (liveVolumeReview && qualityReview ? <VolumeReviews key={`${session.tenantId}:${session.userId}:${session.token}:${templateProjectId}:${taskDay}`} session={session} projectId={templateProjectId} projectName={project} day={taskDay} notice={scope.notice} onBack={() => setQualityReview(false)} /> : livePto ? (
             <PtoFacts session={session} projectId={templateProjectId} projectName={project} day={taskDay} notice={scope.notice} onOpenSheet={openSheet} />
           ) : (
             <Quality

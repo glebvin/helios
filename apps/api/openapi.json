@@ -10448,6 +10448,301 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{project}/volume-reviews": {
+      "get": {
+        "operationId": "listMasterVolumeReviews",
+        "summary": "listMasterVolumeReviews",
+        "description": "Initial immutable master decision for one managed report. Passed latest self-control is pinned.18 submitted,17 accepted leaves1 with a reason. A closed decision cannot be overwritten; correction, PTO and external acceptance remain separate. Execution report projections retain their previous provisional contract.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "day",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumeReviewPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{project}/volume-reviews/{report}": {
+      "get": {
+        "operationId": "readMasterVolumeReview",
+        "summary": "readMasterVolumeReview",
+        "description": "Initial immutable master decision for one managed report. Passed latest self-control is pinned.18 submitted,17 accepted leaves1 with a reason. A closed decision cannot be overwritten; correction, PTO and external acceptance remain separate. Execution report projections retain their previous provisional contract.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "report",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumeReviewCard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "recordMasterVolumeReview",
+        "summary": "recordMasterVolumeReview",
+        "description": "Initial immutable master decision for one managed report. Passed latest self-control is pinned.18 submitted,17 accepted leaves1 with a reason. A closed decision cannot be overwritten; correction, PTO and external acceptance remain separate. Execution report projections retain their previous provisional contract.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "report",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumeReviewCard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MasterVolumeReviewInput"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -19411,6 +19706,437 @@
           },
           "reason": {
             "type": "string"
+          }
+        }
+      },
+      "MasterVolumeReview": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "acceptedPartId",
+          "acceptedQuantity",
+          "differenceQuantity",
+          "reason",
+          "checklistRunId",
+          "actorName",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "acceptedPartId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "acceptedQuantity": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d{1,3})?$"
+          },
+          "differenceQuantity": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d{1,3})?$"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "checklistRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actorName": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "VolumeReviewReport": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "submittedQuantity": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d{1,3})?$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "review": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "acceptedPartId",
+              "acceptedQuantity",
+              "differenceQuantity",
+              "reason",
+              "checklistRunId",
+              "actorName",
+              "createdAt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "acceptedPartId": {
+                "type": "string",
+                "format": "uuid",
+                "nullable": true
+              },
+              "acceptedQuantity": {
+                "type": "string",
+                "pattern": "^\\d+(\\.\\d{1,3})?$"
+              },
+              "differenceQuantity": {
+                "type": "string",
+                "pattern": "^\\d+(\\.\\d{1,3})?$"
+              },
+              "reason": {
+                "type": "string",
+                "nullable": true
+              },
+              "checklistRunId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "actorName": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "nullable": true
+          },
+          "checklist": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "version",
+              "passed",
+              "blocksNext",
+              "templateVersion",
+              "edition"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "passed": {
+                "type": "boolean"
+              },
+              "blocksNext": {
+                "type": "boolean"
+              },
+              "templateVersion": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "edition": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "nullable": true
+          }
+        },
+        "required": [
+          "reportId",
+          "projectId",
+          "taskId",
+          "submittedQuantity",
+          "title",
+          "unit",
+          "occurredAt",
+          "version",
+          "review",
+          "checklist"
+        ]
+      },
+      "VolumeReviewCard": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "submittedQuantity": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d{1,3})?$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "review": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "acceptedPartId",
+              "acceptedQuantity",
+              "differenceQuantity",
+              "reason",
+              "checklistRunId",
+              "actorName",
+              "createdAt"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "acceptedPartId": {
+                "type": "string",
+                "format": "uuid",
+                "nullable": true
+              },
+              "acceptedQuantity": {
+                "type": "string",
+                "pattern": "^\\d+(\\.\\d{1,3})?$"
+              },
+              "differenceQuantity": {
+                "type": "string",
+                "pattern": "^\\d+(\\.\\d{1,3})?$"
+              },
+              "reason": {
+                "type": "string",
+                "nullable": true
+              },
+              "checklistRunId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "actorName": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "nullable": true
+          },
+          "checklist": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "version",
+              "passed",
+              "blocksNext",
+              "templateVersion",
+              "edition"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "passed": {
+                "type": "boolean"
+              },
+              "blocksNext": {
+                "type": "boolean"
+              },
+              "templateVersion": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "edition": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "nullable": true
+          },
+          "history": {
+            "type": "array",
+            "maxItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/MasterVolumeReview"
+            }
+          }
+        },
+        "required": [
+          "reportId",
+          "projectId",
+          "taskId",
+          "submittedQuantity",
+          "title",
+          "unit",
+          "occurredAt",
+          "version",
+          "review",
+          "checklist",
+          "history"
+        ]
+      },
+      "VolumeReviewPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VolumeReviewReport"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totals": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "unit": {
+                  "type": "string"
+                },
+                "submittedQuantity": {
+                  "type": "string",
+                  "pattern": "^\\d+(\\.\\d{1,3})?$"
+                },
+                "acceptedQuantity": {
+                  "type": "string",
+                  "pattern": "^\\d+(\\.\\d{1,3})?$",
+                  "nullable": true
+                },
+                "reviewedReports": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "unreviewedReports": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "unit",
+                "submittedQuantity",
+                "acceptedQuantity",
+                "reviewedReports",
+                "unreviewedReports"
+              ]
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "totals",
+          "limit",
+          "offset"
+        ]
+      },
+      "MasterVolumeReviewInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "expectedVersion",
+          "checklistRunId",
+          "acceptedQuantity"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "checklistRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "acceptedQuantity": {
+            "type": "string",
+            "pattern": "^(?:0|[1-9]\\d{0,10})(?:\\.\\d{1,3})?$"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "nullable": true
           }
         }
       }

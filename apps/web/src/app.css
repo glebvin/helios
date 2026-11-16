@@ -1368,3 +1368,16 @@ h1, h2, h3, p { margin: 0; }
 .price-history { list-style: none; margin: 20px 0 0; padding: 0 0 0 14px; border-left: 2px solid var(--history); display: grid; gap: 12px; }
 .price-history li { display: grid; gap: 2px; }
 @media (max-width: 600px) { .prices { padding: 12px; } .prices header { flex-wrap: wrap; } }
+
+.volume-review-mobile { display: none; }
+@media (max-width: 640px) {
+  .volume-review-desktop { display: none; }
+  .volume-review-mobile { display: grid; gap: 16px; }
+  .volume-review-mobile .panel-head { flex-wrap: wrap; gap: 8px; }
+}
+@media (max-width: 640px) {
+  .volume-review-mobile .panel { padding: 20px; }
+  .volume-review-mobile h3 { min-width: 0; overflow-wrap: anywhere; }
+  .volume-review-mobile p { margin-top: 8px; }
+  .volume-review-mobile .desk-action { width: 100%; min-height: 44px; margin-top: 12px; }
+}
