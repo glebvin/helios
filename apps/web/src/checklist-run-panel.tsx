@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import { checklistPage, checklistPageCount, type ChecklistAnswer, type ChecklistItem, type ChecklistRefusal } from "@helios/domain";
 import type { Session } from "./api";
 import { Flash } from "./flash";
 import { NoteMark } from "./note-mark";
 import { ApiError, v1 } from "./v1";
-import { canFillChecklist, canReadChecklist, checklistPendingKey, fileKind, samePending, type ChecklistPending } from "./checklist-run";
+import { openDelivery, readChecklist, saveChecklist, sendChecklist, watchDelivery, type ChecklistDetail } from "./delivery";
+import { canFillChecklist, canReadChecklist, checklistStatus, fileKind } from "./checklist-run";
 
 type Edition = { templateId: string; edition: number; title: string; version: number; items: ChecklistItem[] };
 type FileRow = { fileId: string; itemId: string; filename: string; contentType: string; sizeBytes: number; sha256: string };
@@ -15,7 +16,9 @@ type Run = {
   actorName: string; version: number; createdAt: string; files: FileRow[];
 };
 type Listed = { latest: Run | null; history: Run[]; approved: Edition[] };
+type LocalFile = { itemId: string; filename: string; contentType: string; bytes: Uint8Array };
 
+const fileLimit = 8 * 1024 * 1024;
 const reasonText: Record<string, string> = {
   critical_empty: "Критичный пункт не заполнен.",
   critical_invalid: "Критичный пункт не проходит проверку.",
@@ -28,45 +31,86 @@ const reasonText: Record<string, string> = {
   batch_unavailable: "Проверка партии ещё не подключена. Идентификатор не считается успехом.",
 };
 
-function encode(bytes: ArrayBuffer) {
-  let text = "";
-  for (const byte of new Uint8Array(bytes)) text += String.fromCharCode(byte);
-  return btoa(text);
+function mediaType(file: File) {
+  if (file.type === "image/jpg") return "image/jpeg";
+  return file.type;
 }
 
-export function ChecklistRunPanel({ session, projectId, taskId }: { session: Session; projectId: string; taskId: string }) {
+export function ChecklistRunPanel({ session, projectId, taskId, title, day }: { session: Session; projectId: string; taskId: string; title: string; day: string }) {
   const reduce = useReducedMotion();
   const [approved, setApproved] = useState<Edition[]>([]);
   const [chosen, setChosen] = useState("");
   const [runs, setRuns] = useState<Listed | null>(null);
   const [answers, setAnswers] = useState<ChecklistAnswer[]>([]);
+  const [files, setFiles] = useState<LocalFile[]>([]);
+  const [local, setLocal] = useState<ChecklistDetail | null>(null);
   const [page, setPage] = useState(0);
   const [error, setError] = useState("");
-  const [waiting, setWaiting] = useState(false);
   const [saved, setSaved] = useState("");
   const [pulse, setPulse] = useState(0);
   const [busy, setBusy] = useState(false);
   const [pass, setPass] = useState(0);
+  const chain = useRef<Promise<unknown>>(Promise.resolve());
+  const confirmed = useRef("");
   const readable = canReadChecklist(session.role);
   const writable = canFillChecklist(session.role);
+  const status = checklistStatus(local);
+  const frozen = local?.phase === "queued" && (local.state === "pending" || local.state === "sending" || local.state === "retry_wait");
+
+  function remember(next: { templateId: string; edition: number; version: number; items: ChecklistItem[]; answers: ChecklistAnswer[]; files: LocalFile[] }, heading = title, workDay = day) {
+    if (!heading || !workDay) return;
+    const draft = { projectId, taskId, title: heading, projectName: "Объект", day: workDay, templateId: next.templateId, edition: next.edition, templateVersion: next.version, expectedVersion: runs?.latest?.version ?? local?.expectedVersion ?? 0, items: next.items, answers: next.answers, files: next.files };
+    chain.current = chain.current.then(() => openDelivery(session).then(() => saveChecklist(draft))).then((row) => setLocal(row)).catch((reason: unknown) => {
+      setError(reason instanceof Error && reason.message === "local_identity_conflict" ? "Команда уже ждёт отправки." : "Черновик не записан на устройстве.");
+    });
+  }
+
+  useEffect(() => {
+    if (!readable) return;
+    const stop = watchDelivery(() => { void readChecklist(projectId, taskId).then((row) => { if (row) setLocal(row); }); });
+    return () => { stop(); };
+  }, [readable, projectId, taskId]);
+
+  useEffect(() => {
+    if (local?.state === "synced" && local.requestId && confirmed.current !== local.requestId) {
+      confirmed.current = local.requestId;
+      setSaved("Подтверждено сервером.");
+      setPulse((value) => value + 1);
+      setPass((value) => value + 1);
+    }
+  }, [local]);
 
   useEffect(() => {
     if (!readable) return;
     let live = true;
     void (async () => {
+      await openDelivery(session).catch(() => {});
+      const stored = await readChecklist(projectId, taskId).catch(() => null);
+      if (!live) return;
+      if (stored) {
+        setLocal(stored);
+        setAnswers(stored.answers);
+        setFiles(stored.files);
+        setChosen(stored.templateId);
+        if (stored.items.length) setApproved([{ templateId: stored.templateId, edition: stored.edition, title: stored.title, version: stored.templateVersion, items: stored.items as ChecklistItem[] }]);
+      }
       try {
         const listed = await v1<Listed>(session, `/projects/${projectId}/tasks/${taskId}/checklist-runs`);
         if (!live) return;
         setRuns(listed);
         setApproved(listed.approved);
-        setChosen((current) => listed.approved.some((item) => item.templateId === current) ? current : listed.approved[0]?.templateId ?? "");
+        const current = stored?.templateId && listed.approved.some((item) => item.templateId === stored.templateId) ? stored.templateId : listed.approved[0]?.templateId ?? "";
+        setChosen(current);
         setError("");
+        const edition = listed.approved.find((item) => item.templateId === current);
+        const held = stored?.phase === "queued" && stored.state !== "synced" && stored.state !== "blocked";
+        if (edition && title && day && !held) remember({ templateId: edition.templateId, edition: edition.edition, version: edition.version, items: edition.items, answers: stored?.answers ?? [], files: stored?.files ?? [] });
       } catch (reason) {
-        if (live) setError(reason instanceof ApiError ? "Прохождение прочитать не удалось." : "Нет ответа сервера.");
+        if (live && !stored?.items.length) setError(reason instanceof ApiError ? "Прохождение прочитать не удалось." : "Нет ответа сервера.");
       }
     })();
     return () => { live = false; };
-  }, [session, projectId, taskId, pass, readable]);
+  }, [session, projectId, taskId, pass, readable, title, day]);
 
   if (!readable) return null;
   const detail = approved.find((item) => item.templateId === chosen) ?? null;
@@ -76,69 +120,50 @@ export function ChecklistRunPanel({ session, projectId, taskId }: { session: Ses
   const latest = runs?.latest;
 
   function change(itemId: string, value: string) {
-    setAnswers((current) => {
-      const next = current.filter((answer) => answer.itemId !== itemId);
-      if (value) next.push({ itemId, value });
-      return next;
-    });
-    setWaiting(false);
+    if (frozen || !detail) return;
+    const next = answers.filter((answer) => answer.itemId !== itemId);
+    if (value) next.push({ itemId, value });
+    setAnswers(next);
+    remember({ templateId: detail.templateId, edition: detail.edition, version: detail.version, items, answers: next, files });
   }
 
   async function chooseFile(item: ChecklistItem, file: File | null) {
     const kind = fileKind(item);
-    if (!file || !kind || !kind.types.includes(file.type) || file.size < 1 || file.size > 65536) {
-      setError("Нужен файл JPEG, PNG или PDF не больше 64 КБ.");
+    const type = file ? mediaType(file) : "";
+    if (!file || !kind || !kind.types.includes(type) || file.size < 1 || file.size > fileLimit || !detail) {
+      setError("Нужен файл JPEG, PNG или PDF не больше 8 МБ.");
       return;
     }
-    setBusy(true);
-    try {
-      const stored = await v1<FileRow>(session, `/projects/${projectId}/tasks/${taskId}/checklist-files`, {
-        requestId: crypto.randomUUID(), itemId: item.id, filename: file.name, contentType: file.type, fileBase64: encode(await file.arrayBuffer()),
-      });
-      change(item.id, stored.fileId);
-      setError("");
-    } catch (reason) {
-      setError(reason instanceof ApiError ? "Сервер не принял файл." : "Файл не отправлен. Это не сохранение.");
-    } finally { setBusy(false); }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const next = [...files.filter((row) => row.itemId !== item.id), { itemId: item.id, filename: file.name, contentType: type, bytes }];
+    setFiles(next);
+    setError("");
+    remember({ templateId: detail.templateId, edition: detail.edition, version: detail.version, items, answers, files: next });
   }
 
   async function submit() {
-    if (!detail) return;
+    if (!detail || frozen) return;
     setBusy(true);
-    const key = checklistPendingKey(session.tenantId, session.userId, taskId);
-    const next = { templateId: detail.templateId, edition: detail.edition, expectedVersion: latest?.version ?? 0, answers };
-    let pending: ChecklistPending | null = null;
-    try { pending = JSON.parse(sessionStorage.getItem(key) ?? "null"); } catch { pending = null; }
-    const requestId = samePending(pending, next) ? pending!.requestId : crypto.randomUUID();
-    const body = { requestId, ...next };
-    try { sessionStorage.setItem(key, JSON.stringify(body)); } catch { /* Повтор остаётся в этой форме. */ }
+    setError("");
     try {
-      await v1(session, `/projects/${projectId}/tasks/${taskId}/checklist-runs`, body);
-      try { sessionStorage.removeItem(key); } catch { /* Ответ сервера уже есть. */ }
-      setWaiting(false);
-      setSaved("Сервер сохранил прохождение.");
-      setPulse((value) => value + 1);
-      setPass((value) => value + 1);
+      await openDelivery(session);
+      const stored = await saveChecklist({ projectId, taskId, title: title || local?.title || "Задание", projectName: "Объект", day: day || local?.day || "", templateId: detail.templateId, edition: detail.edition, templateVersion: detail.version, expectedVersion: runs?.latest?.version ?? local?.expectedVersion ?? 0, items, answers, files });
+      setLocal(stored);
+      const sent = await sendChecklist(projectId, taskId);
+      setLocal(sent);
     } catch (reason) {
-      if (reason instanceof ApiError) {
-        try { sessionStorage.removeItem(key); } catch { /* Команда сервером отклонена. */ }
-        setWaiting(false);
-        setError(reason.message === "stale_version" ? "Прохождение уже изменилось. Прочитайте его снова." : reason.message === "checklist_blocked" ? "Критичный пункт останавливает следующее действие." : reason.message === "file_denied" ? "Файл не относится к этому пункту." : reason.message === "template_not_approved" ? "Нужна утверждённая редакция." : "Сервер не сохранил прохождение.");
-      } else {
-        setWaiting(true);
-        setError("Ожидает отправки. Сервер ещё не подтвердил.");
-      }
+      setError(reason instanceof Error && reason.message === "local_identity_conflict" ? "Команда уже ждёт отправки." : "Отправка не началась.");
     } finally { setBusy(false); }
   }
 
   return <section className="panel checklist-run" aria-label="Чек-лист задания">
     <div className="panel-head">
       <h2>Чек-лист</h2>
-      <NoteMark label="Что сохраняется"><p>Записывается закреплённая редакция. Партия без реестра не считается пройденной. Сохранение не принимает объём.</p></NoteMark>
+      <NoteMark label="Что сохраняется"><p>Ответы и фотография остаются на устройстве, пока сервер не подтвердит ту же команду. Партия без реестра не считается пройденной. Сохранение не принимает объём.</p></NoteMark>
     </div>
     {saved ? <Flash message={saved} pulse={pulse} /> : null}
     {error ? <p role="alert">{error}</p> : null}
-    {waiting ? <p role="status">Ожидает отправки. Это ещё не запись на сервере.</p> : null}
+    {status ? <p role={status === "Ошибка" || status === "Конфликт" ? "alert" : "status"}>{status}{status === "Ожидает отправки" ? ". Это ещё не запись на сервере." : ""}</p> : null}
     {approved.length === 0 ? <p className="quiet">Утверждённой редакции для этого объекта нет.</p> : null}
     {approved.length > 1 ? <label className="field">Шаблон
       <select value={chosen} onChange={(event) => { setChosen(event.target.value); setPage(0); setAnswers([]); }}>
@@ -148,6 +173,7 @@ export function ChecklistRunPanel({ session, projectId, taskId }: { session: Ses
     {detail ? <p className="quiet">{detail.title}. Редакция {detail.edition}, версия {detail.version}.</p> : null}
     {latest ? <motion.div key={latest.id} initial={reduce ? false : { opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", duration: 0.26, bounce: 0 }}>
       <p role="status">{latest.passed ? "Сервер принял ответы." : "Сервер сохранил отказ."} {latest.actorName}, {new Date(latest.createdAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}. Версия прохождения {latest.version}.</p>
+      {latest.files.map((file) => <p key={file.fileId}>{file.filename}</p>)}
       {latest.blocksNext ? <p className="checklist-warn" role="alert">Критичный пункт не пройден. Следующее действие по заданию остановлено. Объём этим чек-листом не принимается.</p> : null}
       {latest.verdict.refusals.map((refusal) => <p className="checklist-warn" key={`${refusal.itemId}-${refusal.reason}`}>{reasonText[refusal.reason] ?? refusal.reason}</p>)}
       {runs && runs.history.length > 1 ? <p className="quiet">В истории {runs.history.length} прохождения. Первая редакция остаётся в записи {runs.history[0].templateVersion}.</p> : null}
@@ -156,14 +182,15 @@ export function ChecklistRunPanel({ session, projectId, taskId }: { session: Ses
       {visible.map((item, index) => {
         const value = answers.find((answer) => answer.itemId === item.id)?.value ?? "";
         const kind = fileKind(item);
-        return <fieldset className="checklist-item" key={item.id}>
+        const file = files.find((row) => row.itemId === item.id);
+        return <fieldset className="checklist-item" key={item.id} disabled={frozen}>
           <legend>{page * 10 + index + 1}. {item.prompt}{item.critical ? " · критичный" : ""}</legend>
           {item.kind === "yes_no" ? <div className="checklist-choice" role="group" aria-label={item.prompt}>
             <button className={value === "yes" ? "is-on" : ""} type="button" onClick={() => change(item.id, "yes")}>Да</button>
             <button className={value === "no" ? "is-on" : ""} type="button" onClick={() => change(item.id, "no")}>Нет</button>
           </div> : null}
           {item.kind === "number" ? <label><span className="quiet">Число, {item.unit}</span><input inputMode="decimal" value={value} onChange={(event) => change(item.id, event.target.value.trim())} /></label> : null}
-          {kind ? <label><span className="quiet">{value ? "Файл принят сервером" : "Файл ещё не отправлен"}</span><input type="file" accept={kind.accept} onChange={(event) => void chooseFile(item, event.target.files?.[0] ?? null)} /></label> : null}
+          {kind ? <label><span className="quiet">{file ? file.filename : "Файл ещё не выбран"}</span><input type="file" accept={kind.accept} onChange={(event) => void chooseFile(item, event.target.files?.[0] ?? null)} /></label> : null}
           {item.kind === "batch" ? <p className="quiet">Проверка партии ещё не подключена. Произвольный номер здесь не станет успешным результатом.</p> : null}
         </fieldset>;
       })}
@@ -171,7 +198,7 @@ export function ChecklistRunPanel({ session, projectId, taskId }: { session: Ses
         <button className="ghost desk-action" type="button" disabled={page === 0} onClick={() => setPage(page - 1)}>Назад</button>
         <button className="ghost desk-action" type="button" disabled={page === pages - 1} onClick={() => setPage(page + 1)}>Далее</button>
       </div> : null}
-      <button className="fill desk-action" type="submit" disabled={busy}>{busy ? "Записываем…" : "Сохранить на сервере"}</button>
+      <button className="fill desk-action" type="submit" disabled={busy || frozen}>{busy ? "Записываем…" : "Сохранить на сервере"}</button>
     </form> : null}
   </section>;
 }

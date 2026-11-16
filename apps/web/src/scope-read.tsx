@@ -3,6 +3,7 @@ import type { Session } from "./api";
 import { DeskSelect } from "./kit";
 import { chosenProject, civilLabel, hasV1ProjectScope, projectLabel, sameActor, scopeNotice, type ServerActor, type ServerProject } from "./scope";
 import { ApiError, v1 } from "./v1";
+import { listChecklistCards, openDelivery } from "./delivery";
 import { readShiftSnapshot } from "./shift-snapshot";
 
 type ProjectPage = { items: ServerProject[]; total: number };
@@ -90,7 +91,14 @@ export function useCabinetScope(session: Session, onUnauthorized: () => void, ca
           return;
         }
         const saved = !(reason instanceof ApiError) ? readShiftSnapshot(session.tenantId, session.userId) : null;
-        if (saved) {
+        const draft = !saved && !(reason instanceof ApiError) ? (await openDelivery(session).then(() => listChecklistCards()).catch(() => []))[0] : null;
+        if (draft?.day) {
+          setActor(null);
+          setProjects([{ id: draft.projectId, name: draft.projectName }]);
+          setTotal(1);
+          setDay(draft.day);
+          setError("");
+        } else if (saved) {
           setActor(null);
           setProjects([{ id: saved.projectId, name: saved.projectName }]);
           setTotal(1);

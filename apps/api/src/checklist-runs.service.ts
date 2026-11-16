@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { IncomingMessage } from "node:http";
 import type { Pool, PoolClient } from "pg";
 import { pinChecklist, validateChecklist, type ChecklistAnswer, type ChecklistItem, type ChecklistRefusal, type ChecklistSnapshot } from "@helios/domain";
 import { uuid } from "./api-input.js";
@@ -12,6 +13,7 @@ import type { Actor } from "./workforce.service.js";
 const writers = new Set(["master", "worker"]);
 const readers = new Set(["director", "master", "worker", "pto"]);
 const fileTypes = ["image/jpeg", "image/png", "application/pdf"] as const;
+const fileLimit = 8 * 1024 * 1024;
 
 type RunRow = {
   id: string; projectId: string; taskId: string; templateId: string; edition: number; templateVersion: number;
@@ -71,15 +73,15 @@ export class ChecklistRunsService {
     });
   }
 
-  upload(a: Actor, projectId: string, taskId: string, input: unknown) {
+  upload(a: Actor, projectId: string, taskId: string, input: { requestId: unknown; itemId: unknown; filename: unknown; contentType: unknown; bytes: Buffer }) {
     const body = fileInput(input);
     const operation = `POST /projects/${projectId}/tasks/${taskId}/checklist-files`;
     return withTenant(this.pool, a.tenantId, a.userId, async (c) => {
-      const receipt = await reserveCommand(c, a, operation, { ...body, fileBase64: createHash("sha256").update(body.bytes).digest("hex") });
+      const sha = createHash("sha256").update(body.bytes).digest("hex");
+      const receipt = await reserveCommand(c, a, operation, { requestId: body.requestId, itemId: body.itemId, filename: body.filename, contentType: body.contentType, sha256: sha });
       await this.access(c, a, projectId, taskId, true);
       if (!receipt.inserted) return replayCommand(c, a, body.requestId, receipt.hash);
       if (!matches(body.contentType, body.bytes)) throw httpError(422, "file_denied");
-      const sha = createHash("sha256").update(body.bytes).digest("hex");
       const existing = (await c.query(
         `SELECT id FROM checklist_run_files WHERE project_id=$1 AND task_id=$2 AND item_id=$3 AND sha256=$4 AND uploaded_by=$5`,
         [projectId, taskId, body.itemId, sha, a.userId],
@@ -191,13 +193,35 @@ function runInput(input: unknown) {
   };
 }
 
-function fileInput(input: unknown) {
-  const body = object(input, ["requestId", "itemId", "filename", "contentType", "fileBase64"]);
-  if (typeof body.contentType !== "string" || !fileTypes.includes(body.contentType as typeof fileTypes[number])) throw httpError(400, "invalid_file");
-  if (typeof body.fileBase64 !== "string" || body.fileBase64.length > 90000 || body.fileBase64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(body.fileBase64)) throw httpError(400, "invalid_file");
-  const bytes = Buffer.from(body.fileBase64, "base64");
-  if (bytes.length < 1 || bytes.length > 65536) throw httpError(422, "file_denied");
-  return { requestId: uuid(body.requestId).toLowerCase(), itemId: text(body.itemId, 64), filename: text(body.filename, 120), contentType: body.contentType, bytes };
+export async function readChecklistUpload(req: IncomingMessage): Promise<Buffer> {
+  const type = req.headers["content-type"]?.split(";")[0]?.trim().toLowerCase();
+  if (type !== "application/octet-stream") throw httpError(415, "octet_stream_required");
+  const length = req.headers["content-length"];
+  if (length !== undefined && (!/^(0|[1-9]\d*)$/.test(length) || Number(length) > fileLimit)) throw httpError(413, "file_too_large");
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    let settled = false;
+    const fail = (error: unknown) => { if (settled) return; settled = true; req.resume(); reject(error); };
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > fileLimit) { fail(httpError(413, "file_too_large")); return; }
+      chunks.push(chunk);
+    });
+    req.once("end", () => { if (!settled) { settled = true; resolve(Buffer.concat(chunks, size)); } });
+    req.once("aborted", () => fail(httpError(400, "upload_aborted")));
+    req.once("error", () => fail(httpError(400, "upload_interrupted")));
+    if (req.aborted) fail(httpError(400, "upload_aborted"));
+    else if (req.readableEnded) { settled = true; resolve(Buffer.alloc(0)); }
+  });
+}
+
+function fileInput(input: { requestId: unknown; itemId: unknown; filename: unknown; contentType: unknown; bytes: Buffer }) {
+  if (!Buffer.isBuffer(input.bytes)) throw httpError(400, "invalid_file");
+  if (typeof input.contentType !== "string" || !fileTypes.includes(input.contentType as typeof fileTypes[number])) throw httpError(400, "invalid_file");
+  if (input.bytes.length > fileLimit) throw httpError(413, "file_too_large");
+  if (input.bytes.length < 1) throw httpError(422, "file_denied");
+  return { requestId: uuid(input.requestId).toLowerCase(), itemId: text(input.itemId, 64), filename: text(input.filename, 120), contentType: input.contentType, bytes: input.bytes };
 }
 
 function matches(type: string, bytes: Buffer) {

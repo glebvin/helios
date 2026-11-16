@@ -11,6 +11,7 @@ import { TaskDraftDialog } from "./task-draft-form";
 import { canWriteTaskDraft } from "./task-draft";
 import { ApiError, v1, v1Items, v1Collection } from "./v1";
 import { ChecklistRunPanel } from "./checklist-run-panel";
+import { listChecklistCards, openDelivery, type ChecklistCard } from "./delivery";
 import { VolumeDesk } from "./volume-panel";
 import { canWriteVolume, reportListPath, volumeLines, type VolumeReport } from "./volume";
 import { boardColumn, shownTaskStatus, taskError, taskListPath, taskStatusText, type BoardColumn, type ServerTask } from "./task-read";
@@ -39,6 +40,7 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
   const [savedPulse, setSavedPulse] = useState(0);
   const [reported, setReported] = useState<Record<string, { reportId: string; submittedQuantity: string }[]> | null>(null);
   const [volumeNote, setVolumeNote] = useState("");
+  const [localTasks, setLocalTasks] = useState<ChecklistCard[]>([]);
   const [stamp, setStamp] = useState("");
   const canWrite = canWriteTaskDraft(session.role);
   const ready = Boolean(projectId && day && !notice);
@@ -82,13 +84,15 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
         if (!live) return;
         if (stamp !== scope) { setPage(null); setReported(null); setVolumeNote(""); }
         setError(taskError(reason instanceof ApiError ? reason.status : null));
+        const cards = await openDelivery(session).then(() => listChecklistCards()).catch(() => []);
+        if (live) setLocalTasks(cards.filter((card) => card.projectId === projectId));
       } finally { if (live) setLoading(false); }
     })();
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, day, offset, pass, ready]);
   const body = !ready ? <div className="page"><DeskEmpty title="Объект и день не подтверждены" description={notice || "Доска читается только после выбора объекта и рабочего дня."} /></div>
     : openId ? <div className="page"><TaskDetail compact={compact} session={session} projectId={projectId} taskId={openId} names={names} canEdit={canWrite} onEdit={setEditing} onBack={() => { setOpenId(null); setPass((value) => value + 1); }} onChanged={() => setPass((value) => value + 1)} onNoted={(message) => { setSaved(message); setSavedPulse((value) => value + 1); }} /></div>
-    : <TaskBoard compact={compact} view={view} onView={setView} canWrite={canWrite} onCreate={() => setCreating(true)} page={stamp === scope ? page : null} loading={loading || stamp !== scope} error={error} offset={offset} names={names} reported={reported} volumeNote={volumeNote} onOpen={setOpenId} onRetry={() => setPass((value) => value + 1)} onOffset={setOffset} />;
+    : <TaskBoard compact={compact} view={view} onView={setView} canWrite={canWrite} onCreate={() => setCreating(true)} page={stamp === scope ? page : null} loading={loading || stamp !== scope} error={error} offset={offset} names={names} reported={reported} volumeNote={volumeNote} localTasks={localTasks} onOpen={setOpenId} onRetry={() => setPass((value) => value + 1)} onOffset={setOffset} />;
   const savedDraft = (row: ServerTask) => {
     setCreating(false); setEditing(null);
     setSaved(row.workDate === day ? `Сервер записал черновик «${row.title}».` : `Сервер записал черновик на ${row.workDate.split("-").reverse().join(".")}. На доске этого дня его нет.`);
@@ -102,7 +106,7 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
   </div>;
 }
 
-function TaskBoard({ compact, view, onView, canWrite, onCreate, page, loading, error, offset, names, reported, volumeNote, onOpen, onRetry, onOffset }: { compact: boolean; view: BoardView; onView: (view: BoardView) => void; canWrite: boolean; onCreate: () => void; page: Page | null; loading: boolean; error: string; offset: number; names: Record<string, string>; reported: Record<string, { reportId: string; submittedQuantity: string }[]> | null; volumeNote: string; onOpen: (id: string) => void; onRetry: () => void; onOffset: (offset: number) => void }) {
+function TaskBoard({ compact, view, onView, canWrite, onCreate, page, loading, error, offset, names, reported, volumeNote, localTasks, onOpen, onRetry, onOffset }: { compact: boolean; view: BoardView; onView: (view: BoardView) => void; canWrite: boolean; onCreate: () => void; page: Page | null; loading: boolean; error: string; offset: number; names: Record<string, string>; reported: Record<string, { reportId: string; submittedQuantity: string }[]> | null; volumeNote: string; localTasks: ChecklistCard[]; onOpen: (id: string) => void; onRetry: () => void; onOffset: (offset: number) => void }) {
   const items = page?.items ?? [];
   const head = <div className="tasks-head">
     <div className="documents-title"><h1>Задания</h1><NoteMark label="Как устроена доска"><p>Колонка берётся из статуса сервера. Перетаскивание карточку не переносит. Сообщённый объём сам колонку «Сдано» не включает и приёмкой не считается.</p></NoteMark></div>
@@ -119,9 +123,10 @@ function TaskBoard({ compact, view, onView, canWrite, onCreate, page, loading, e
     return <>
       {head}
       {loading && !page ? <p className="quiet worker-hold" role="status">Читаем задания…</p> : null}
-      {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={onRetry}>Повторить чтение</button></p> : null}
-      {volumeNote ? <p className="quiet">{volumeNote}</p> : null}
-      {page && !error && items.length === 0 ? <p className="quiet">На этот день заданий нет.</p> : null}
+    {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={onRetry}>Повторить чтение</button></p> : null}
+    {error ? <LocalTasks tasks={localTasks} onOpen={onOpen} /> : null}
+    {volumeNote ? <p className="quiet">{volumeNote}</p> : null}
+    {page && !error && items.length === 0 ? <p className="quiet">На этот день заданий нет.</p> : null}
       {page && !error ? groups.map(({ column, cards }) => <section className="task-group" key={column.id} aria-label={column.title}>
         <h2>{column.title}</h2>
         {cards.map((task) => {
@@ -139,6 +144,7 @@ function TaskBoard({ compact, view, onView, canWrite, onCreate, page, loading, e
     {head}
     {loading && !page ? <p className="quiet task-hold" role="status">Читаем задания…</p> : null}
     {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={onRetry}>Повторить чтение</button></p> : null}
+    {error ? <LocalTasks tasks={localTasks} onOpen={onOpen} /> : null}
     {volumeNote ? <p className="quiet">{volumeNote}</p> : null}
     {page && !error && view === "board" ? <div className="kanban">{columns.map((column) => {
       const cards = items.filter((task) => boardColumn(shownTaskStatus(task)) === column.id);
@@ -178,6 +184,14 @@ function TaskBoard({ compact, view, onView, canWrite, onCreate, page, loading, e
   </>;
 }
 
+function LocalTasks({ tasks, onOpen }: { tasks: ChecklistCard[]; onOpen: (id: string) => void }) {
+  if (!tasks.length) return null;
+  return <div className="kanban">{tasks.map((task) => <article className="card is-read" key={task.taskId} role="button" tabIndex={0} aria-label={task.title} onClick={() => onOpen(task.taskId)} onKeyDown={(event) => { if (event.key === "Enter") onOpen(task.taskId); }}>
+    <p className="title">{task.title}</p>
+    <p className="quiet">Сохранено на устройстве</p>
+  </article>)}</div>;
+}
+
 function initials(name: string) {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase() ?? "").join("") || "—";
 }
@@ -212,6 +226,7 @@ function TaskDetail({ compact, session, projectId, taskId, names, canEdit, onEdi
     </div>
     {!task && !error ? <p className="quiet task-hold" role="status">Читаем задание…</p> : null}
     {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={() => setPass((value) => value + 1)}>Повторить чтение</button></p> : null}
+    {error ? <ChecklistRunPanel key={taskId} session={session} projectId={projectId} taskId={taskId} title="" day="" /> : null}
     {task && compact ? <article className="job">
       <div className="rowline"><h2>{task.title}</h2><DeskBadge tone={status === "published" ? "accent" : status === "cancelled" || status === "needs_fix" ? "warn" : "neutral"}>{taskStatusText(status)}</DeskBadge></div>
       <p className="quiet">{columns.find((item) => item.id === boardColumn(status))?.title} · {names[task.assigneeEmployeeId] ?? "исполнитель не прочитан"}</p>
@@ -251,7 +266,7 @@ function TaskDetail({ compact, session, projectId, taskId, names, canEdit, onEdi
           <ShiftPanel session={session} projectId={projectId} employeeId={task.assigneeEmployeeId} day={task.workDate} onChanged={() => { setPass((value) => value + 1); onChanged(); }} />
           <VolumeDesk refreshToken={pass} session={session} projectId={projectId} employeeId={task.assigneeEmployeeId} day={task.workDate} tasks={[{ id: task.id, title: task.title, unit: task.unit, status: task.status, workflowKind: task.workflowKind }]} writable={canWriteVolume(session.role)} onDone={(message) => { onNoted(message); setPass((value) => value + 1); onChanged(); }} />
           </> : <section className="panel" aria-label="Исполнение"><h2>Исполнение</h2><p className="quiet">Смена и отчёты для этого задания здесь недоступны.</p></section>}
-          <ChecklistRunPanel key={task.id} session={session} projectId={projectId} taskId={task.id} />
+          <ChecklistRunPanel key={task.id} session={session} projectId={projectId} taskId={task.id} title={task.title} day={task.workDate} />
         </div>
       </div>
       {task.workflowKind === "managed02b" ? <TaskActionPanel session={session} projectId={projectId} task={task} timezone={timezone} onDone={() => { setPass((value) => value + 1); onChanged(); }} /> : null}

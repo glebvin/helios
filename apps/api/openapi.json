@@ -8238,9 +8238,13 @@
         "parameters": [
           { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } },
           { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
-          { "name": "taskId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+          { "name": "taskId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "requestId", "in": "query", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "itemId", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "filename", "in": "query", "required": true, "schema": { "type": "string" } },
+          { "name": "contentType", "in": "query", "required": true, "schema": { "type": "string", "enum": ["image/jpeg", "image/png", "application/pdf"] } }
         ],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChecklistFileInput" } } } },
+        "requestBody": { "required": true, "content": { "application/octet-stream": { "schema": { "type": "string", "format": "binary", "description": "JPEG, PNG or PDF, from 1 byte to 8 MiB" } } } },
         "responses": {
           "201": { "description": "Stored", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChecklistFile" } } } },
           "400": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
@@ -8248,6 +8252,8 @@
           "403": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "404": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "409": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "413": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "415": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "422": { "description": "Rejected", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
@@ -9607,18 +9613,6 @@
           "edition": { "type": "integer", "minimum": 1 },
           "expectedVersion": { "type": "integer", "minimum": 0 },
           "answers": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["itemId", "value"], "properties": { "itemId": { "type": "string" }, "value": { "type": "string" } } } }
-        }
-      },
-      "ChecklistFileInput": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["requestId", "itemId", "filename", "contentType", "fileBase64"],
-        "properties": {
-          "requestId": { "type": "string", "format": "uuid" },
-          "itemId": { "type": "string" },
-          "filename": { "type": "string" },
-          "contentType": { "type": "string", "enum": ["image/jpeg", "image/png", "application/pdf"] },
-          "fileBase64": { "type": "string" }
         }
       },
       "ChecklistFile": {

@@ -8,20 +8,13 @@ export function canReadChecklist(role: string) {
   return role === "director" || role === "master" || role === "worker" || role === "pto";
 }
 
-export function checklistPendingKey(tenantId: string, userId: string, taskId: string) {
-  return `helios.checklist-run.${tenantId}.${userId}.${taskId}`;
-}
-
-export type ChecklistPending = {
-  requestId: string;
-  templateId: string;
-  edition: number;
-  expectedVersion: number;
-  answers: ChecklistAnswer[];
-};
-
-export function samePending(saved: ChecklistPending | null, next: Omit<ChecklistPending, "requestId">) {
-  return !!saved && saved.templateId === next.templateId && saved.edition === next.edition && saved.expectedVersion === next.expectedVersion && JSON.stringify(saved.answers) === JSON.stringify(next.answers);
+export function checklistStatus(row: { phase: "device" | "queued"; state: string; lastError: string | null; answers: ChecklistAnswer[]; files: unknown[] } | null) {
+  if (!row || (row.phase === "device" && row.answers.length === 0 && row.files.length === 0)) return "";
+  if (row.phase === "device") return "Сохранено на устройстве";
+  if (row.state === "pending" || row.state === "sending" || row.state === "retry_wait") return "Ожидает отправки";
+  if (row.state === "synced") return "Подтверждено сервером";
+  if (row.state === "blocked" && (row.lastError === "http_409" || row.lastError === "stale_version")) return "Конфликт";
+  return "Ошибка";
 }
 
 export function fileKind(item: ChecklistItem) {

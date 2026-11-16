@@ -94,9 +94,9 @@ after(async () => {
 });
 
 test("мастер сохраняет прохождение, повтор не создаёт вторую запись, ПТО читает тот же результат", async () => {
-  const photo = await send(`/projects/${project}/tasks/${task}/checklist-files`, fileBody("shot", "шов.jpg", "image/jpeg", jpeg), "master");
+  const photo = await upload(task, "shot", "шов.jpg", "image/jpeg", jpeg, "master");
   assert.equal(photo.status, 201, JSON.stringify(photo.body));
-  const again = await send(`/projects/${project}/tasks/${task}/checklist-files`, fileBody("shot", "шов.jpg", "image/jpeg", jpeg, photo.requestId), "master");
+  const again = await upload(task, "shot", "шов.jpg", "image/jpeg", jpeg, "master", photo.requestId);
   assert.equal(again.status, 201);
   assert.equal(again.body.fileId, photo.body.fileId);
   assert.equal((await admin.query(`SELECT count(*)::int AS n FROM checklist_run_files WHERE tenant_id=$1`, [tenant])).rows[0].n, 1);
@@ -131,7 +131,7 @@ test("мастер сохраняет прохождение, повтор не 
 });
 
 test("новый идентификатор пишет историю и не меняет закреплённую редакцию", async () => {
-  const photo = (await send(`/projects/${project}/tasks/${task}/checklist-files`, fileBody("shot", "шов.jpg", "image/jpeg", jpeg), "master")).body.fileId;
+  const photo = (await upload(task, "shot", "шов.jpg", "image/jpeg", jpeg, "master")).body.fileId;
   const second = await send(`/projects/${project}/tasks/${task}/checklist-runs`, {
     requestId: randomUUID(), templateId: template, edition: 1, expectedVersion: 1,
     answers: [{ itemId: "seam", value: "yes" }, { itemId: "thick", value: "12" }, { itemId: "shot", value: photo }],
@@ -148,7 +148,7 @@ test("новый идентификатор пишет историю и не м
 });
 
 test("критичный отказ сохраняется и останавливает следующее действие, партия не считается проверенной", async () => {
-  const photo = (await send(`/projects/${project}/tasks/${task}/checklist-files`, fileBody("shot", "шов.jpg", "image/jpeg", jpeg), "master")).body.fileId;
+  const photo = (await upload(task, "shot", "шов.jpg", "image/jpeg", jpeg, "master")).body.fileId;
   const failed = await send(`/projects/${project}/tasks/${task}/checklist-runs`, {
     requestId: randomUUID(), templateId: template, edition: 1, expectedVersion: 2,
     answers: [{ itemId: "seam", value: "no" }, { itemId: "thick", value: "12" }, { itemId: "shot", value: photo }, { itemId: "lot", value: "batch-1" }],
@@ -174,7 +174,7 @@ test("конфликт версии и отсутствующий файл не 
   }, "master");
   assert.equal(missing.status, 422);
   assert.equal(missing.body.error, "file_denied");
-  const forged = await send(`/projects/${project}/tasks/${task}/checklist-files`, fileBody("shot", "нет.jpg", "image/jpeg", Buffer.from("not-a-jpeg")), "master");
+  const forged = await upload(task, "shot", "нет.jpg", "image/jpeg", Buffer.from("not-a-jpeg"), "master");
   assert.equal(forged.status, 422);
   assert.equal((await admin.query(`SELECT count(*)::int AS n FROM checklist_runs WHERE tenant_id=$1`, [tenant])).rows[0].n, before);
 });
@@ -193,6 +193,98 @@ test("чужая компания, объект, задание и запрещ�
   const unapproved = await send(`/projects/${project}/tasks/${task}/checklist-runs`, { requestId: randomUUID(), templateId: draft, edition: 1, expectedVersion: 3, answers: [{ itemId: "seam", value: "yes" }] }, "master");
   assert.equal(unapproved.status, 422);
   assert.equal(unapproved.body.error, "template_not_approved");
+  const stored = (await admin.query(`SELECT id FROM checklist_run_files WHERE tenant_id=$1 AND task_id=$2 LIMIT 1`, [tenant, task])).rows[0];
+  const hrFile = await fetch(`${base}/api/v1/projects/${project}/tasks/${task}/checklist-files/${stored.id}`, { headers: { authorization: `Bearer ${tokens.get("hr")}`, "x-tenant-id": tenant } });
+  assert.equal(hrFile.status, 403);
+  const foreignFile = await fetch(`${base}/api/v1/projects/${foreignProject}/tasks/${foreignTask}/checklist-files/${stored.id}`, { headers: { authorization: `Bearer ${tokens.get("pto")}`, "x-tenant-id": tenant } });
+  assert.equal(foreignFile.status, 403);
+  const otherTaskFile = await fetch(`${base}/api/v1/projects/${project}/tasks/${otherTask}/checklist-files/${stored.id}`, { headers: { authorization: `Bearer ${tokens.get("pto")}`, "x-tenant-id": tenant } });
+  assert.equal(otherTaskFile.status, 404);
+});
+
+test("обычная фотография до 8 МБ принимается, больший файл не записывается", async () => {
+  const phone = Buffer.alloc(70_000, 1);
+  phone[0] = 0xff; phone[1] = 0xd8; phone[2] = 0xff;
+  const saved = await upload(task, "shot", "phone.jpg", "image/jpeg", phone, "master");
+  assert.equal(saved.status, 201, JSON.stringify(saved.body));
+  assert.equal(saved.body.sizeBytes, phone.length);
+  const replay = await upload(task, "shot", "phone.jpg", "image/jpeg", phone, "master", saved.requestId);
+  assert.equal(replay.body.fileId, saved.body.fileId);
+  assert.equal((await admin.query(`SELECT count(*)::int AS n FROM checklist_run_files WHERE request_id=$1`, [saved.requestId])).rows[0].n, 1);
+  const limit = Buffer.alloc(8 * 1024 * 1024, 2);
+  limit[0] = 0xff; limit[1] = 0xd8; limit[2] = 0xff;
+  const full = await upload(task, "shot", "full.jpg", "image/jpeg", limit, "master");
+  assert.equal(full.status, 201, JSON.stringify(full.body));
+  assert.equal(full.body.sizeBytes, limit.length);
+  const over = Buffer.alloc(8 * 1024 * 1024 + 1, 3);
+  over[0] = 0xff; over[1] = 0xd8; over[2] = 0xff;
+  const rejected = await upload(task, "shot", "over.jpg", "image/jpeg", over, "master");
+  assert.equal(rejected.status, 413);
+  assert.equal((await admin.query(`SELECT count(*)::int AS n FROM checklist_run_files WHERE request_id=$1`, [rejected.requestId])).rows[0].n, 0);
+});
+
+test("критичный отказ блокирует объём по HTTP, когда смена, допуск и работа уже выполнены", async () => {
+  const command = (body: Record<string, unknown>) => ({ requestId: randomUUID(), ...body });
+  async function created(path: string, body: unknown, key = "director", method = "POST") {
+    const response = await send(path, body, key, method);
+    assert.equal(response.status, method === "POST" ? 201 : 200, `${method} ${path} ${JSON.stringify(response.body)}`);
+    return response.body;
+  }
+  const worker = people.find((person) => person.key === "worker")!;
+  const master = people.find((person) => person.key === "master")!;
+  const templateBody = await created(`/projects/${project}/admission-template`, command({ code: "safe", title: "Допуск", items: [{ id: "safe", label: "Безопасно", critical: true }], requiredQualificationCodes: [] }));
+  const check = await created(`/employees/${employee}/admission-checks`, command({ projectId: project, templateVersion: templateBody.version, answers: [{ itemId: "safe", value: true }] }));
+  await created(`/projects/${project}/assignments/${employee}`, command({ expectedVersion: 0, status: "active", admissionCheckId: check.id }), "director", "PUT");
+  const zone = await created(`/projects/${project}/zones`, command({ name: "Зона шва" }));
+  const type = await created(`/projects/${project}/work-types`, command({ name: "Шов", unit: "м2", requiresRd: false, requiresMaterialControl: false, requiresPredecessorAcceptance: false, requiresId: false }));
+  const front = await created(`/projects/${project}/front-template`, command({ code: "front", title: "Фронт", items: [{ id: "ready", label: "Готово", critical: true }] }));
+  async function published(title: string, plannedStart: string, plannedEnd: string) {
+    let row = await created(`/projects/${project}/tasks`, command({ zoneId: zone.id, workTypeId: type.id, title, workDate: "2027-04-02", plannedQuantity: "2.000", assigneeEmployeeId: employee, responsibleUserId: master.id, plannedStart, plannedEnd, rdReference: null }));
+    await created(`/projects/${project}/tasks/${row.id}/front-checks`, command({ expectedVersion: row.version, templateVersion: front.version, answers: [{ itemId: "ready", value: true }] }));
+    row = await created(`/projects/${project}/tasks/${row.id}`, undefined, "director", "GET");
+    for (const action of ["submit", "publish"]) {
+      const response = await send(`/projects/${project}/tasks/${row.id}/${action}`, command({ expectedVersion: row.version }), "director");
+      assert.equal(response.status, 200, JSON.stringify(response.body));
+      row = response.body;
+    }
+    return row;
+  }
+  const blockedTask = await published("Шов с отказом", "2027-04-02T09:00:00.000Z", "2027-04-02T11:00:00.000Z");
+  const openTask = await published("Шов без чек-листа", "2027-04-02T11:00:00.000Z", "2027-04-02T13:00:00.000Z");
+  const photo = await upload(blockedTask.id, "shot", "шов.jpg", "image/jpeg", jpeg, "master");
+  assert.equal(photo.status, 201, JSON.stringify(photo.body));
+  const failed = await send(`/projects/${project}/tasks/${blockedTask.id}/checklist-runs`, {
+    requestId: randomUUID(), templateId: template, edition: 1, expectedVersion: 0,
+    answers: [{ itemId: "seam", value: "no" }, { itemId: "thick", value: "12" }, { itemId: "shot", value: photo.body.fileId }],
+  }, "master");
+  assert.equal(failed.status, 201, JSON.stringify(failed.body));
+  assert.equal(failed.body.blocksNext, true);
+  let version = 0;
+  async function shift(taskId: string, startedAt: string, endedAt: string) {
+    const shiftId = randomUUID();
+    const start = { requestId: randomUUID(), kind: "shift_start", employeeId: employee, projectId: project, shiftId, expectedVersion: version, occurredAt: startedAt };
+    const work = { requestId: randomUUID(), kind: "segment_change", employeeId: employee, projectId: project, shiftId, expectedVersion: version + 1, occurredAt: startedAt, mode: "work", taskId, previousEventId: start.requestId };
+    const end = { requestId: randomUUID(), kind: "shift_end", employeeId: employee, projectId: project, shiftId, expectedVersion: version + 2, occurredAt: endedAt, previousEventId: work.requestId };
+    const opened = await send("/execution/events", { events: [start, work, end] }, "worker");
+    assert.equal(opened.status, 200, JSON.stringify(opened.body));
+    assert.deepEqual(opened.body.results.map((item: { outcome: string }) => item.outcome), ["success", "success", "success"]);
+    version += 3;
+    return { shiftId, previousEventId: end.requestId };
+  }
+  const blockedShift = await shift(blockedTask.id, "2027-04-02T09:00:00.000Z", "2027-04-02T11:00:00.000Z");
+  const segment = (await admin.query(`SELECT ended_at > started_at AS positive FROM managed_segments WHERE tenant_id=$1 AND shift_id=$2 AND task_id=$3 AND mode='work'`, [tenant, blockedShift.shiftId, blockedTask.id])).rows[0];
+  assert.equal(segment.positive, true);
+  const volume = { requestId: randomUUID(), kind: "submit_volume", employeeId: employee, projectId: project, shiftId: blockedShift.shiftId, expectedVersion: version, occurredAt: "2027-04-02T11:00:00.000Z", taskId: blockedTask.id, reportId: randomUUID(), submittedQuantity: "1.000", previousEventId: blockedShift.previousEventId };
+  const denied = await send("/execution/events", { events: [volume] }, "worker");
+  assert.equal(denied.status, 200, JSON.stringify(denied.body));
+  assert.equal(denied.body.results[0].code, "checklist_blocked");
+  assert.equal((await admin.query(`SELECT count(*)::int AS n FROM managed_execution_reports WHERE tenant_id=$1 AND task_id=$2`, [tenant, blockedTask.id])).rows[0].n, 0);
+  const openShift = await shift(openTask.id, "2027-04-02T11:00:00.000Z", "2027-04-02T13:00:00.000Z");
+  const accepted = { requestId: randomUUID(), kind: "submit_volume", employeeId: employee, projectId: project, shiftId: openShift.shiftId, expectedVersion: version, occurredAt: "2027-04-02T13:00:00.000Z", taskId: openTask.id, reportId: randomUUID(), submittedQuantity: "1.000", previousEventId: openShift.previousEventId };
+  const allowed = await send("/execution/events", { events: [accepted] }, "worker");
+  assert.equal(allowed.status, 200, JSON.stringify(allowed.body));
+  assert.equal(allowed.body.results[0].outcome, "success", JSON.stringify(allowed.body));
+  assert.equal((await admin.query(`SELECT count(*)::int AS n FROM managed_execution_reports WHERE tenant_id=$1 AND task_id=$2`, [tenant, openTask.id])).rows[0].n, 1);
 });
 
 async function login(email: string) {
@@ -205,8 +297,21 @@ function headers(key: string) {
   return { authorization: `Bearer ${tokens.get(key)}`, "x-tenant-id": tenant, "content-type": "application/json" };
 }
 
-function fileBody(itemId: string, filename: string, contentType: string, bytes: Buffer, requestId?: string) {
-  return { requestId: requestId ?? randomUUID(), itemId, filename, contentType, fileBase64: bytes.toString("base64") };
+function rawBody(bytes: Buffer): ArrayBuffer {
+  const body = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(body).set(bytes);
+  return body;
+}
+
+async function upload(taskId: string, itemId: string, filename: string, contentType: string, bytes: Buffer, key: string, requestId = randomUUID()) {
+  const query = new URLSearchParams({ requestId, itemId, filename, contentType });
+  const response = await fetch(`${base}/api/v1/projects/${project}/tasks/${taskId}/checklist-files?${query}`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${tokens.get(key)}`, "x-tenant-id": tenant, "content-type": "application/octet-stream" },
+    body: rawBody(bytes),
+  });
+  const text = await response.text();
+  return { status: response.status, body: text ? JSON.parse(text) : {}, requestId };
 }
 
 async function send(path: string, body: unknown, key: string, method = body === undefined ? "GET" : "POST") {

@@ -33,7 +33,7 @@ CREATE TABLE checklist_run_files (
   item_id text NOT NULL,
   filename text NOT NULL,
   content_type text NOT NULL CHECK (content_type IN ('image/jpeg', 'image/png', 'application/pdf')),
-  size_bytes integer NOT NULL CHECK (size_bytes BETWEEN 1 AND 65536),
+  size_bytes integer NOT NULL CHECK (size_bytes BETWEEN 1 AND 8388608),
   sha256 text NOT NULL,
   bytes bytea NOT NULL,
   uploaded_by uuid NOT NULL,

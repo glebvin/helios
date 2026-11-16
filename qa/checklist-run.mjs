@@ -28,7 +28,8 @@ const people = ["master", "pto", "hr"].map((key) => ({
   label: { master: "Мастер Смены", pto: "Пётр ПТО", hr: "Катя Кадры" }[key],
 }));
 const byKey = Object.fromEntries(people.map((person) => [person.key, person]));
-const jpeg = Buffer.from("ffd8ffe000104a4649460001", "hex");
+const jpeg = Buffer.alloc(70_000, 1);
+jpeg[0] = 0xff; jpeg[1] = 0xd8; jpeg[2] = 0xff;
 const pdf = Buffer.from("%PDF-1.7\nchecklist\n%%EOF");
 
 const directory = (await admin.query("SHOW data_directory")).rows[0].data_directory;
@@ -85,10 +86,26 @@ try {
   await checklist.getByRole("button", { name: "Да" }).click();
   await checklist.locator("input").first().fill("12");
   await checklist.locator("input[type=file]").nth(0).setInputFiles({ name: "шов.jpg", mimeType: "image/jpeg", buffer: jpeg });
-  await checklist.getByText("Файл принят сервером").first().waitFor();
+  await checklist.getByText("Сохранено на устройстве").waitFor();
   await checklist.locator("input[type=file]").nth(1).setInputFiles({ name: "паспорт.pdf", mimeType: "application/pdf", buffer: pdf });
-  await checklist.getByText("Файл принят сервером").nth(1).waitFor();
+  await checklist.getByText("шов.jpg").waitFor();
+  await checklist.getByText("паспорт.pdf").waitFor();
   await checklist.getByText("Проверка партии ещё не подключена.").waitFor();
+  await page.waitForFunction(async () => {
+    const db = await new Promise((resolve, reject) => { const request = indexedDB.open("helios-managed-offline"); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+    try {
+      const rows = await new Promise((resolve, reject) => { const request = db.transaction("checklist").objectStore("checklist").getAll(); request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+      return rows.some((row) => row.answers?.some((answer) => answer.value === "12") && row.files?.length === 2 && row.files.every((file) => file.bytes?.byteLength > 0));
+    } finally { db.close(); }
+  });
+  await page.route("**/api/v1/**", (route) => route.abort("internetdisconnected"));
+  await page.reload();
+  await openTask(page);
+  await checklist.getByRole("button", { name: "Да" }).waitFor();
+  await checklist.locator("input").first().waitFor();
+  assert.equal(await checklist.locator("input").first().inputValue(), "12");
+  await checklist.getByText("шов.jpg").waitFor();
+  await page.unroute("**/api/v1/**");
   let dropped = false;
   await page.route("**/checklist-runs", async (route) => {
     if (!dropped && route.request().method() === "POST") {
@@ -111,6 +128,11 @@ try {
   const stored = (await admin.query("SELECT count(*)::int AS runs, (SELECT count(*)::int FROM work_reports WHERE tenant_id=$1) AS reports FROM checklist_runs WHERE tenant_id=$1", [tenant])).rows[0];
   assert.equal(stored.runs, 1);
   assert.equal(stored.reports, 0);
+  const photo = (await admin.query("SELECT bytes FROM checklist_run_files WHERE tenant_id=$1 AND filename='шов.jpg'", [tenant])).rows[0];
+  assert.equal(photo.bytes.length, jpeg.length);
+  assert.equal(photo.bytes[0], 0xff);
+  assert.equal(photo.bytes[1], 0xd8);
+  assert.equal(photo.bytes[2], 0xff);
   await page.setViewportSize({ width: 390, height: 844 });
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   assert.ok(overflow <= 1, `ширина страницы больше окна на ${overflow}px`);
