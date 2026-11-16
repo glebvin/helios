@@ -13,6 +13,7 @@ const draft: TaskDraft = {
   start: "08:00",
   end: "17:00",
   rdReference: "",
+  materialBatchId: "",
 };
 
 test("a worker cannot create a draft and the quantity stays text", () => {

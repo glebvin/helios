@@ -56,7 +56,7 @@ export function roleContractAllows(actor: AuthorizedScope, permission: ContractP
     case 'materials.record':
       return (actor.role === 'master' || actor.role === 'supply') && project;
     case 'materials.read':
-      return (actor.role === 'master' || actor.role === 'supply' || actor.role === 'pto') && project;
+      return (actor.role === 'master' || actor.role === 'supply' || actor.role === 'pto' || actor.role === 'director') && project;
     case 'prices.maintain':
       return actor.role === 'cost' && (resource.projectId === undefined || project);
     case 'orders.manage':

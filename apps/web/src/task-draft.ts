@@ -11,6 +11,7 @@ export type TaskDraft = {
   start: string;
   end: string;
   rdReference: string;
+  materialBatchId: string;
 };
 
 const quantityPattern = /^\d{1,11}(?:\.\d{1,3})?$/;
@@ -26,7 +27,7 @@ export function taskQuantity(value: string) {
   return text;
 }
 
-export function taskDraftValidation(draft: TaskDraft, requiresRd: boolean) {
+export function taskDraftValidation(draft: TaskDraft, requiresRd: boolean, requiresMaterial = false) {
   if (!draft.zoneId) return "Выберите зону.";
   if (!draft.workTypeId) return "Выберите вид работ.";
   if (!draft.title.trim() || draft.title.trim().length > 200) return "Напишите название до 200 символов.";
@@ -36,6 +37,7 @@ export function taskDraftValidation(draft: TaskDraft, requiresRd: boolean) {
   if (!draft.responsibleUserId) return "Выберите ответственного.";
   if (!clockPattern.test(draft.start) || !clockPattern.test(draft.end) || draft.start >= draft.end) return "Конец интервала должен быть позже начала в этот же день.";
   if (requiresRd && !draft.rdReference.trim()) return "Для этого вида нужна рабочая документация.";
+  if (requiresMaterial && !draft.materialBatchId) return "Выберите принятую партию этой зоны и вида работ.";
   if (draft.rdReference.trim().length > 500) return "Ссылка на документацию длиннее 500 символов.";
   return "";
 }
@@ -53,6 +55,7 @@ export function taskDraftBody(draft: TaskDraft, requestId: string, timezone: str
     plannedStart: zonedInstant(draft.workDate, draft.start, timezone),
     plannedEnd: zonedInstant(draft.workDate, draft.end, timezone),
     rdReference: draft.rdReference.trim() ? draft.rdReference.trim() : null,
+    materialBatchId: draft.materialBatchId || null,
   };
   return expectedVersion === undefined ? body : { ...body, expectedVersion };
 }
@@ -69,6 +72,7 @@ export function taskDraftFrom(task: ServerTask | null, day: string, responsibleU
     start: clockInZone(task?.plannedStart ?? null, timezone) || "08:00",
     end: clockInZone(task?.plannedEnd ?? null, timezone) || "17:00",
     rdReference: task?.rdReference ?? "",
+    materialBatchId: task?.materialBatchId ?? "",
   };
 }
 
@@ -77,7 +81,7 @@ export function taskDraftError(status: number | null, code = "") {
   if (status === 403) return "Этой роли черновик задания недоступен.";
   if (status === 404) return "Зона, вид работ, исполнитель или ответственный не найдены.";
   if (status === 409 && code === "stale_version") return "Черновик уже изменён в другом окне. Прочитайте актуальную версию перед повтором.";
-  if (status === 409 && code === "invalid_task_state") return "Сервер принимает правку только черновика.";
+  if (status === 409 && code === "material_not_accepted") return "Эта партия не принята для выбранных зоны и вида работ.";
   if (status === 409 && code === "idempotency_payload_mismatch") return "Номер попытки относится к другому черновику. Прочитайте актуальную версию.";
   if (status === 409) return "Конфликт данных. Черновик не записан.";
   if (status === 400 && code === "invalid_quantity") return "Сервер не принял объём. Нужно число до трёх знаков после запятой.";

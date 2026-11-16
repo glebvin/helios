@@ -18,11 +18,11 @@ export function instant(v:unknown):string {
   day(m[1]);const d=new Date(v);if(!Number.isFinite(d.valueOf()))throw httpError(400,'invalid_interval');return d.toISOString();
 }
 export function taskInput(input:unknown,update=false) {
-  const b=object(input,['requestId','zoneId','workTypeId','title','workDate','plannedQuantity','assigneeEmployeeId','responsibleUserId','plannedStart','plannedEnd','rdReference',...(update?['expectedVersion']:[])]);
+  const b=object(input,['requestId','zoneId','workTypeId','title','workDate','plannedQuantity','assigneeEmployeeId','responsibleUserId','plannedStart','plannedEnd','rdReference','materialBatchId',...(update?['expectedVersion']:[])]);
   if(b.workDate===undefined)throw httpError(400,'invalid_day');
   const plannedStart=instant(b.plannedStart),plannedEnd=instant(b.plannedEnd);
   if(new Date(plannedStart)>=new Date(plannedEnd))throw httpError(400,'invalid_interval');
-  return {requestId:id(b.requestId),zoneId:id(b.zoneId),workTypeId:id(b.workTypeId),title:text(b.title),workDate:day(b.workDate)!,plannedQuantity:quantity(b.plannedQuantity),assigneeEmployeeId:id(b.assigneeEmployeeId),responsibleUserId:id(b.responsibleUserId),plannedStart,plannedEnd,rdReference:b.rdReference===null?null:text(b.rdReference,500),...(update?{expectedVersion:integer(b.expectedVersion)}:{})};
+  return {requestId:id(b.requestId),zoneId:id(b.zoneId),workTypeId:id(b.workTypeId),title:text(b.title),workDate:day(b.workDate)!,plannedQuantity:quantity(b.plannedQuantity),assigneeEmployeeId:id(b.assigneeEmployeeId),responsibleUserId:id(b.responsibleUserId),plannedStart,plannedEnd,rdReference:b.rdReference===null?null:text(b.rdReference,500),materialBatchId:b.materialBatchId==null?null:id(b.materialBatchId),...(update?{expectedVersion:integer(b.expectedVersion)}:{})};
 }
 const taskStatuses=['draft','pending_approval','published','cancelled','in_progress','submitted','in_review','accepted','closed','suspended','needs_fix','partially_accepted'];
 export function taskStatus(value:unknown) {if(value===undefined)return undefined;if(typeof value!=='string' || !taskStatuses.includes(value))throw httpError(400,'invalid_status');return value;}

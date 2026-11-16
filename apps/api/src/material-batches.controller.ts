@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Inject, Param, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { actorOf, TenantGuard, type ActorRequest } from './auth.service.js';
-import { queryInput } from './api-input.js';
+import { queryInput, uuid } from './api-input.js';
 import { httpError } from './errors.js';
 import { materialPage, MaterialBatchService } from './material-batches.service.js';
 import { evidenceDisposition } from './evidence-input.js';
@@ -24,10 +24,12 @@ export class MaterialBatchController {
 
   @Get()
   list(@Req() request: ActorRequest, @Param('projectId') projectId: string, @Query() query: Record<string, unknown>) {
-    queryInput(query, ['q', 'limit', 'offset']);
+    queryInput(query, ['q', 'limit', 'offset', 'usable', 'zoneId', 'workTypeId']);
     const q = query.q === undefined ? '' : String(query.q);
     if (q.length > 80) throw httpError(400, 'invalid_query');
-    return this.batches.list(actorOf(request), projectId, materialPage(query), q.trim());
+    const usable = query.usable === undefined ? null : query.usable === '1' ? { zoneId: uuid(query.zoneId), workTypeId: uuid(query.workTypeId) } : null;
+    if (query.usable !== undefined && !usable) throw httpError(400, 'invalid_query');
+    return this.batches.list(actorOf(request), projectId, materialPage(query), q.trim(), usable);
   }
 
   @Post()
@@ -51,6 +53,12 @@ export class MaterialBatchController {
     response.setHeader('Cache-Control', 'private, no-store');
     response.setHeader('Content-Length', file.bytes.length);
     response.end(file.bytes);
+  }
+
+  @Post(':batchId/control')
+  async decide(@Req() request: ActorRequest, @Param('projectId') projectId: string, @Param('batchId') batchId: string, @Body() body: unknown, @Res() response: { status: (code: number) => { json: (value: unknown) => void } }) {
+    const result = await this.batches.decide(actorOf(request), projectId, batchId, body);
+    response.status(result.status).json(result.body);
   }
 
   @Get(':batchId')

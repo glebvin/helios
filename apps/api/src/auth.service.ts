@@ -175,7 +175,7 @@ export class TenantGuard implements CanActivate {
     if (!isExistingRuntimeRole(actor.role) && !identityRoute && !priceRoute && !engineerChecklist) throw httpError(403, "role_denied");
     const routeConfigurationWrite = actor.role === "admin" && method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/route-config\/?$/i.test(path);
     const materialWrite = actor.role === "supply" && ["POST", "PUT"].includes(method) &&
-      /^\/api\/v1\/projects\/[0-9a-f-]{36}\/material-batches(\/[0-9a-f-]{36}(\/documents\/[0-9a-f-]{36}\/content)?)?\/?$/i.test(path);
+      /^\/api\/v1\/projects\/[0-9a-f-]{36}\/material-batches(\/[0-9a-f-]{36}(\/documents\/[0-9a-f-]{36}\/content|\/control)?)?\/?$/i.test(path);
     const responsibilityOrderWrite = actor.role === "hr" && method === "POST" && /^\/api\/v1\/responsibility-orders(?:\/[0-9a-f-]{36}(?:\/revoke)?)?$/i.test(path);
     const checklistDecision = ["safety", "zds-soso"].includes(actor.role) && method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates\/[0-9a-f-]{36}\/decision\/?$/i.test(path);
     // Each module service reloads current role and project scope before writing/replaying.

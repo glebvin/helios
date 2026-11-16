@@ -87,7 +87,8 @@ test.before(async () => {
 
 test('publication still refuses unverified material control', async () => {
   const source = await readFile(new URL('../src/tasks.service.ts', import.meta.url), 'utf8');
-  assert.match(source, /requiresMaterialControl','material_control_unsupported'/);
+  assert.match(source, /material_not_accepted/);
+  assert.match(source, /predecessor_acceptance_unsupported/);
 });
 
 test('master records a batch, reloads it, and PTO opens the same document', async () => {

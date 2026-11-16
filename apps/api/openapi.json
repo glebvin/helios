@@ -4329,7 +4329,7 @@
       "get": {
         "operationId": "getTaskReadiness",
         "summary": "getTaskReadiness",
-        "description": "Director/master/PTO informational current reasons, no locks/guarantee across concurrent ordinary reads. Publication rechecks atomically. Reasons include front_missing/front_failed/front_template_changed/front_plan_changed/front_catalog_changed, assignment_inactive, employee_unlinked/employee_archived/employee_member_inactive/employee_project_inactive, responsible_inactive, admission:<personnel reason>, qualification_expired_on_work_date:<code>, rd_required, zone_inactive/work_type_inactive/work_type_unit_changed, material_control_unsupported/predecessor_acceptance_unsupported/id_unsupported, invalid_tenant_timezone/invalid_interval. Current tenant/project scope; hidden references404, unknown query keys rejected.",
+        "description": "Director/master/PTO informational current reasons, no locks/guarantee across concurrent ordinary reads. Publication rechecks atomically. Reasons include front_missing/front_failed/front_template_changed/front_plan_changed/front_catalog_changed, assignment_inactive, employee_unlinked/employee_archived/employee_member_inactive/employee_project_inactive, responsible_inactive, admission:<personnel reason>, qualification_expired_on_work_date:<code>, rd_required, zone_inactive/work_type_inactive/work_type_unit_changed, material_not_accepted/predecessor_acceptance_unsupported/id_unsupported, invalid_tenant_timezone/invalid_interval. Current tenant/project scope; hidden references404, unknown query keys rejected.",
         "security": [
           {
             "bearerAuth": []
@@ -8282,6 +8282,29 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/material-batches/{batchId}/control": {
+      "post": {
+        "operationId": "recordMaterialControl",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "projectId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "batchId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "x-tenant-id", "in": "header", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MaterialControlInput" } } }
+        },
+        "responses": {
+          "201": { "description": "Incoming control step recorded. The server computes the verdict.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MaterialBatchCard" } } } },
+          "400": { "description": "Invalid request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Unauthenticated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Forbidden", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Conflict", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/material-batches/{batchId}/documents/{documentId}/content": {
       "put": {
         "operationId": "uploadMaterialBatchDocument",
@@ -10784,6 +10807,11 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "materialBatchId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
           }
         },
         "required": [
@@ -12436,6 +12464,11 @@
             "minLength": 1,
             "maxLength": 500,
             "nullable": true
+          },
+          "materialBatchId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
           }
         },
         "required": [
@@ -12512,6 +12545,11 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 500,
+            "nullable": true
+          },
+          "materialBatchId": {
+            "type": "string",
+            "format": "uuid",
             "nullable": true
           }
         },
@@ -12666,6 +12704,11 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "materialBatchId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
           }
         },
         "required": [
@@ -12686,7 +12729,8 @@
           "rdReference",
           "plannedStart",
           "plannedEnd",
-          "publicationSnapshotId"
+          "publicationSnapshotId",
+          "materialBatchId"
         ],
         "additionalProperties": false
       },
@@ -12808,6 +12852,11 @@
             "format": "uuid",
             "nullable": true
           },
+          "materialBatchId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
           "readiness": {
             "$ref": "#/components/schemas/TaskReadiness"
           }
@@ -12831,6 +12880,7 @@
           "plannedStart",
           "plannedEnd",
           "publicationSnapshotId",
+          "materialBatchId",
           "readiness"
         ],
         "additionalProperties": false
@@ -12912,6 +12962,11 @@
             "nullable": true
           },
           "publicationSnapshotId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "materialBatchId": {
             "type": "string",
             "format": "uuid",
             "nullable": true
@@ -16826,6 +16881,23 @@
             "type": "string",
             "format": "date-time"
           }
+        }
+      },
+      "MaterialControlInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "expectedVersion", "action"],
+        "properties": {
+          "requestId": { "type": "string", "format": "uuid" },
+          "expectedVersion": { "type": "integer", "minimum": 0 },
+          "action": { "type": "string", "enum": ["prepare", "data", "responsible", "review"] },
+          "zoneId": { "type": "string", "format": "uuid" },
+          "workTypeId": { "type": "string", "format": "uuid" },
+          "templateId": { "type": "string", "format": "uuid" },
+          "answers": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["itemId", "value"], "properties": { "itemId": { "type": "string" }, "value": { "type": "string" } } } },
+          "dataMark": { "type": "string", "enum": ["provided", "overdue"] },
+          "decision": { "type": "string", "enum": ["agree", "return"] },
+          "reason": { "type": "string" }
         }
       },
       "MaterialBatchCard": {

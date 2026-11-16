@@ -107,6 +107,7 @@ export class TasksService {
     if(responsible.role!=='director' && (responsible.role!=='master' || !(await c.query(`SELECT 1 FROM project_memberships WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3 AND status='active'`,[a.tenantId,p,b.responsibleUserId])).rowCount))throw httpError(422,'responsible_not_ready');
     if(employee.user_id && !(await c.query(`SELECT 1 FROM memberships WHERE tenant_id=$1 AND user_id=$2 AND status='active'`,[a.tenantId,employee.user_id])).rowCount)throw httpError(422,'employee_not_ready');
     if(workType.requiresRd && !b.rdReference)throw httpError(422,'rd_required');
+    if(b.materialBatchId && !(await this.acceptedMaterial(c,p,{materialBatchId:b.materialBatchId,zoneId:b.zoneId,workTypeId:b.workTypeId})))throw httpError(409,'material_not_accepted');
     const timezone=(await c.query(`SELECT timezone FROM tenants WHERE id=$1 AND timezone IN (SELECT name FROM pg_timezone_names)`,[a.tenantId])).rows[0]?.timezone;
     if(!timezone)throw httpError(422,'invalid_tenant_timezone');
     const dates=(await c.query(`SELECT to_char($1::timestamptz AT TIME ZONE $3,'YYYY-MM-DD') start,to_char($2::timestamptz AT TIME ZONE $3,'YYYY-MM-DD') finish`,[b.plannedStart,b.plannedEnd,timezone])).rows[0];
@@ -120,10 +121,10 @@ export class TasksService {
       if(before && (before.workflowKind!=='managed02b' || before.status!=='draft'))throw httpError(409,'invalid_task_state');
       const refs=await this.validatePlan(c,a,p,b);
       const key=id??randomUUID();
-      const values=[a.tenantId,p,key,b.title,b.workDate,b.plannedQuantity,refs.workType.unit,b.assigneeEmployeeId,b.zoneId,b.workTypeId,b.responsibleUserId,b.rdReference,b.plannedStart,b.plannedEnd];
+      const values=[a.tenantId,p,key,b.title,b.workDate,b.plannedQuantity,refs.workType.unit,b.assigneeEmployeeId,b.zoneId,b.workTypeId,b.responsibleUserId,b.rdReference,b.plannedStart,b.plannedEnd,b.materialBatchId??null];
       let after;
-      if(id)after=(await c.query(`UPDATE daily_tasks t SET title=$4,work_date=$5,planned_quantity=$6,unit=$7,assignee_employee_id=$8,zone_id=$9,work_type_id=$10,responsible_user_id=$11,rd_reference=$12,planned_start=$13,planned_end=$14,version=version+1,plan_revision=plan_revision+1 WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING ${taskFields}`,values)).rows[0];
-      else after=(await c.query(`INSERT INTO daily_tasks AS t(tenant_id,project_id,id,title,work_date,planned_quantity,unit,assignee_employee_id,zone_id,work_type_id,responsible_user_id,rd_reference,planned_start,planned_end,workflow_kind,status,plan_revision) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'managed02b','draft',1) RETURNING ${taskFields}`,values)).rows[0];
+      if(id)after=(await c.query(`UPDATE daily_tasks t SET title=$4,work_date=$5,planned_quantity=$6,unit=$7,assignee_employee_id=$8,zone_id=$9,work_type_id=$10,responsible_user_id=$11,rd_reference=$12,planned_start=$13,planned_end=$14,material_batch_id=$15,version=version+1,plan_revision=plan_revision+1 WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING ${taskFields}`,values)).rows[0];
+      else after=(await c.query(`INSERT INTO daily_tasks AS t(tenant_id,project_id,id,title,work_date,planned_quantity,unit,assignee_employee_id,zone_id,work_type_id,responsible_user_id,rd_reference,planned_start,planned_end,material_batch_id,workflow_kind,status,plan_revision) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'managed02b','draft',1) RETURNING ${taskFields}`,values)).rows[0];
       await this.audit(c,a,b.requestId,'daily_task',key,before,after);return after;
     });
   }
@@ -133,7 +134,11 @@ export class TasksService {
     if(t.workflowKind!=='managed02b')throw httpError(409,'workflow_not_supported');
     return t;
   }
-  private planOf(t:Row) {return {zoneId:t.zoneId,workTypeId:t.workTypeId,title:t.title,workDate:t.workDate,plannedQuantity:t.plannedQuantity,assigneeEmployeeId:t.assigneeEmployeeId,responsibleUserId:t.responsibleUserId,plannedStart:t.plannedStart,plannedEnd:t.plannedEnd,rdReference:t.rdReference};}
+  private planOf(t:Row) {return {zoneId:t.zoneId,workTypeId:t.workTypeId,title:t.title,workDate:t.workDate,plannedQuantity:t.plannedQuantity,assigneeEmployeeId:t.assigneeEmployeeId,responsibleUserId:t.responsibleUserId,plannedStart:t.plannedStart,plannedEnd:t.plannedEnd,rdReference:t.rdReference,materialBatchId:t.materialBatchId};}
+  private async acceptedMaterial(c:PoolClient,p:string,t:{materialBatchId?:string|null;zoneId?:string|null;workTypeId?:string|null}) {
+    if(!t.materialBatchId || !t.zoneId || !t.workTypeId)return false;
+    return Boolean((await c.query(`SELECT 1 FROM material_controls mc JOIN material_control_steps s ON s.control_id=mc.id AND s.version=(SELECT max(version) FROM material_control_steps WHERE control_id=mc.id) WHERE mc.project_id=$1 AND mc.batch_id=$2 AND mc.zone_id=$3 AND mc.work_type_id=$4 AND s.verdict='accepted'`,[p,t.materialBatchId,t.zoneId,t.workTypeId])).rowCount);
+  }
   private async latestFrontTemplate(c:PoolClient,a:Actor,p:string) {
     const row=(await c.query(`SELECT snapshot FROM front_template_versions WHERE tenant_id=$1 AND project_id=$2 ORDER BY version DESC LIMIT 1`,[a.tenantId,p])).rows[0];
     return row?.snapshot;
@@ -218,7 +223,8 @@ export class TasksService {
     if(workType?.status!=='active')reasons.push('work_type_inactive');
     if(workType?.unit!==t.unit)reasons.push('work_type_unit_changed');
     if(workType?.requiresRd && !t.rdReference)reasons.push('rd_required');
-    for(const [flag,code] of [['requiresMaterialControl','material_control_unsupported'],['requiresPredecessorAcceptance','predecessor_acceptance_unsupported'],['requiresId','id_unsupported']])if(workType?.[flag])reasons.push(code);
+    for(const [flag,code] of [['requiresPredecessorAcceptance','predecessor_acceptance_unsupported'],['requiresId','id_unsupported']])if(workType?.[flag])reasons.push(code);
+    if(workType?.requiresMaterialControl && !(await this.acceptedMaterial(c,p,t)))reasons.push('material_not_accepted');
     const template=await this.latestFrontTemplate(c,a,p);
     const front=(await c.query(`SELECT snapshot FROM task_front_checks WHERE tenant_id=$1 AND project_id=$2 AND task_id=$3 ORDER BY sequence DESC LIMIT 1`,[a.tenantId,p,t.id])).rows[0]?.snapshot;
     if(!front)reasons.push('front_missing');

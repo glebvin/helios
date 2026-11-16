@@ -17,6 +17,7 @@ export type ServerTask = {
   plannedStart: string | null;
   plannedEnd: string | null;
   publicationSnapshotId: string | null;
+  materialBatchId?: string | null;
 };
 
 export type TaskArea = "plan" | "shift" | "quality" | "other";
