@@ -225,6 +225,8 @@ export function DirectorDesk({
           {page === "objects" ? <Objects lead={hasV1ProjectScope(session.role) ? <ProjectCatalogs session={session} projectId={templateProjectId} writable={!preview && session.role === "director"} /> : null} data={data} canEdit={canPlace} normsNote={access.normsNote} onSavePlace={onSavePlace} onTasks={() => onSection("tasks")} /> : null}
           {page === "people" ? (
             <People
+              primaryDay={taskDay}
+              primaryWritable={!preview}
               projectId={templateProjectId}
               key={view}
               session={session}
@@ -260,7 +262,7 @@ export function DirectorDesk({
               remarks={remarks}
               onResubmit={(id) => setRemarks((list) => list.map((item) => item.id === id ? { ...item, resubmitted: true } : item))}
             />) : null}
-          {page === "materials" ? <Materials session={session} projectId={templateProjectId} canEdit={canRecordSupply} /> : null}
+          {page === "materials" ? <Materials key={`${session.tenantId}:${session.userId}:${session.token}:${templateProjectId}`} session={session} projectId={templateProjectId} canEdit={canRecordSupply} /> : null}
           {page === "quality" ? (livePto ? (
             <PtoFacts session={session} projectId={templateProjectId} projectName={project} day={taskDay} notice={scope.notice} onOpenSheet={openSheet} />
           ) : (

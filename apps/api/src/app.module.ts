@@ -1,3 +1,7 @@
+import { MaterialBatchService } from "./material-batches.service.js";
+import { MaterialBatchController, MaterialBatchProjectController } from "./material-batches.controller.js";
+import { StaffImportService } from "./staff-import.service.js";
+import { StaffImportController } from "./staff-import.controller.js";
 import "reflect-metadata";
 import {
   Body,
@@ -37,8 +41,6 @@ import {EvidenceController} from './evidence.controller.js';
 import {EvidenceService} from './evidence.service.js';
 import {EvidenceStorage,type EvidenceBlobStore} from './evidence-storage.js';
 import {createEvidenceStore} from './evidence-store.js';
-import {MaterialBatchService} from './material-batches.service.js';
-import {MaterialBatchController, MaterialBatchProjectController} from './material-batches.controller.js';
 
 import {InvitationsService} from "./invitations.service.js";
 import {InvitationsController} from "./invitations.controller.js";
@@ -53,6 +55,9 @@ import {ContractPriceController, ContractPriceProjectController} from "./contrac
 import {ResponsibilityOrdersService} from "./responsibility-orders.service.js";
 import {ResponsibilityOrdersController} from "./responsibility-orders.controller.js";
 
+
+import { PrimaryDayController } from "./primary-day.controller.js";
+import { PrimaryDayService } from "./primary-day.service.js";
 
 export const APP_POOL = "APP_POOL";
 export const BOSS = "BOSS";
@@ -163,8 +168,12 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [MaterialBatchProjectController, MaterialBatchController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [MaterialBatchController, MaterialBatchProjectController, StaffImportController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+
+
   providers: [
+    { provide: MaterialBatchService, useFactory: (pool: Pool, storage: EvidenceBlobStore) => new MaterialBatchService(pool, storage), inject: [APP_POOL, EvidenceStorage] },
+    { provide: StaffImportService, useFactory: (pool: Pool) => new StaffImportService(pool), inject: [APP_POOL] },
     { provide: APP_POOL, useFactory: () => createPool() },
     BossHost,
     { provide: BOSS, useFactory: (host: BossHost) => host.boss, inject: [BossHost] },
@@ -182,7 +191,6 @@ class WorkforceController {
     // Shared DI: unset HELIOS_EVIDENCE_STORE keeps the filesystem adapter. S3 is opt-in for the QA store only.
     {provide:EvidenceStorage,useFactory:()=>createEvidenceStore()},
     {provide:EvidenceService,useFactory:(pool:Pool,storage:EvidenceBlobStore)=>new EvidenceService(pool,storage),inject:[APP_POOL,EvidenceStorage]},
-    {provide:MaterialBatchService,useFactory:(pool:Pool,storage:EvidenceBlobStore)=>new MaterialBatchService(pool,storage),inject:[APP_POOL,EvidenceStorage]},
     {provide:InvitationsService,useFactory:(pool:Pool)=>new InvitationsService(pool),inject:[APP_POOL]},
     {provide:RouteConfigService,useFactory:(pool:Pool)=>new RouteConfigService(pool),inject:[APP_POOL]},
     { provide: ChecklistTemplatesService, useFactory: (pool: Pool) => new ChecklistTemplatesService(pool), inject: [APP_POOL] },
@@ -190,6 +198,7 @@ class WorkforceController {
 
     {provide:ResponsibilityOrdersService,useFactory:(pool:Pool)=>new ResponsibilityOrdersService(pool),inject:[APP_POOL]},
 
+    { provide: PrimaryDayService, useFactory: (pool: Pool) => new PrimaryDayService(pool), inject: [APP_POOL] },
     TenantGuard,
   ],
 })

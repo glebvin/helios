@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canWriteStaff, staffBody, staffDraft, staffRequest, staffWriteError } from "./staff-form.ts";
+import { canImportStaff, canWriteStaff, staffBody, staffDraft, staffRequest, staffWriteError } from "./staff-form.ts";
 import type { ServerEmployee } from "./staff-list.ts";
 
 const org = [{ id: "org-1", name: "Своя" }];
@@ -27,6 +27,11 @@ test("повтор того же тела не меняет номер запр�
   assert.equal(canWriteStaff("director"), true);
   assert.equal(canWriteStaff("master"), false);
   assert.equal(canWriteStaff("worker"), false);
+  assert.equal(canWriteStaff("hr"), false);
+  assert.equal(canImportStaff("director"), true);
+  assert.equal(canImportStaff("hr"), true);
+  assert.equal(canImportStaff("master"), false);
+  assert.equal(canImportStaff("worker"), false);
 });
 
 test("устаревшая версия и отказ роли не выглядят как запись", () => {

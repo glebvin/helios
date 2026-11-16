@@ -27,16 +27,16 @@ export class MaterialBatchService {
   constructor(private readonly pool: Pool, private readonly storage: EvidenceBlobStore) {}
 
   private async membership(c: PoolClient, actor: Actor, projectId: string, write: boolean) {
-    const role = (await c.query(`SELECT role FROM memberships WHERE user_id=$1 AND status='active'`, [actor.userId])).rows[0]?.role as string | undefined;
-    const project = (await c.query(`SELECT project_id FROM project_memberships WHERE project_id=$1 AND user_id=$2 AND status='active'`, [projectId, actor.userId])).rows[0];
+    const role = (await c.query(`SELECT role FROM memberships WHERE user_id=$1 AND status='active'${write ? ' FOR SHARE' : ''}`, [actor.userId])).rows[0]?.role as string | undefined;
+    const project = (await c.query(`SELECT project_id FROM project_memberships WHERE project_id=$1 AND user_id=$2 AND status='active'${write ? ' FOR SHARE' : ''}`, [projectId, actor.userId])).rows[0];
     const permission = write ? 'materials.record' : 'materials.read';
-    if (!role || !roleContractAllows({ role, tenantId: actor.tenantId, projectIds: project ? [project.project_id] : [] }, permission, { tenantId: actor.tenantId, projectId })) throw httpError(403, 'role_denied');
+    if (!role || role !== actor.role || !roleContractAllows({ role, tenantId: actor.tenantId, projectIds: project ? [project.project_id] : [] }, permission, { tenantId: actor.tenantId, projectId })) throw httpError(403, 'role_denied');
     return role!;
   }
 
   private async employerIds(c: PoolClient, actor: Actor, role: string) {
     if (role !== 'supply') return null;
-    return (await c.query(`SELECT organization_id FROM employees WHERE user_id=$1 AND status='active'`, [actor.userId])).rows.map((row) => row.organization_id as string);
+    return (await c.query(`SELECT organization_id FROM employees WHERE user_id=$1 AND status='active' FOR SHARE`, [actor.userId])).rows.map((row) => row.organization_id as string);
   }
 
   private async owns(c: PoolClient, actor: Actor, role: string, organizationId: string) {
@@ -100,8 +100,8 @@ export class MaterialBatchService {
       const { inserted, hash } = await reserveCommand(c, actor, `POST /projects/${project}/material-batches`, command);
       if (!(await c.query(`SELECT id FROM projects WHERE id=$1 FOR NO KEY UPDATE`, [project])).rowCount) throw httpError(404, 'not_found');
       await this.membership(c, actor, project, true);
-      if (!inserted) return replayCommand(c, actor, command.requestId, hash);
       await this.owns(c, actor, role, command.organizationId);
+      if (!inserted) return replayCommand(c, actor, command.requestId, hash);
       if (!(await c.query(`SELECT 1 FROM organizations WHERE id=$1 AND kind<>'customer'`, [command.organizationId])).rowCount) throw httpError(404, 'not_found');
       await this.codeFree(c, project, command.organizationId, command.batchCode, null);
       const id = randomUUID();
@@ -120,12 +120,13 @@ export class MaterialBatchService {
     return withTenant(this.pool, actor.tenantId, actor.userId, async (c) => {
       const role = await this.membership(c, actor, project, true);
       const { inserted, hash } = await reserveCommand(c, actor, `POST /projects/${project}/material-batches/${batch}`, command);
+      if (!(await c.query(`SELECT id FROM projects WHERE id=$1 FOR NO KEY UPDATE`, [project])).rowCount) throw httpError(404, 'not_found');
       const head = (await c.query(`SELECT organization_id FROM material_batches WHERE project_id=$1 AND id=$2`, [project, batch])).rows[0];
       if (!head) throw httpError(404, 'not_found');
       await c.query(`SELECT pg_advisory_xact_lock(hashtext('material-batch'), hashtext($1::text))`, [batch]);
       await this.membership(c, actor, project, true);
-      if (!inserted) return replayCommand(c, actor, command.requestId, hash);
       await this.owns(c, actor, role, head.organization_id);
+      if (!inserted) return replayCommand(c, actor, command.requestId, hash);
       const current = Number((await c.query(`SELECT max(version) AS version FROM material_batch_revisions WHERE batch_id=$1`, [batch])).rows[0].version);
       if (current !== command.expectedVersion) throw httpError(409, 'stale_version');
       await this.codeFree(c, project, head.organization_id, command.batchCode, batch);
@@ -142,7 +143,7 @@ export class MaterialBatchService {
     const document = uuid(documentId);
     const pending = await withTenant(this.pool, actor.tenantId, actor.userId, async (c) => {
       const role = await this.membership(c, actor, project, true);
-      const row = await this.document(c, actor, role, project, batch, document);
+      const row = await this.document(c, actor, role, project, batch, document, true);
       if (row.state === 'ready') return row;
       return row;
     });
@@ -154,9 +155,9 @@ export class MaterialBatchService {
     await this.storage.put(actor.tenantId, document, bytes, { sizeBytes: pending.sizeBytes, sha256: pending.sha256, contentType: pending.contentType });
     return withTenant(this.pool, actor.tenantId, actor.userId, async (c) => {
       const role = await this.membership(c, actor, project, true);
-      const row = await this.document(c, actor, role, project, batch, document);
+      const row = await this.document(c, actor, role, project, batch, document, true);
       if (row.state !== 'ready') {
-        await c.query(`UPDATE material_batch_documents SET state='ready' WHERE id=$1`, [document]);
+        await c.query(`UPDATE material_batch_documents SET state='ready' WHERE project_id=$1 AND batch_id=$2 AND id=$3`, [project, batch, document]);
         await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'materials.document','material_batch_document',$3,'ok',$4)`, [actor.tenantId, actor.userId, document, JSON.stringify({ batchId: batch, sha256: row.sha256 })]);
       }
       return { id: document, state: 'ready' };
@@ -174,6 +175,10 @@ export class MaterialBatchService {
       return found;
     });
     const bytes = await this.storage.get(actor.tenantId, document, { sizeBytes: row.sizeBytes, sha256: row.sha256, contentType: row.contentType });
+    await withTenant(this.pool, actor.tenantId, actor.userId, async (c) => {
+      const role = await this.membership(c, actor, project, false);
+      await this.document(c, actor, role, project, batch, document);
+    });
     return { bytes, filename: row.filename, contentType: row.contentType };
   }
 
@@ -243,12 +248,12 @@ export class MaterialBatchService {
     return { ...this.item(project, row, documents), history: history.map((item) => ({ ...item, createdAt: new Date(item.createdAt).toISOString() })) };
   }
 
-  private async document(c: PoolClient, actor: Actor, role: string, project: string, batch: string, document: string) {
+  private async document(c: PoolClient, actor: Actor, role: string, project: string, batch: string, document: string, lock = false) {
     const head = (await c.query(`SELECT organization_id FROM material_batches WHERE project_id=$1 AND id=$2`, [project, batch])).rows[0];
     if (!head) throw httpError(404, 'not_found');
     await this.owns(c, actor, role, head.organization_id);
     const row = (await c.query(
-      `SELECT id, filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256, state FROM material_batch_documents WHERE project_id=$1 AND batch_id=$2 AND id=$3`,
+      `SELECT id, filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256, state FROM material_batch_documents WHERE project_id=$1 AND batch_id=$2 AND id=$3${lock ? ' FOR UPDATE' : ''}`,
       [project, batch, document],
     )).rows[0] as DocumentRow | undefined;
     if (!row) throw httpError(404, 'not_found');

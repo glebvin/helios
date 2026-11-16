@@ -3,6 +3,8 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { NestFactory } from '@nestjs/core';
 import type { INestApplication } from '@nestjs/common';
@@ -60,6 +62,14 @@ function withoutEmployer(over: Record<string, unknown>) {
 }
 
 test.before(async () => {
+  const ci = process.env.GITHUB_ACTIONS === 'true';
+  const localPort = process.env.HELIOS_MATERIAL_QA_DB_PORT ?? '54541';
+  assert.ok(['54541', '54633'].includes(localPort));
+  const target = new URL(adminUrl);
+  assert.equal(target.hostname, '127.0.0.1'); assert.equal(target.port, ci ? '54339' : localPort);
+  const directory = (await admin.query('SHOW data_directory')).rows[0].data_directory;
+  if (ci) assert.match(directory, /codex-api\/\.data\/pg-54339$/);
+  else assert.equal(realpathSync(directory), realpathSync(fileURLToPath(new URL(`../../../.data/pg-${localPort}`, import.meta.url))));
   evidence = await mkdtemp(join(tmpdir(), 'helios-material-batches-'));
   process.env.HELIOS_EVIDENCE_ROOT = evidence;
   await admin.query("INSERT INTO tenants(id,name) VALUES($1,'Материалы'),($2,'Чужая')", [tenant, foreign]);
@@ -83,6 +93,42 @@ test.before(async () => {
     assert.equal(response.status, 201, JSON.stringify(body));
     tokens.set(user, body.token);
   }
+});
+
+test('receipt replay rechecks the current supply employer', async () => {
+  const command = batchBody({batchCode:'REPLAY-EMPLOYER'});
+  const path = `/api/v1/projects/${project}/material-batches`;
+  assert.equal((await request(path, supply, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(command)})).status,201);
+  await admin.query('UPDATE employees SET organization_id=$1 WHERE tenant_id=$2 AND id=$3',[orgB,tenant,supplyEmployee]);
+  try {
+    const denied = await request(path,supply,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(command)});
+    assert.equal(denied.status,403); assert.equal((await bodyOf(denied)).error,'employer_denied');
+  } finally { await admin.query('UPDATE employees SET organization_id=$1 WHERE tenant_id=$2 AND id=$3',[orgA,tenant,supplyEmployee]); }
+});
+
+test('two different batches cannot concurrently acquire the same current code', async () => {
+  const path = `/api/v1/projects/${project}/material-batches`;
+  const cards = [];
+  for (const batchCode of ['CODE-RACE-A','CODE-RACE-B']) cards.push(await bodyOf(await request(path,master,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(batchBody({batchCode}))})));
+  const outcomes = await Promise.all(cards.map(card => request(`${path}/${card.id}`,master,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(withoutEmployer({requestId:id(),expectedVersion:1,batchCode:'CODE-RACE-FINAL',documents:[]}))})));
+  assert.deepEqual(outcomes.map(r=>r.status).sort(),[201,409]);
+  const rows = await admin.query("SELECT count(*)::int n FROM material_batch_revisions r WHERE tenant_id=$1 AND batch_code='CODE-RACE-FINAL'",[tenant]);assert.equal(rows.rows[0].n,1);
+});
+
+test('simultaneous byte uploads finalize and audit one document once', async () => {
+  const path = `/api/v1/projects/${project}/material-batches`;
+  const card = await bodyOf(await request(path,master,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(batchBody({batchCode:'UPLOAD-RACE'}))}));
+  const doc = card.documents[0]; const blocker = await admin.connect();
+  let pending: Promise<Response>[] = [];
+  try {
+    await blocker.query('BEGIN');await blocker.query('SELECT id FROM material_batch_documents WHERE tenant_id=$1 AND id=$2 FOR UPDATE',[tenant,doc.id]);
+    pending = [1,2].map(()=>request(`${path}/${card.id}/documents/${doc.id}/content`,master,{method:'PUT',headers:{'content-type':'application/octet-stream'},body:pdf}));
+    const deadline=Date.now()+10000;let waiting=0;
+    while(Date.now()<deadline){waiting=(await admin.query("SELECT count(*)::int n FROM pg_stat_activity WHERE datname=current_database() AND usename='helios_app' AND wait_event_type='Lock'")).rows[0].n;if(waiting>=2)break;await new Promise(resolve=>setTimeout(resolve,10));}
+    assert.ok(waiting>=2,'both uploads must reach the PostgreSQL barrier');await blocker.query('COMMIT');
+    assert.deepEqual((await Promise.all(pending)).map(r=>r.status),[200,200]);
+    assert.equal((await admin.query("SELECT count(*)::int n FROM audit_log WHERE tenant_id=$1 AND action='materials.document' AND object_id=$2",[tenant,doc.id])).rows[0].n,1);
+  } finally {await blocker.query('ROLLBACK').catch(()=>{});blocker.release();await Promise.allSettled(pending);}
 });
 
 test('publication still refuses unverified material control', async () => {
