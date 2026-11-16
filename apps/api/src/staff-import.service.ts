@@ -47,6 +47,7 @@ export class StaffImportService {
     const command = { requestId, organizationId, fileBase64: body.fileBase64, verdictHash };
     return this.command(actor, command, async (client) => {
       await this.organization(client, organizationId, true);
+      await this.authorize(client, actor);
       const verdict = await this.verdict(client, organizationId, file, true);
       if (verdict.verdictHash !== verdictHash) throw httpError(409, "import_changed");
       if (!verdict.acceptable) throw httpError(422, "staff_import_rejected");
@@ -118,7 +119,7 @@ export class StaffImportService {
   private async authorize(client: PoolClient, actor: Actor) {
     if (actor.role !== "director" && actor.role !== "hr") throw httpError(403, "role_denied");
     const membership = await client.query(
-      `SELECT 1 FROM memberships WHERE user_id=$1 AND role=$2 AND status='active'`,
+      `SELECT 1 FROM memberships WHERE user_id=$1 AND role=$2 AND status='active' FOR SHARE`,
       [actor.userId, actor.role],
     );
     if (!membership.rowCount) throw httpError(403, "role_denied");
@@ -136,7 +137,7 @@ export class StaffImportService {
     let preview: Awaited<ReturnType<typeof previewStaffImport>>;
     try {
       preview = await previewStaffImport(file.bytes, (data, limit) => {
-        const inflated = inflateRawSync(data);
+        const inflated = inflateRawSync(data, { maxOutputLength: Math.max(1, limit) });
         if (inflated.length > limit) throw new Error("inflate");
         return inflated;
       });

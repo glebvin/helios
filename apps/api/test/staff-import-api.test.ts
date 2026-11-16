@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import { NestFactory } from "@nestjs/core";
-import type { INestApplication } from "@nestjs/common";
+import type { NestExpressApplication } from "@nestjs/platform-express";
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { AppModule } from "../src/app.module.js";
 import { createPool } from "../src/db.js";
 import { AllExceptionsFilter } from "../src/http.js";
@@ -10,8 +12,9 @@ import { hashPassword } from "../src/password.js";
 import { staffImportBook } from "../../web/src/staff-import.js";
 
 const ci = process.env.GITHUB_ACTIONS === "true";
-const expectedPort = ci ? "54339" : "54612";
-const expectedDir = ci ? /codex-api\/\.data\/pg-54339$/ : /staff-import-confirm\/\.data\/pg-54612$/;
+const localPort = process.env.HELIOS_IMPORT_QA_DB_PORT ?? "54612";
+assert.ok(["54612", "54631"].includes(localPort));
+const expectedPort = ci ? "54339" : localPort;
 const password = "staff-import-test";
 const tenant = randomUUID();
 const otherTenant = randomUUID();
@@ -28,7 +31,7 @@ const people = [
 ].map((person) => ({ ...person, id: randomUUID(), email: `${person.key}-${tenant}@staff-import.test` }));
 const adminTarget = new URL(process.env.ADMIN_DATABASE_URL ?? "postgres://invalid");
 const admin = createPool(adminTarget.toString());
-let app: INestApplication;
+let app: NestExpressApplication;
 let base = "";
 const tokens = new Map<string, string>();
 
@@ -37,7 +40,8 @@ before(async () => {
   assert.equal(adminTarget.hostname, "127.0.0.1");
   assert.equal(live.rows[0].port, expectedPort);
   if (!ci) assert.match(live.rows[0].host, /^127\.0\.0\.1/);
-  assert.match(live.rows[0].directory, expectedDir);
+  if (ci) assert.match(live.rows[0].directory, /codex-api\/\.data\/pg-54339$/);
+  else assert.equal(realpathSync(live.rows[0].directory), realpathSync(fileURLToPath(new URL(`../../../.data/pg-${localPort}`, import.meta.url))));
   const hash = hashPassword(password);
   await admin.query(`INSERT INTO tenants(id,name) VALUES($1,'Импорт'),($2,'Чужая')`, [tenant, otherTenant]);
   for (const person of people) {
@@ -46,10 +50,13 @@ before(async () => {
   }
   await admin.query(`INSERT INTO organizations(tenant_id,id,kind,name) VALUES($1,$2,'own','Свой работодатель'),($1,$3,'subcontractor','Другой работодатель')`, [tenant, org, otherOrg]);
   await admin.query(`INSERT INTO organizations(tenant_id,id,kind,name) VALUES($1,$2,'own','Чужая компания')`, [otherTenant, foreignOrg]);
-  app = await NestFactory.create(AppModule, { logger: false });
+  app = await NestFactory.create<NestExpressApplication>(AppModule, { logger: false, bodyParser: false });
+  app.useBodyParser("json", { limit: "2mb" });
   app.useGlobalFilters(new AllExceptionsFilter());
   const server = await app.listen(0, "127.0.0.1");
-  base = `http://127.0.0.1:${server.address().port}`;
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  base = `http://127.0.0.1:${address.port}`;
   for (const person of people) tokens.set(person.key, await login(person.email));
 });
 
@@ -192,6 +199,41 @@ test("результат импорта виден после чтения и в
   assert.ok(names.includes("Петрова Анна Сергеевна"));
   const hrList = await send("/employees?limit=100&offset=0", undefined, "hr", "GET");
   assert.equal(hrList.body.total, registry.body.total);
+});
+
+test("книга больше стандартного HTTP-лимита проходит проверку и атомарное подтверждение", async () => {
+  const body = book(Array.from({ length: 200 }, (_, index) => ({ key: `large-${index}`, fullName: `Работник ${index} ${"а".repeat(120)}` })));
+  assert.ok(Buffer.byteLength(JSON.stringify(body)) > 100 * 1024);
+  const checked = await send("/staff-imports/checks", body, "hr");
+  assert.equal(checked.status, 200, JSON.stringify(checked.body)); assert.equal(checked.body.acceptable, true);
+  const saved = await send("/staff-imports", { ...body, requestId: randomUUID(), verdictHash: checked.body.verdictHash }, "hr");
+  assert.equal(saved.status, 201, JSON.stringify(saved.body)); assert.equal(saved.body.createdCount, 200);
+});
+
+test("две команды одного проверенного пакета дают одну запись и явный конфликт", async () => {
+  const body = book([{ key: "race-601", fullName: "Первый в гонке" }, { key: "race-602", fullName: "Второй в гонке" }]);
+  const checked = await send("/staff-imports/checks", body, "hr");
+  const commands = [randomUUID(), randomUUID()].map(requestId => ({ ...body, requestId, verdictHash: checked.body.verdictHash }));
+  const results = await Promise.all(commands.map(command => send("/staff-imports", command, "hr")));
+  assert.deepEqual(results.map(r => r.status).sort(), [201, 409]);
+  const winner = results.findIndex(r => r.status === 201);
+  assert.equal((await send("/staff-imports", commands[winner], "hr")).body.id, results[winner].body.id);
+  assert.equal((await admin.query("SELECT count(*)::int n FROM employees WHERE tenant_id=$1 AND personnel_number LIKE 'race-%'", [tenant])).rows[0].n, 2);
+});
+
+test("снятая роль закрывает повтор прежней квитанции и чтение журнала", async () => {
+  const body = book([{ key: "revoked-701", fullName: "До снятия роли" }]);
+  const checked = await send("/staff-imports/checks", body, "hr");
+  const command = { ...body, requestId: randomUUID(), verdictHash: checked.body.verdictHash };
+  assert.equal((await send("/staff-imports", command, "hr")).status, 201);
+  const userId = people.find(person => person.key === "hr")!.id;
+  await admin.query("UPDATE memberships SET status='revoked' WHERE tenant_id=$1 AND user_id=$2", [tenant, userId]);
+  try {
+    assert.equal((await send("/staff-imports", command, "hr")).status, 403);
+    assert.equal((await send("/staff-imports?limit=20", undefined, "hr", "GET")).status, 403);
+  } finally {
+    await admin.query("UPDATE memberships SET status='active' WHERE tenant_id=$1 AND user_id=$2", [tenant, userId]);
+  }
 });
 
 function book(rows: { key: string; fullName: string; phone?: string }[]) {

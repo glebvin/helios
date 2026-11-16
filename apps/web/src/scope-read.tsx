@@ -61,6 +61,16 @@ export function useCabinetScope(session: Session, onUnauthorized: () => void, ca
           expire.current();
           return;
         }
+        if (session.role === "engineer-pto") {
+          const home = await v1<{ today: string; projects: ServerProject[] }>(session, "/checklist-templates");
+          if (!live) return;
+          setActor(nextActor);
+          setProjects(home.projects);
+          setTotal(home.projects.length);
+          setDay(home.today);
+          setError("");
+          return;
+        }
         // Additional cabinets retain their existing assigned-project read projection.
         const page = hasV1ProjectScope(session.role)
           ? await v1<ProjectPage>(session, "/projects?limit=100")

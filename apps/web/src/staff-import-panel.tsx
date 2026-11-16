@@ -5,6 +5,7 @@ import { DeskSelect } from "./kit";
 import { Flash } from "./flash";
 import { NoteMark } from "./note-mark";
 import { ApiError, v1 } from "./v1";
+import { clearImportCommand, keepImportCommand, readImportCommand, type ImportCommand } from "./staff-import-command";
 import { collectBounded, currentPreview, previewStaffImport, staffImportColumns, staffImportExample, staffImportMaxBytes, type StaffImportPreview } from "./staff-import";
 
 type Org = { id: string; name: string };
@@ -19,7 +20,9 @@ export function StaffImportPanel({ session, organizations, onImported }: { sessi
   const summary = useRef<HTMLDivElement>(null);
   const readToken = useRef(0);
   const historyToken = useRef(0);
-  const requestId = useRef("");
+  const commandKey = `helios.staff-import:${session.tenantId}:${session.userId}`;
+  const mutation = useRef(false);
+  const [pending, setPending] = useState<ImportCommand | null>(() => readImportCommand(commandKey));
   const [employer, setEmployer] = useState(organizations.length === 1 ? organizations[0].id : "");
   const [file, setFile] = useState<Uint8Array | null>(null);
   const [preview, setPreview] = useState<StaffImportPreview | null>(null);
@@ -29,6 +32,11 @@ export function StaffImportPanel({ session, organizations, onImported }: { sessi
   const [notice, setNotice] = useState("");
   const [pulse, setPulse] = useState(0);
   const [saved, setSaved] = useState<SavedImport | null>(null);
+
+  useEffect(() => {
+    setEmployer(current => organizations.some(item => item.id === current) ? current : organizations.length === 1 ? organizations[0]!.id : "");
+  }, [organizations]);
+  useEffect(() => () => { ++readToken.current; ++historyToken.current; }, []);
 
   useEffect(() => {
     const token = ++historyToken.current;
@@ -42,13 +50,13 @@ export function StaffImportPanel({ session, organizations, onImported }: { sessi
   }, [preview]);
 
   async function open(chosen: File | undefined) {
-    if (!chosen) return;
+    if (!chosen || mutation.current || pending) return;
     const token = ++readToken.current;
     setReading(true);
     setPreview(null);
     setVerdict(null);
     setFile(null);
-    requestId.current = "";
+    setBusy("");
     try {
       if (chosen.size > staffImportMaxBytes) {
         setPreview({ fileError: "Файл больше 1 МБ. Предпросмотр его не читает.", rows: [], saved: false });
@@ -67,7 +75,7 @@ export function StaffImportPanel({ session, organizations, onImported }: { sessi
   }
 
   async function check() {
-    if (!file || !employer) return;
+    if (!file || !employer || mutation.current || pending) return;
     const token = ++readToken.current;
     setBusy("check");
     setNotice("");
@@ -75,7 +83,6 @@ export function StaffImportPanel({ session, organizations, onImported }: { sessi
       const next = await v1<Verdict>(session, "/staff-imports/checks", { organizationId: employer, fileBase64: base64(file) });
       if (readToken.current !== token) return;
       setVerdict(next);
-      requestId.current = "";
     } catch (error) {
       if (readToken.current === token) setNotice(importError(error));
     } finally {
@@ -84,20 +91,23 @@ export function StaffImportPanel({ session, organizations, onImported }: { sessi
   }
 
   async function confirm() {
-    if (!file || !verdict?.acceptable) return;
-    if (!requestId.current) requestId.current = crypto.randomUUID();
+    if (mutation.current) return;
+    let body = pending;
+    if (!body) {
+      if (!file || !verdict?.acceptable || verdict.organizationId !== employer) return;
+      body = keepImportCommand(commandKey, { requestId: crypto.randomUUID(), organizationId: employer, fileBase64: base64(file), verdictHash: verdict.verdictHash });
+      setPending(body);
+    }
+    mutation.current = true;
     const token = readToken.current;
     setBusy("confirm");
     setNotice("");
     try {
-      const result = await v1<SavedImport>(session, "/staff-imports", {
-        requestId: requestId.current,
-        organizationId: employer,
-        fileBase64: base64(file),
-        verdictHash: verdict.verdictHash,
-      });
+      const result = await v1<SavedImport>(session, "/staff-imports", body);
+      if (readImportCommand(commandKey)?.requestId === body.requestId) clearImportCommand(commandKey);
       if (readToken.current !== token) return;
-      requestId.current = "";
+      ++historyToken.current;
+      setPending(null);
       setSaved(result);
       setVerdict(null);
       setPreview(null);
@@ -107,9 +117,12 @@ export function StaffImportPanel({ session, organizations, onImported }: { sessi
       onImported();
     } catch (error) {
       if (readToken.current !== token) return;
-      if (error instanceof ApiError) requestId.current = "";
+      if (error instanceof ApiError && error.status < 500 && error.status !== 408) {
+        clearImportCommand(commandKey); setPending(null); setVerdict(null);
+      }
       setNotice(importError(error));
     } finally {
+      mutation.current = false;
       if (readToken.current === token) setBusy("");
     }
   }
@@ -119,7 +132,9 @@ export function StaffImportPanel({ session, organizations, onImported }: { sessi
   return (
     <section className="import-preview">
       <Flash message={notice === "Сотрудники сохранены." ? notice : ""} pulse={pulse} />
-      <DeskSelect label="Работодатель" value={employer} options={[{ value: "", label: "Выберите работодателя" }, ...organizations.map((item) => ({ value: item.id, label: item.name }))]} onChange={(value) => { setEmployer(value); setVerdict(null); requestId.current = ""; }} />
+      {pending ? <div role="status"><p>Результат подтверждения ещё не получен. Повтор отправит тот же пакет.</p><button className="fill desk-action" type="button" disabled={busy === "confirm"} onClick={() => void confirm()}>Повторить подтверждение</button></div> : null}
+      <fieldset disabled={Boolean(pending)} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
+      <DeskSelect label="Работодатель" value={employer} options={[{ value: "", label: "Выберите работодателя" }, ...organizations.map((item) => ({ value: item.id, label: item.name }))]} onChange={(value) => { ++readToken.current; setBusy(""); setReading(false); setEmployer(value); setVerdict(null); }} />
       <div className="import-actions">
         <button className="ghost desk-action" type="button" onClick={() => input.current?.click()}>Проверить файл</button>
         <button className="ghost desk-action" type="button" onClick={downloadExample}>Скачать пример</button>
@@ -129,6 +144,7 @@ export function StaffImportPanel({ session, organizations, onImported }: { sessi
         </NoteMark>
         <input ref={input} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" aria-label="Файл сотрудников Excel" hidden onChange={(event) => { void open(event.target.files?.[0]); event.target.value = ""; }} />
       </div>
+      </fieldset>
       {reading ? <p className="quiet">Читаем файл на этом устройстве.</p> : null}
       {notice && notice !== "Сотрудники сохранены." ? <p role="alert">{notice}</p> : null}
       {saved ? <ImportResult item={saved} /> : null}
@@ -152,7 +168,7 @@ export function StaffImportPanel({ session, organizations, onImported }: { sessi
               );
             })}
           </div>
-          {verdict?.acceptable ? <button className="fill desk-action" type="button" disabled={busy !== ""} onClick={() => void confirm()}>{busy === "confirm" ? "Сохраняем…" : "Подтвердить импорт"}</button> : null}
+          {verdict?.acceptable && !pending ? <button className="fill desk-action" type="button" disabled={busy !== ""} onClick={() => void confirm()}>{busy === "confirm" ? "Сохраняем…" : "Подтвердить импорт"}</button> : null}
         </motion.div>
       ) : null}
     </section>

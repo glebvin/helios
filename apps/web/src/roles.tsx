@@ -1,9 +1,10 @@
 export type View =
   | "gd" | "ds" | "zds-sso" | "zds-soso" | "rp"
   | "master" | "pto" | "supply" | "safety" | "hr"
-  | "customer" | "admin" | "worker";
+  | "customer" | "admin" | "worker" | "engineer-pto";
 
-export type Section = "overview" | "mine" | "people" | "orders" | "tasks" | "quality" | "materials" | "documents" | "objects" | "settings";
+export type Section = "overview" | "mine" | "people" | "tasks" | "quality" | "materials" | "documents" | "objects" | "settings" | "orders" | "templates";
+
 export type PeopleTab = "people" | "foremen" | "crews" | "sheet" | "contractors";
 export type QualityTab = "queue" | "check" | "remarks" | "history";
 
@@ -133,9 +134,9 @@ const desk: Access[] = [
     ...look,
     id: "zds-soso",
     label: "ЗДС СОСО",
-    hint: "Заместитель директора по строительству — руководитель службы обеспечения. Шаблоны чек-листов и перечень ИД пока не реализованы.",
+    hint: "Заместитель директора по строительству — руководитель службы обеспечения. Утверждает шаблон сдачи после согласования РП и ОТиПБ. Перечень ИД пока не реализован.",
     account: "director",
-    sections: [{ id: "documents", label: "Акты" }],
+    sections: [{ id: "templates", label: "Шаблоны" }, { id: "documents", label: "Акты" }],
     checklistNote: true,
     shell: "desk",
     overviewTitle: "Объект сегодня",
@@ -154,6 +155,7 @@ const desk: Access[] = [
       { id: "quality", label: "Приёмка" },
       { id: "materials", label: "Материалы" },
       { id: "documents", label: "Акты" },
+      { id: "templates", label: "Шаблоны" },
       { id: "objects", label: "Объект" },
       { id: "settings", label: "Настройки" },
     ],
@@ -226,6 +228,7 @@ const desk: Access[] = [
     sections: [
       { id: "quality", label: "Приёмка" },
       { id: "documents", label: "Акты" },
+      { id: "templates", label: "Шаблоны" },
       { id: "people", label: "Табель" },
     ],
     peopleTabs: ["sheet"],
@@ -252,7 +255,7 @@ const desk: Access[] = [
     label: "Охрана труда",
     hint: "Охрана труда и пожарная безопасность. Согласует допуск. Сервер этого шага текущему входу не отдаёт.",
     account: "director",
-    sections: [{ id: "people", label: "Люди" }],
+    sections: [{ id: "people", label: "Люди" }, { id: "templates", label: "Шаблоны" }],
     peopleTabs: ["people"],
     shell: "desk",
     overviewTitle: "Объект сегодня",
@@ -261,7 +264,7 @@ const desk: Access[] = [
     ...look,
     id: "hr",
     label: "Кадры",
-    hint: "Директор по персоналу, служба персонала. Ведёт приказы об ответственных. Утверждение табеля этим шагом не подключается.",
+    hint: "Директор по персоналу, служба персонала. Ведёт приказы и выпускает сводные ревизии табеля.",
     account: "director",
     sections: [{ id: "orders", label: "Приказы" }, { id: "people", label: "Люди" }],
     exportPeople: true,
@@ -303,6 +306,16 @@ const desk: Access[] = [
     peopleTabs: ["people", "foremen"],
     shell: "desk",
     overviewTitle: "Объект сегодня",
+  },
+  {
+    ...look,
+    id: "engineer-pto",
+    label: "Инженер ПТО",
+    hint: "Готовит шаблон сдачи и следующую редакцию. Не заменяет руководителя ПТО.",
+    account: "director",
+    sections: [{ id: "templates", label: "Шаблоны" }],
+    shell: "desk",
+    overviewTitle: "Шаблоны сдачи",
   },
   {
     ...look,

@@ -123,6 +123,15 @@ function itemValid(item: ChecklistItem, ids: Set<string>): boolean {
   return true;
 }
 
+/** Содержание шаблона до ответов. Страница из десяти пунктов — правило показа, не предел хранения. */
+export function checklistTemplateIssues(items: readonly ChecklistItem[]): ChecklistReason[] {
+  const ids = new Set<string>();
+  const issues: ChecklistReason[] = [];
+  if (items.length < 1) issues.push("invalid_template");
+  for (const item of items) if (!itemValid(item, ids)) issues.push("invalid_template");
+  return issues;
+}
+
 /** Проверка ответов по закреплённой версии. Пригодна для сервера: без интерфейса и без записи. */
 export function validateChecklist(snapshot: ChecklistSnapshot, answers: readonly ChecklistAnswer[]): ChecklistVerdict {
   const ids = new Set<string>();
