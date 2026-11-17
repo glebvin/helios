@@ -10748,7 +10748,7 @@
       "get": {
         "operationId": "readInternalInspection",
         "summary": "readInternalInspection",
-        "description": "Initial inspection of the entire positive immutable master-accepted part. Assigned master submits, pinned project director confirms responsibility, pinned PTO accepts or returns with a reason. Route version and participants are snapshotted at submission; later configuration does not reassign an existing inspection. Current role and project scope are checked even for retries. Latest successful task self-control is required for submit/approve. No partial PTO decision, correction, resubmission, external inspection, observer delivery or skip policy in this slice.",
+        "description": "Initial inspection of the entire positive immutable master-accepted part. Assigned master submits, pinned project director confirms responsibility, pinned PTO accepts or returns with a reason. Route version and participants are snapshotted at submission; later configuration does not reassign an existing inspection. Current role and project scope are checked even for retries. Latest successful task self-control is required for submit/approve. No partial PTO decision, correction, resubmission, external inspection, observer delivery or skip policy in this slice. A returned part can be resubmitted by the originally pinned master with a correction reason and a new successful task self-control created after the return. It keeps the same immutable quantity and originally pinned participants; RP/PTO review each new attempt. An accepted part cannot be reopened. Attempts and events are append-only.",
         "security": [
           {
             "bearerAuth": []
@@ -10843,7 +10843,7 @@
       "post": {
         "operationId": "recordInternalInspection",
         "summary": "recordInternalInspection",
-        "description": "Initial inspection of the entire positive immutable master-accepted part. Assigned master submits, pinned project director confirms responsibility, pinned PTO accepts or returns with a reason. Route version and participants are snapshotted at submission; later configuration does not reassign an existing inspection. Current role and project scope are checked even for retries. Latest successful task self-control is required for submit/approve. No partial PTO decision, correction, resubmission, external inspection, observer delivery or skip policy in this slice.",
+        "description": "Initial inspection of the entire positive immutable master-accepted part. Assigned master submits, pinned project director confirms responsibility, pinned PTO accepts or returns with a reason. Route version and participants are snapshotted at submission; later configuration does not reassign an existing inspection. Current role and project scope are checked even for retries. Latest successful task self-control is required for submit/approve. No partial PTO decision, correction, resubmission, external inspection, observer delivery or skip policy in this slice. A returned part can be resubmitted by the originally pinned master with a correction reason and a new successful task self-control created after the return. It keeps the same immutable quantity and originally pinned participants; RP/PTO review each new attempt. An accepted part cannot be reopened. Attempts and events are append-only.",
         "security": [
           {
             "bearerAuth": []
@@ -20482,6 +20482,10 @@
           },
           "blocksNext": {
             "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -20617,6 +20621,7 @@
                   "type": "string",
                   "enum": [
                     "submit",
+                    "resubmit",
                     "responsible",
                     "approve",
                     "return"
@@ -20679,13 +20684,48 @@
               "type": "string",
               "enum": [
                 "submit",
+                "resubmit",
                 "responsible",
                 "approve",
                 "return"
               ]
             }
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InternalInspectionAttempt"
+            }
+          },
+          "attemptNumber": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "resubmission": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "needsFreshSelfControl",
+                  "participantsReady"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "needsFreshSelfControl": {
+                    "type": "boolean"
+                  },
+                  "participantsReady": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            ]
           }
-        }
+        },
+        "description": "Fresh reads include attempts, attemptNumber and resubmission. Exact durable replies stored before migration028 may omit these additive fields; historical receipts are not rewritten."
       },
       "InternalInspectionInput": {
         "oneOf": [
@@ -20771,8 +20811,106 @@
                 "maxLength": 500
               }
             }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "requestId",
+              "expectedVersion",
+              "action",
+              "reason"
+            ],
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "action": {
+                "const": "resubmit",
+                "type": "string"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
+            }
           }
         ]
+      },
+      "InternalInspectionAttemptSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "acceptedPart",
+          "configurationVersion",
+          "preparer",
+          "responsible",
+          "approver",
+          "selfControl",
+          "previousReturnVersion",
+          "correctionReason"
+        ],
+        "properties": {
+          "acceptedPart": {
+            "$ref": "#/components/schemas/InternalInspectionPart"
+          },
+          "configurationVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "preparer": {
+            "$ref": "#/components/schemas/InternalInspectionParticipant"
+          },
+          "responsible": {
+            "$ref": "#/components/schemas/InternalInspectionParticipant"
+          },
+          "approver": {
+            "$ref": "#/components/schemas/InternalInspectionParticipant"
+          },
+          "selfControl": {
+            "$ref": "#/components/schemas/InternalInspectionControl"
+          },
+          "previousReturnVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "correctionReason": {
+            "type": "string"
+          }
+        }
+      },
+      "InternalInspectionAttempt": {
+        "type": "object",
+        "required": [
+          "startVersion",
+          "previousReturnVersion",
+          "snapshot",
+          "createdAt"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "startVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "previousReturnVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/InternalInspectionAttemptSnapshot"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
       }
     }
   }
