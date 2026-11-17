@@ -1,4 +1,4 @@
-export type InspectionAction = 'submit' | 'responsible' | 'approve' | 'return';
+export type InspectionAction = 'submit' | 'resubmit' | 'responsible' | 'approve' | 'return';
 export type InspectionCommand = {path:string;body:{requestId:string;expectedVersion:number;action:InspectionAction;expectedRouteVersion?:number;reason?:string}};
 type Store=Pick<Storage,'getItem'|'setItem'|'removeItem'>;
 const memory=new Map<string,InspectionCommand>();
@@ -6,7 +6,7 @@ export function readInspectionCommand(key:string,storage:()=>Store=()=>sessionSt
  if(memory.has(key))return memory.get(key)!;
  try{
   const row=JSON.parse(storage().getItem(key)??'null') as InspectionCommand|null,b=row?.body;
-  if(row&&/^\/projects\/[0-9a-f-]{36}\/accepted-parts\/[0-9a-f-]{36}\/internal-inspection$/i.test(row.path)&&b&&/^[0-9a-f-]{36}$/i.test(b.requestId)&&Number.isSafeInteger(b.expectedVersion)&&b.expectedVersion>=0&&['submit','responsible','approve','return'].includes(b.action)&&(b.action!=='submit'||Number.isSafeInteger(b.expectedRouteVersion))&&(b.action!=='return'||typeof b.reason==='string')){memory.set(key,row);return row;}
+  if(row&&/^\/projects\/[0-9a-f-]{36}\/accepted-parts\/[0-9a-f-]{36}\/internal-inspection$/i.test(row.path)&&b&&/^[0-9a-f-]{36}$/i.test(b.requestId)&&Number.isSafeInteger(b.expectedVersion)&&b.expectedVersion>=0&&['submit','resubmit','responsible','approve','return'].includes(b.action)&&(b.action!=='submit'||Number.isSafeInteger(b.expectedRouteVersion))&&(!['return','resubmit'].includes(b.action)||typeof b.reason==='string')){memory.set(key,row);return row;}
  }catch{/* Retain a live command in memory if storage is unavailable. */}
  return null;
 }

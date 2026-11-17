@@ -28,6 +28,6 @@ export async function internalInspectionFixture(admin:Pool,base:string) {
   const saved=await f.ok(`/projects/${f.project}/route-config`,f.command({expectedVersion:configVersion,configuration}),'admin');configVersion=saved.version;return saved;
  }
  const path=(n:number)=>`/projects/${f.project}/accepted-parts/${parts[n].partId}/internal-inspection`;
- const action=(n:number,action:string,expectedVersion:number,extra:Record<string,unknown>={},key=action==='submit'?'master':action==='responsible'?'director':'pto')=>f.call(path(n),f.command({action,expectedVersion,...(action==='submit'?{expectedRouteVersion:configVersion}:{}),...extra}),key);
+ const action=(n:number,action:string,expectedVersion:number,extra:Record<string,unknown>={},key=['submit','resubmit'].includes(action)?'master':action==='responsible'?'director':'pto')=>f.call(path(n),f.command({action,expectedVersion,...(action==='submit'?{expectedRouteVersion:configVersion}:{}),...extra}),key);
  return {...f,parts,path,action,configure};
 }

@@ -9,3 +9,8 @@ test('потерянная приёмка после reload сохраняет �
  assert.equal(readInspectionCommand('another-actor-part',storage),null);clearInspectionCommand('inspection-restored','another-request',storage);assert.ok(readInspectionCommand('inspection-restored',storage));clearInspectionCommand('inspection-restored',command.body.requestId,storage);assert.equal(readInspectionCommand('inspection-restored',storage),null);
  data.set('broken',JSON.stringify({path:command.path,body:{...command.body,action:'delete'}}));assert.equal(readInspectionCommand('broken',storage),null);
 });
+test('повторная подача после reload сохраняет версию возврата и описание исправления',()=>{
+ const data=new Map<string,string>(),storage=()=>({getItem:(k:string)=>data.get(k)??null,setItem:(k:string,v:string)=>{data.set(k,v);},removeItem:(k:string)=>{data.delete(k);}});
+ const command:InspectionCommand={path:'/projects/11111111-1111-4111-8111-111111111111/accepted-parts/22222222-2222-4222-8222-222222222222/internal-inspection',body:{requestId:'33333333-3333-4333-8333-333333333333',expectedVersion:3,action:'resubmit',reason:'Примыкание исправлено'}};
+ keepInspectionCommand('retry-original',command,storage);command.body.reason='Другое';command.body.expectedVersion=6;data.set('retry-restored',data.get('retry-original')!);const restored=readInspectionCommand('retry-restored',storage);assert.equal(restored?.body.expectedVersion,3);assert.equal(restored?.body.reason,'Примыкание исправлено');assert.equal(restored?.body.action,'resubmit');assert.equal(readInspectionCommand('another-person',storage),null);
+});
