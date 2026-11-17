@@ -25,7 +25,7 @@ export class InternalInspectionsService {
   private async source(c: PoolClient,a: Actor,project: string,part: string) {
     if (!['master','director','pto','worker'].includes(a.role)) throw httpError(403,'role_denied');
     const row = (await c.query(`SELECT v.id,s.report_id AS "reportId",s.task_id AS "taskId",t.title,t.unit,v.accepted_quantity::text AS quantity
-      FROM master_volume_reviews v JOIN managed_execution_reports s ON s.tenant_id=v.tenant_id AND s.report_id=v.report_id
+      FROM (SELECT tenant_id,id,report_id,accepted_quantity FROM master_volume_reviews UNION ALL SELECT tenant_id,id,report_id,accepted_quantity FROM volume_remainder_events WHERE action='review') v JOIN managed_execution_reports s ON s.tenant_id=v.tenant_id AND s.report_id=v.report_id
       ${executionJoin} JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.project_id=s.project_id AND t.id=s.task_id
       WHERE ${executionScope} AND v.id=$4 AND EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id=$1 AND m.user_id=$2 AND m.status='active' AND m.role=$5)`,[a.tenantId,a.userId,project,part,a.role])).rows[0];
     if (!row) throw httpError(404,'not_found');

@@ -25,4 +25,11 @@ export class VolumeReviewsController {
     const result = await this.reviews.review(actorOf(r), uuid(p).toLowerCase(), uuid(id).toLowerCase(), b);
     response.status(result.status).json(result.body);
   }
+  @Post(':report/remainder')
+  async remainder(@Req() r: ActorRequest,@Param('project') p:string,@Param('report') id:string,@Body() b:unknown,@Query() q:Record<string,unknown>,@Res() response:{status(code:number):{json(body:unknown):void}}) {
+    queryInput(q,[]);
+    const result=await this.reviews.remainder(actorOf(r),uuid(p).toLowerCase(),uuid(id).toLowerCase(),b);
+    response.status(result.status).json(result.body);
+  }
+
 }
