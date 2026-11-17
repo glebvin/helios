@@ -15,6 +15,7 @@ import { clearReviewCommand, keepReviewCommand, readReviewCommand } from './volu
 type Review = {id: string; acceptedPartId: string | null; acceptedQuantity: string; differenceQuantity: string; reason: string | null; actorName: string; createdAt: string};
 type Report = {reportId: string; title: string; unit: string; submittedQuantity: string; totalAcceptedQuantity?:string|null; remainder?:Remainder|null; version: number; review: Review | null; checklist: {id: string; version: number; passed: boolean; blocksNext: boolean} | null};
 type Page = {items: Report[]; total: number; totals: {unit: string; submittedQuantity: string; acceptedQuantity: string | null; reviewedReports: number; unreviewedReports: number}[]};
+const hasAcceptedVolume=(row:Report)=>Number(row.totalAcceptedQuantity??row.review?.acceptedQuantity??'0')>0;
 function message(error: unknown): string {
   if (!(error instanceof ApiError)) return 'Нет ответа сервера. Исходный результат пока не подтверждён.';
   const codes: Record<string,string> = {invalid_quantity:'Введите число от нуля с точностью до трёх знаков.',quantity_exceeds_submitted:'Нельзя принять больше предъявленного.',reason_required:'Укажите причину разницы с предъявленным объёмом.',self_control_required:'Нужен пройденный самоконтроль задания.',checklist_changed:'Самоконтроль изменился. Обновите карточку и проверьте результат.',stale_version:'Решение уже записано другим окном. Обновите карточку.',review_closed:'Решение закрыто. Для изменения нужна отдельная корректировка.',role_denied:'Этому входу запись решения мастера недоступна.',not_found:'Предъявление или объект недоступны этому входу.'};
@@ -37,11 +38,11 @@ export function VolumeReviews({session,projectId,projectName,day,notice,onBack}:
       {read.body.totals.map(total=><StatGrid key={total.unit} items={[{value:`${amount(total.submittedQuantity)} ${total.unit}`,label:'Предъявлено'},{value:total.acceptedQuantity===null?'—':`${amount(total.acceptedQuantity)} ${total.unit}`,label:'Принято мастером'},{value:String(total.unreviewedReports),label:'Ждут решения'}]}/>)}
       {read.body.items.length===0?<DeskEmpty title="За этот день предъявлений нет" description="Пустой список не означает, что работу приняли или отклонили."/>:<div className="sheet-wrap volume-review-desktop"><table className="sheet facts-grid"><thead><tr><th>Работа</th><th>Предъявлено</th><th>Принято мастером</th><th>Состояние</th><th></th></tr></thead><tbody>{read.body.items.map(row=><tr key={row.reportId}>
         <td><b>{row.title}</b></td><td>{amount(row.submittedQuantity)} {row.unit}</td><td>{row.review===null?'—':`${amount(row.totalAcceptedQuantity??row.review.acceptedQuantity)} ${row.unit}`}</td>
-        <td><DeskBadge tone={row.review===null?'neutral':row.review.acceptedPartId?'done':'warn'}>{row.review===null?'Ждёт мастера':row.review.acceptedPartId?'Решение записано':'Не принято'}</DeskBadge></td>
+        <td><DeskBadge tone={row.review===null?'neutral':hasAcceptedVolume(row)?'done':'warn'}>{row.review===null?'Ждёт мастера':hasAcceptedVolume(row)?'Решение записано':'Не принято'}</DeskBadge></td>
         <td><button className="ghost desk-action" type="button" aria-label={`Открыть предъявление ${row.title}`} onClick={()=>setSelected(row.reportId)}>Открыть</button></td>
       </tr>)}</tbody></table></div>}
       <div className="volume-review-mobile">{read.body.items.map(row=><article className="panel" key={row.reportId}>
-        <div className="panel-head"><h3>{row.title}</h3><DeskBadge>{row.review===null?'Ждёт мастера':row.review.acceptedPartId?'Решение записано':'Не принято'}</DeskBadge></div>
+        <div className="panel-head"><h3>{row.title}</h3><DeskBadge>{row.review===null?'Ждёт мастера':hasAcceptedVolume(row)?'Решение записано':'Не принято'}</DeskBadge></div>
         <p>Предъявлено {amount(row.submittedQuantity)} {row.unit}</p><p>Принято мастером: {row.review===null?'—':`${amount(row.totalAcceptedQuantity??row.review.acceptedQuantity)} ${row.unit}`}</p>
         <button className="ghost desk-action" type="button" aria-label={`Открыть предъявление ${row.title}`} onClick={()=>setSelected(row.reportId)}>Открыть</button>
       </article>)}</div>
