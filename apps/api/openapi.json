@@ -10955,6 +10955,123 @@
           }
         }
       }
+    },
+    "/api/v1/projects/{project}/volume-reviews/{report}/remainder": {
+      "post": {
+        "operationId": "recordVolumeRemainder",
+        "summary": "Предъявить или принять связанный остаток объёма",
+        "description": "Active project master only. One pending presentation per original report. Fresh passed latest self-control after previous master decision is required. Presentation2/review3,4/5 etc. Quantity cannot exceed available remainder or its pending presentation. Original report and master decision stay immutable; each positive acceptance has a separate part UUID and existing PTO route. Exact requestId replay follows live authorization. List totals count original submitted quantity once and all accepted parts. Old receipts may omit new read fields.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantId"
+          },
+          {
+            "name": "project",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "report",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumeReviewCard"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Rejected without a business write",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VolumeRemainderInput"
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -20091,6 +20208,11 @@
               }
             },
             "nullable": true
+          },
+          "totalAcceptedQuantity": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d{1,3})?$",
+            "nullable": true
           }
         },
         "required": [
@@ -20235,6 +20357,19 @@
             "items": {
               "$ref": "#/components/schemas/MasterVolumeReview"
             }
+          },
+          "totalAcceptedQuantity": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d{1,3})?$",
+            "nullable": true
+          },
+          "remainder": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VolumeRemainderState"
+              }
+            ],
+            "nullable": true
           }
         },
         "required": [
@@ -20909,6 +21044,164 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "VolumeRemainderEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version",
+          "action",
+          "presentationVersion",
+          "presentedQuantity",
+          "acceptedQuantity",
+          "acceptedPartId",
+          "reason",
+          "checklistRunId",
+          "actorName",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 2
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "present",
+              "review"
+            ]
+          },
+          "presentationVersion": {
+            "type": "integer",
+            "nullable": true
+          },
+          "presentedQuantity": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d{1,3})?$"
+          },
+          "acceptedQuantity": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d{1,3})?$",
+            "nullable": true
+          },
+          "acceptedPartId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "checklistRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "actorName": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "VolumeRemainderState": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "remainingQuantity",
+          "presentation",
+          "needsFreshSelfControl",
+          "allowedActions",
+          "history"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "remainingQuantity": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d{1,3})?$"
+          },
+          "presentation": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/VolumeRemainderEvent"
+              }
+            ],
+            "nullable": true
+          },
+          "needsFreshSelfControl": {
+            "type": "boolean"
+          },
+          "allowedActions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "present",
+                "review"
+              ]
+            }
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VolumeRemainderEvent"
+            }
+          }
+        }
+      },
+      "VolumeRemainderInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "expectedVersion",
+          "action",
+          "quantity",
+          "checklistRunId"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "expectedVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "present",
+              "review"
+            ]
+          },
+          "quantity": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d{1,3})?$"
+          },
+          "checklistRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "nullable": true
           }
         }
       }

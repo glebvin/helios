@@ -1,3 +1,4 @@
+import {VolumeRemainder,type Remainder} from './volume-remainder';
 import { InternalInspection } from './internal-inspection';
 import { useEffect, useRef, useState } from 'react';
 import type { Session } from './api';
@@ -12,7 +13,7 @@ import { civilLabel } from './scope';
 import { clearReviewCommand, keepReviewCommand, readReviewCommand } from './volume-review-command';
 
 type Review = {id: string; acceptedPartId: string | null; acceptedQuantity: string; differenceQuantity: string; reason: string | null; actorName: string; createdAt: string};
-type Report = {reportId: string; title: string; unit: string; submittedQuantity: string; version: number; review: Review | null; checklist: {id: string; version: number; passed: boolean; blocksNext: boolean} | null};
+type Report = {reportId: string; title: string; unit: string; submittedQuantity: string; totalAcceptedQuantity?:string|null; remainder?:Remainder|null; version: number; review: Review | null; checklist: {id: string; version: number; passed: boolean; blocksNext: boolean} | null};
 type Page = {items: Report[]; total: number; totals: {unit: string; submittedQuantity: string; acceptedQuantity: string | null; reviewedReports: number; unreviewedReports: number}[]};
 function message(error: unknown): string {
   if (!(error instanceof ApiError)) return 'Нет ответа сервера. Исходный результат пока не подтверждён.';
@@ -35,13 +36,13 @@ export function VolumeReviews({session,projectId,projectName,day,notice,onBack}:
     {read.body?<>
       {read.body.totals.map(total=><StatGrid key={total.unit} items={[{value:`${amount(total.submittedQuantity)} ${total.unit}`,label:'Предъявлено'},{value:total.acceptedQuantity===null?'—':`${amount(total.acceptedQuantity)} ${total.unit}`,label:'Принято мастером'},{value:String(total.unreviewedReports),label:'Ждут решения'}]}/>)}
       {read.body.items.length===0?<DeskEmpty title="За этот день предъявлений нет" description="Пустой список не означает, что работу приняли или отклонили."/>:<div className="sheet-wrap volume-review-desktop"><table className="sheet facts-grid"><thead><tr><th>Работа</th><th>Предъявлено</th><th>Принято мастером</th><th>Состояние</th><th></th></tr></thead><tbody>{read.body.items.map(row=><tr key={row.reportId}>
-        <td><b>{row.title}</b></td><td>{amount(row.submittedQuantity)} {row.unit}</td><td>{row.review===null?'—':`${amount(row.review.acceptedQuantity)} ${row.unit}`}</td>
+        <td><b>{row.title}</b></td><td>{amount(row.submittedQuantity)} {row.unit}</td><td>{row.review===null?'—':`${amount(row.totalAcceptedQuantity??row.review.acceptedQuantity)} ${row.unit}`}</td>
         <td><DeskBadge tone={row.review===null?'neutral':row.review.acceptedPartId?'done':'warn'}>{row.review===null?'Ждёт мастера':row.review.acceptedPartId?'Решение записано':'Не принято'}</DeskBadge></td>
         <td><button className="ghost desk-action" type="button" aria-label={`Открыть предъявление ${row.title}`} onClick={()=>setSelected(row.reportId)}>Открыть</button></td>
       </tr>)}</tbody></table></div>}
       <div className="volume-review-mobile">{read.body.items.map(row=><article className="panel" key={row.reportId}>
         <div className="panel-head"><h3>{row.title}</h3><DeskBadge>{row.review===null?'Ждёт мастера':row.review.acceptedPartId?'Решение записано':'Не принято'}</DeskBadge></div>
-        <p>Предъявлено {amount(row.submittedQuantity)} {row.unit}</p><p>Принято мастером: {row.review===null?'—':`${amount(row.review.acceptedQuantity)} ${row.unit}`}</p>
+        <p>Предъявлено {amount(row.submittedQuantity)} {row.unit}</p><p>Принято мастером: {row.review===null?'—':`${amount(row.totalAcceptedQuantity??row.review.acceptedQuantity)} ${row.unit}`}</p>
         <button className="ghost desk-action" type="button" aria-label={`Открыть предъявление ${row.title}`} onClick={()=>setSelected(row.reportId)}>Открыть</button>
       </article>)}</div>
       {read.body.total>limit?<div className="rowline"><button className="ghost desk-action" type="button" disabled={offset===0} onClick={()=>setOffset(Math.max(0,offset-limit))}>Назад</button><span>{offset+1}–{Math.min(offset+limit,read.body.total)} из {read.body.total}</span><button className="ghost desk-action" type="button" disabled={offset+limit>=read.body.total} onClick={()=>setOffset(offset+limit)}>Далее</button></div>:null}
@@ -54,6 +55,7 @@ function ReviewDialog({session,projectId,reportId,onClose,onSaved}: {session:Ses
   const path=`/projects/${projectId}/volume-reviews/${reportId}`,key=`helios.volume-review:${session.tenantId}:${session.userId}:${projectId}:${reportId}`;
   const [pending,setPending]=useState(()=>readReviewCommand(key));
   const [quantity,setQuantity]=useState<string|null>(null),[reason,setReason]=useState(''),[error,setError]=useState(''),[saved,setSaved]=useState(''),[busy,setBusy]=useState(false);
+  const [savedPulse,setSavedPulse]=useState(0);
   const lock=useRef(false),active=useRef(true);
   useEffect(()=>()=>{active.current=false;},[]);
   const read=useServerRead(session,path,'',()=>v1<Report>(session,path),message);
@@ -72,14 +74,14 @@ function ReviewDialog({session,projectId,reportId,onClose,onSaved}: {session:Ses
     }finally{lock.current=false;if(active.current)setBusy(false);}
   }
   return <Dialog title="Самоконтроль объёма" onClose={()=>{if(!lock.current)onClose();}}>
-    {saved?<Flash message={saved}/>:null}
+    {saved?<Flash message={saved} pulse={savedPulse}/>:null}
     {read.loading?<p role="status">Читаем предъявление…</p>:null}
     {read.error?<p role="alert">{read.error}</p>:null}
     {error?<p role="alert">{error}</p>:null}
     {read.error||error?<button className="ghost desk-action" type="button" onClick={read.retry}>Обновить карточку</button>:null}
     {row?<>
       <h3>{row.title}</h3><p>Предъявлено {amount(row.submittedQuantity)} {row.unit}.</p>
-      {row.review?<section className="panel"><h3>{row.review.acceptedPartId?'Принято мастером':'Не принято'}</h3><p>{amount(row.review.acceptedQuantity)} {row.unit}. Разница: {amount(row.review.differenceQuantity)} {row.unit}.</p>{row.review.reason?<p>{row.review.reason}</p>:null}<p className="quiet">{row.review.actorName} · {new Date(row.review.createdAt).toLocaleString('ru-RU')}</p><p className="quiet">Решение сохранено в истории. Изменение закрытого результата требует отдельной корректировки.</p></section>:null}
+      {row.review?<section className="panel"><h3>{row.remainder?.history.length?'Первое решение мастера':row.review.acceptedPartId?'Принято мастером':'Не принято'}</h3><p>{amount(row.review.acceptedQuantity)} {row.unit}. Разница: {amount(row.review.differenceQuantity)} {row.unit}.</p>{row.review.reason?<p>{row.review.reason}</p>:null}<p className="quiet">{row.review.actorName} · {new Date(row.review.createdAt).toLocaleString('ru-RU')}</p><p className="quiet">Решение сохранено в истории. Изменение закрытого результата требует отдельной корректировки.</p></section>:null}
       {pending?<p role="status">Исходное решение ждёт подтверждения. <button className="fill desk-action" type="button" disabled={busy} onClick={()=>void save()}>Повторить решение</button></p>:null}
       {!row.review&&session.role==='master'?<form onSubmit={event=>{event.preventDefault();void save();}}>
         <p className="quiet">{row.checklist?.passed&&!row.checklist.blocksNext?`Самоконтроль №${row.checklist.version} пройден.`:'Для решения нужен пройденный самоконтроль задания.'}</p>
@@ -89,6 +91,7 @@ function ReviewDialog({session,projectId,reportId,onClose,onSaved}: {session:Ses
           <button className="fill desk-action" type="submit" disabled={!row.checklist?.passed||row.checklist.blocksNext}>Подтвердить объём</button>
         </fieldset>
       </form>:null}
+      {row.remainder?<VolumeRemainder key={`${session.userId}:${projectId}:${reportId}`} session={session} projectId={projectId} reportId={reportId} unit={row.unit} total={row.totalAcceptedQuantity??row.review?.acceptedQuantity??'0'} row={row.remainder} checklistId={row.checklist?.id??''} onSaved={confirmed=>{if(confirmed){setSaved('Остаток подтверждён сервером.');setSavedPulse(value=>value+1);}read.retry();onSaved();}}/>:null}
       {row.review?.acceptedPartId?<InternalInspection key={`${session.userId}:${projectId}:${row.review.acceptedPartId}`} session={session} projectId={projectId} partId={row.review.acceptedPartId}/>:null}
     </>:null}
     <div className="dialog-actions"><button className="ghost desk-action" type="button" disabled={busy} onClick={onClose}>Закрыть</button></div>

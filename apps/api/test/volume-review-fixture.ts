@@ -9,7 +9,7 @@ export async function assertVolumeReviewDatabase(admin: Pool, runtime = false) {
   const url = new URL(process.env.ADMIN_DATABASE_URL ?? 'postgres://invalid');
   assert.equal(url.hostname, '127.0.0.1');
   const ci = process.env.GITHUB_ACTIONS === 'true';
-  const port=process.env.HELIOS_VOLUME_QA_DB_PORT??'54643';assert.ok(['54643','54647','54653'].includes(port));
+  const port=process.env.HELIOS_VOLUME_QA_DB_PORT??'54643';assert.ok(['54643','54647','54653','54661'].includes(port));
   assert.equal(url.port, ci ? '54339' : port);
   if (runtime) {
     const app = new URL(process.env.DATABASE_URL ?? 'postgres://invalid');
