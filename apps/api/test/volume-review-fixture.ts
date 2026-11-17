@@ -9,7 +9,8 @@ export async function assertVolumeReviewDatabase(admin: Pool, runtime = false) {
   const url = new URL(process.env.ADMIN_DATABASE_URL ?? 'postgres://invalid');
   assert.equal(url.hostname, '127.0.0.1');
   const ci = process.env.GITHUB_ACTIONS === 'true';
-  assert.equal(url.port, ci ? '54339' : '54643');
+  const port=process.env.HELIOS_VOLUME_QA_DB_PORT??'54643';assert.ok(['54643','54647'].includes(port));
+  assert.equal(url.port, ci ? '54339' : port);
   if (runtime) {
     const app = new URL(process.env.DATABASE_URL ?? 'postgres://invalid');
     assert.equal(app.hostname, url.hostname); assert.equal(app.port, url.port); assert.equal(app.pathname, url.pathname);
@@ -17,7 +18,7 @@ export async function assertVolumeReviewDatabase(admin: Pool, runtime = false) {
 
   const dir = (await admin.query('SHOW data_directory')).rows[0].data_directory;
   if (ci) assert.match(dir, /codex-api\/\.data\/pg-54339$/);
-  else assert.equal(realpathSync(dir), realpathSync(fileURLToPath(new URL('../../../.data/pg-54643', import.meta.url))));
+  else assert.equal(realpathSync(dir), realpathSync(fileURLToPath(new URL(`../../../.data/pg-${port}`, import.meta.url))));
 }
 
 export async function volumeReviewFixture(admin: Pool, base: string) {
