@@ -1,3 +1,5 @@
+import { VolumeReviewsService } from "./volume-reviews.service.js";
+import { VolumeReviewsController } from "./volume-reviews.controller.js";
 import { MaterialBatchService } from "./material-batches.service.js";
 import { MaterialBatchController, MaterialBatchProjectController } from "./material-batches.controller.js";
 import { StaffImportService } from "./staff-import.service.js";
@@ -170,10 +172,11 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [MaterialBatchController, MaterialBatchProjectController, StaffImportController, ChecklistRunsController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [VolumeReviewsController, MaterialBatchController, MaterialBatchProjectController, StaffImportController, ChecklistRunsController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
 
 
   providers: [
+    {provide: VolumeReviewsService, useFactory: (pool: Pool) => new VolumeReviewsService(pool), inject: [APP_POOL]},
     { provide: MaterialBatchService, useFactory: (pool: Pool, storage: EvidenceBlobStore) => new MaterialBatchService(pool, storage), inject: [APP_POOL, EvidenceStorage] },
     { provide: StaffImportService, useFactory: (pool: Pool) => new StaffImportService(pool), inject: [APP_POOL] },
     { provide: APP_POOL, useFactory: () => createPool() },
