@@ -145,6 +145,14 @@ jobs:
           package-manager-cache: false
       - run: npm install --global corepack@0.35.0
       - run: corepack pnpm install --frozen-lockfile
+      - name: Основное зеркало Ubuntu для зависимостей браузеров
+        run: |
+          sudo python3 - <<'PYTHON'
+          from pathlib import Path
+          mirrors = Path('/etc/apt/apt-mirrors.txt')
+          if mirrors.is_file():
+              mirrors.write_text('https://archive.ubuntu.com/ubuntu/\n')
+          PYTHON
       - run: corepack pnpm exec playwright install --with-deps chromium
       - run: node .github/scripts/prepare-ci-db.mjs
       - run: corepack pnpm --filter @helios/api migrate
@@ -204,6 +212,14 @@ jobs:
           package-manager-cache: false
       - run: npm install --global corepack@0.35.0
       - run: corepack pnpm install --frozen-lockfile
+      - name: Основное зеркало Ubuntu для зависимостей браузеров
+        run: |
+          sudo python3 - <<'PYTHON'
+          from pathlib import Path
+          mirrors = Path('/etc/apt/apt-mirrors.txt')
+          if mirrors.is_file():
+              mirrors.write_text('https://archive.ubuntu.com/ubuntu/\n')
+          PYTHON
       - run: corepack pnpm exec playwright install --with-deps chromium webkit
       - run: node .github/scripts/prepare-ci-db.mjs
       - run: corepack pnpm --filter @helios/api migrate
