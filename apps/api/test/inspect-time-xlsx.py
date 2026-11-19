@@ -7,8 +7,10 @@ with zipfile.ZipFile(sys.argv[1]) as z:
     assert '[Content_Types].xml' in z.namelist()
     for name in z.namelist():
         if name.endswith('.xml'):
-            root=ET.fromstring(z.read(name))
-            assert not root.findall('.//s:f',N), 'Unexpected formula'
+            with z.open(name) as xml:
+                for _,element in ET.iterparse(xml,events=('end',)):
+                    assert element.tag!='{'+N['s']+'}f', 'Unexpected formula'
+                    element.clear()
     rels={r.attrib['Id']:r.attrib['Target'] for r in ET.fromstring(z.read('xl/_rels/workbook.xml.rels'))}
     strings=[]
     if 'xl/sharedStrings.xml' in z.namelist():
@@ -22,16 +24,19 @@ with zipfile.ZipFile(sys.argv[1]) as z:
         target=target.lstrip('/') if target.startswith('/') else posixpath.normpath(posixpath.join('xl',target))
         assert target.startswith('xl/worksheets/') and target in z.namelist()
         rows=[]
-        for row in ET.fromstring(z.read(target)).findall('s:sheetData/s:row',N):
-            values=[]
-            for c in row.findall('s:c',N):
-                t=c.attrib.get('t','n'); v=c.find('s:v',N)
-                raw=v.text if v is not None else ''
-                if t=='s': value=strings[int(raw)]
-                elif t=='inlineStr': value=''.join(c.find('s:is',N).itertext())
-                else: value=raw
-                values.append({'value':value,'type':t,'style':c.attrib.get('s')})
-            rows.append(values)
+        with z.open(target) as xml:
+            for _,row in ET.iterparse(xml,events=('end',)):
+                if row.tag!='{'+N['s']+'}row': continue
+                values=[]
+                for c in row.findall('s:c',N):
+                    t=c.attrib.get('t','n'); v=c.find('s:v',N)
+                    raw=v.text if v is not None else ''
+                    if t=='s': value=strings[int(raw)]
+                    elif t=='inlineStr': value=''.join(c.find('s:is',N).itertext())
+                    else: value=raw
+                    values.append({'value':value,'type':t,'style':c.attrib.get('s')})
+                rows.append(values)
+                row.clear()
         result[sheet.attrib['name']]=rows
     assert set(result)=={'Time','Snapshot'}
     assert result['Time'] and len(result['Time'][0])==34
