@@ -1,0 +1,18 @@
+[Unit]
+Description=Isolated GitHub runner for HELIOS only
+Requires=docker.service
+After=docker.service network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStartPre=/usr/bin/python3 /opt/helios-ci/host-control.py prepare
+ExecStart=/usr/bin/python3 /opt/helios-ci/host-control.py run
+ExecStop=-/usr/bin/docker stop --time 20 helios-ci-runner
+Restart=on-failure
+RestartSec=120
+TimeoutStopSec=45
+OOMScoreAdjust=800
+
+[Install]
+WantedBy=multi-user.target

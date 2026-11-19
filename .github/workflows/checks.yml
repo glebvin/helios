@@ -16,7 +16,8 @@ concurrency:
 jobs:
   project-checks:
     name: Документы, типы и сборка
-    runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ fromJSON(vars.HELIOS_CI_RUNNER || '"ubuntu-24.04"') }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -43,11 +44,12 @@ jobs:
 
   server-tests:
     name: API и изоляция данных
-    runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ fromJSON(vars.HELIOS_CI_RUNNER || '"ubuntu-24.04"') }}
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:17
+        image: ${{ vars.HELIOS_CI_MODE != 'server' && 'postgres:17' || '' }}
         env:
           POSTGRES_USER: helios
           POSTGRES_PASSWORD: helios
@@ -107,14 +109,15 @@ jobs:
 
   browser-smoke:
     name: Браузерный smoke текущего UI
-    runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ fromJSON(vars.HELIOS_CI_RUNNER || '"ubuntu-24.04"') }}
     timeout-minutes: 15
     defaults:
       run:
         working-directory: codex-api
     services:
       postgres:
-        image: postgres:17
+        image: ${{ vars.HELIOS_CI_MODE != 'server' && 'postgres:17' || '' }}
         env:
           POSTGRES_USER: helios
           POSTGRES_PASSWORD: helios
@@ -146,6 +149,7 @@ jobs:
       - run: npm install --global corepack@0.35.0
       - run: corepack pnpm install --frozen-lockfile
       - name: Основное зеркало Ubuntu для зависимостей браузеров
+        if: vars.HELIOS_CI_MODE != 'server'
         run: |
           sudo python3 - <<'PYTHON'
           from pathlib import Path
@@ -153,7 +157,14 @@ jobs:
           if mirrors.is_file():
               mirrors.write_text('https://archive.ubuntu.com/ubuntu/\n')
           PYTHON
-      - run: corepack pnpm exec playwright install --with-deps chromium
+      - env:
+          HELIOS_CI_MODE: ${{ vars.HELIOS_CI_MODE }}
+        run: |
+          if [ "$HELIOS_CI_MODE" = server ]; then
+            corepack pnpm exec playwright install chromium
+          else
+            corepack pnpm exec playwright install --with-deps chromium
+          fi
       - run: node .github/scripts/prepare-ci-db.mjs
       - run: corepack pnpm --filter @helios/api migrate
       - run: corepack pnpm --filter @helios/api seed
@@ -174,14 +185,15 @@ jobs:
 
   offline-checks:
     name: Offline — Chromium и WebKit, очередь и реальный API
-    runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ fromJSON(vars.HELIOS_CI_RUNNER || '"ubuntu-24.04"') }}
     timeout-minutes: 25
     defaults:
       run:
         working-directory: codex-api
     services:
       postgres:
-        image: postgres:17
+        image: ${{ vars.HELIOS_CI_MODE != 'server' && 'postgres:17' || '' }}
         env:
           POSTGRES_USER: helios
           POSTGRES_PASSWORD: helios
@@ -213,6 +225,7 @@ jobs:
       - run: npm install --global corepack@0.35.0
       - run: corepack pnpm install --frozen-lockfile
       - name: Основное зеркало Ubuntu для зависимостей браузеров
+        if: vars.HELIOS_CI_MODE != 'server'
         run: |
           sudo python3 - <<'PYTHON'
           from pathlib import Path
@@ -220,7 +233,14 @@ jobs:
           if mirrors.is_file():
               mirrors.write_text('https://archive.ubuntu.com/ubuntu/\n')
           PYTHON
-      - run: corepack pnpm exec playwright install --with-deps chromium webkit
+      - env:
+          HELIOS_CI_MODE: ${{ vars.HELIOS_CI_MODE }}
+        run: |
+          if [ "$HELIOS_CI_MODE" = server ]; then
+            corepack pnpm exec playwright install chromium webkit
+          else
+            corepack pnpm exec playwright install --with-deps chromium webkit
+          fi
       - run: node .github/scripts/prepare-ci-db.mjs
       - run: corepack pnpm --filter @helios/api migrate
       - name: Полный набор очереди Chromium/WebKit, последовательно
@@ -240,7 +260,8 @@ jobs:
 
   backup-restore:
     name: Резерв и восстановление
-    runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ fromJSON(vars.HELIOS_CI_RUNNER || '"ubuntu-24.04"') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -261,7 +282,8 @@ jobs:
 
   s3-evidence:
     name: Учебное S3-хранилище
-    runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ${{ fromJSON(vars.HELIOS_CI_RUNNER || '"ubuntu-24.04"') }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
