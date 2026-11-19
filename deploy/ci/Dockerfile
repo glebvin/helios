@@ -18,7 +18,7 @@ RUN npm install --global corepack@0.35.0 \
     && ln -s /ms-playwright /home/runner/.cache/ms-playwright \
     && chown -R 10001:10001 /home/runner /opt/actions-runner
 COPY postgres-hook.py /opt/helios-ci/postgres-hook.py
-COPY job-started.sh job-completed.sh entrypoint.sh /opt/helios-ci/
+COPY job-started.sh job-database.sh job-completed.sh entrypoint.sh /opt/helios-ci/
 RUN chmod 755 /opt/helios-ci/*.sh && touch /opt/helios-ci/isolated-runner
 ENV HOME=/home/runner \
     RUNNER_TOOL_CACHE=/home/runner/tools \

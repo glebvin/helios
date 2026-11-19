@@ -79,6 +79,9 @@ jobs:
         run: npm install --global corepack@0.35.0
       - name: Зависимости по lockfile
         run: corepack pnpm install --frozen-lockfile
+      - name: Fresh PostgreSQL inside the isolated runner
+        if: vars.HELIOS_CI_MODE == 'server'
+        run: /opt/helios-ci/job-database.sh
       - name: Только новая одноразовая CI база
         run: node .github/scripts/prepare-ci-db.mjs
       - name: Миграции
@@ -165,6 +168,9 @@ jobs:
           else
             corepack pnpm exec playwright install --with-deps chromium
           fi
+      - name: Fresh PostgreSQL inside the isolated runner
+        if: vars.HELIOS_CI_MODE == 'server'
+        run: /opt/helios-ci/job-database.sh
       - run: node .github/scripts/prepare-ci-db.mjs
       - run: corepack pnpm --filter @helios/api migrate
       - run: corepack pnpm --filter @helios/api seed
@@ -241,6 +247,9 @@ jobs:
           else
             corepack pnpm exec playwright install --with-deps chromium webkit
           fi
+      - name: Fresh PostgreSQL inside the isolated runner
+        if: vars.HELIOS_CI_MODE == 'server'
+        run: /opt/helios-ci/job-database.sh
       - run: node .github/scripts/prepare-ci-db.mjs
       - run: corepack pnpm --filter @helios/api migrate
       - name: Полный набор очереди Chromium/WebKit, последовательно

@@ -31,6 +31,9 @@ async function ready(url,child){
  throw new Error('Service startup timed out: '+url);
 }
 const check=name=>{results.push({name,status:'passed'});console.log('PASS',name);};
+async function closeFinished(page){
+ const context=page.context();await context.close();contexts.splice(contexts.indexOf(context),1);
+}
 async function login(role){
  const account=DEMO_USERS.find(u=>u.role===role&&u.email!=='other@foreign.helios');assert.ok(account);
  const context=await browser.newContext({viewport:{width:390,height:844}});contexts.push(context);
@@ -60,6 +63,7 @@ try{
  await director.getByRole('dialog').getByLabel('Имя',{exact:true}).fill(name);
  await director.getByRole('button',{name:'Создать',exact:true}).click();
  await director.getByText(`Сервер записал «${name}».`,{exact:true}).waitFor();
+ await closeFinished(director);
  const fresh=await login('director');await people(fresh);await fresh.getByText(name,{exact:true}).click();
  await fresh.getByRole('heading',{name,exact:true}).waitFor();
  const heldClock=[];
@@ -81,6 +85,7 @@ try{
   assert.equal(await restricted.getByRole('button',{name:'Добавить сотрудника',exact:true}).count(),0);
   const denied=await restricted.request.post(base+'/api/v1/employees',{headers:await headers(restricted),data:{requestId:randomUUID(),fullName:'Forbidden',organizationId:ORG_A}});
   assert.equal(denied.status(),403);check(`${role}: separate login and direct write denied by API`);
+  await closeFinished(restricted);
  }
  await fresh.route('**/api/v1/employees?*',r=>r.abort());await fresh.evaluate(()=>window.dispatchEvent(new Event('focus')));
  await fresh.getByText('Список не прочитан',{exact:true}).waitFor();
@@ -91,6 +96,7 @@ try{
  await fresh.evaluate(()=>window.dispatchEvent(new Event('focus')));await fresh.getByRole('heading',{name:'Кто входит',exact:true}).waitFor();
  assert.equal(await fresh.evaluate(()=>localStorage.getItem('helios.session')),null);
  check('expired session returns to login and clears local session');assert.deepEqual(errors,[]);
+ await closeFinished(fresh);
  await routeConfigUiSmoke(browser,base,out,DEMO_USERS.find(u=>u.role==='director'&&u.email!=='other@foreign.helios'));
  check('route configuration: admin UI save/reload, lost acknowledgement stable requestId and390px');
  await dailyRouteCi(browser,base,out);
