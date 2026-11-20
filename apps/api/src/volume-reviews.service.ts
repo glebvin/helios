@@ -62,7 +62,7 @@ export class VolumeReviewsService {
     const remainder = row.review ? await this.remainderState(c,a,project,report,row) : null;
     const fresh = row.review && await this.freshControl(c,report,row.checklist?.id);
     return { ...row, history: row.review ? [row.review] : [], remainder, currentParts,
-      correction: row.review ? {version:1+(remainder?.history.length??0)+history.length,history,needsFreshSelfControl:!fresh,allowed: a.role==='master'&&fresh&&!remainder?.presentation&&currentParts.length>0} : null };
+      correction: row.review ? {version:1+(remainder?.history.length??0)+history.length,history,needsFreshSelfControl:!fresh,allowed: false} : null };
   }
 
   private async remainderState(c: PoolClient,a: Actor,project: string,report: string,row: any) {
@@ -171,24 +171,7 @@ export class VolumeReviewsService {
       const row=await this.card(c,a,project,report);
       await c.query(`SELECT id FROM daily_tasks WHERE project_id=$1 AND id=$2 FOR NO KEY UPDATE`,[project,row.taskId]);
       if(!receipt.inserted)return replayCommand(c,a,body.requestId,receipt.hash);
-      const current=await this.card(c,a,project,report);
-      if(!current.correction)throw httpError(422,'initial_review_required');
-      if(current.correction.version!==body.expectedVersion)throw httpError(409,'stale_version');
-      const previous=current.currentParts.find((p:any)=>p.id===body.previousPartId);
-      if(!previous)throw httpError(409,'part_superseded');
-      if(current.remainder?.presentation)throw httpError(409,'remainder_pending');
-      if(!current.checklist?.passed||current.checklist.blocksNext)throw httpError(422,'self_control_required');
-      if(current.checklist.id!==body.checklistRunId)throw httpError(409,'checklist_changed');
-      if(current.correction.needsFreshSelfControl)throw httpError(422,'fresh_self_control_required');
-      if(Number(previous.quantity)===Number(body.quantity))throw httpError(422,'quantity_unchanged');
-      const available=(await c.query(`SELECT ($1::numeric-coalesce(sum(quantity),0))::text AS quantity FROM current_accepted_volume_parts WHERE report_id=$2 AND id<>$3`,[current.submittedQuantity,report,body.previousPartId])).rows[0].quantity;
-      try{partialAcceptance(available,body.quantity);}catch{throw httpError(422,'quantity_exceeds_submitted');}
-      const name=(await c.query(`SELECT name FROM users WHERE id=$1`,[a.userId])).rows[0].name;
-      const id=randomUUID();
-      await c.query(`INSERT INTO volume_corrections(tenant_id,report_id,id,version,previous_part_id,quantity,reason,checklist_run_id,actor_user_id,actor_name,request_id)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,[a.tenantId,report,id,body.expectedVersion+1,body.previousPartId,body.quantity,body.reason,body.checklistRunId,a.userId,name,body.requestId]);
-      const saved=await this.card(c,a,project,report);
-      await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details)VALUES($1,$2,'volumes.correction','managed_report',$3,'ok',$4)`,[a.tenantId,a.userId,report,JSON.stringify({requestId:body.requestId,previousPartId:body.previousPartId,previousQuantity:previous.quantity,quantity:body.quantity,correctionId:id,reason:body.reason,version:saved.correction.version})]);
-      return completeCommand(c,a,body.requestId,201,saved);
+      throw httpError(503,'volume_corrections_paused');
     });
   }
 
