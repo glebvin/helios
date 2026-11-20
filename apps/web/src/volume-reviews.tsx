@@ -1,3 +1,4 @@
+import {VolumeCorrection,type CurrentPart,type Correction} from './volume-correction';
 import {VolumeRemainder,type Remainder} from './volume-remainder';
 import { InternalInspection } from './internal-inspection';
 import { useEffect, useRef, useState } from 'react';
@@ -13,7 +14,7 @@ import { civilLabel } from './scope';
 import { clearReviewCommand, keepReviewCommand, readReviewCommand } from './volume-review-command';
 
 type Review = {id: string; acceptedPartId: string | null; acceptedQuantity: string; differenceQuantity: string; reason: string | null; actorName: string; createdAt: string};
-type Report = {reportId: string; title: string; unit: string; submittedQuantity: string; totalAcceptedQuantity?:string|null; remainder?:Remainder|null; version: number; review: Review | null; checklist: {id: string; version: number; passed: boolean; blocksNext: boolean} | null};
+type Report = {reportId: string; title: string; unit: string; submittedQuantity: string; totalAcceptedQuantity?:string|null; remainder?:Remainder|null; currentParts?:CurrentPart[]; correction?:Correction|null; version: number; review: Review | null; checklist: {id: string; version: number; passed: boolean; blocksNext: boolean} | null};
 type Page = {items: Report[]; total: number; totals: {unit: string; submittedQuantity: string; acceptedQuantity: string | null; reviewedReports: number; unreviewedReports: number}[]};
 const hasAcceptedVolume=(row:Report)=>Number(row.totalAcceptedQuantity??row.review?.acceptedQuantity??'0')>0;
 function message(error: unknown): string {
@@ -58,7 +59,7 @@ function ReviewDialog({session,projectId,reportId,onClose,onSaved}: {session:Ses
   const [quantity,setQuantity]=useState<string|null>(null),[reason,setReason]=useState(''),[error,setError]=useState(''),[saved,setSaved]=useState(''),[busy,setBusy]=useState(false);
   const [savedPulse,setSavedPulse]=useState(0);
   const lock=useRef(false),active=useRef(true);
-  useEffect(()=>()=>{active.current=false;},[]);
+  useEffect(()=>{active.current=true;return()=>{active.current=false;};},[]);
   const read=useServerRead(session,path,'',()=>v1<Report>(session,path),message);
   const row=read.body;
   async function save() {
@@ -82,7 +83,7 @@ function ReviewDialog({session,projectId,reportId,onClose,onSaved}: {session:Ses
     {read.error||error?<button className="ghost desk-action" type="button" onClick={read.retry}>Обновить карточку</button>:null}
     {row?<>
       <h3>{row.title}</h3><p>Предъявлено {amount(row.submittedQuantity)} {row.unit}.</p>
-      {row.review?<section className="panel"><h3>{row.remainder?.history.length?'Первое решение мастера':row.review.acceptedPartId?'Принято мастером':'Не принято'}</h3><p>{amount(row.review.acceptedQuantity)} {row.unit}. Разница: {amount(row.review.differenceQuantity)} {row.unit}.</p>{row.review.reason?<p>{row.review.reason}</p>:null}<p className="quiet">{row.review.actorName} · {new Date(row.review.createdAt).toLocaleString('ru-RU')}</p><p className="quiet">Решение сохранено в истории. Изменение закрытого результата требует отдельной корректировки.</p></section>:null}
+      {row.review?<section className="panel"><h3>{row.remainder?.history.length||row.correction?.history.length?'Первое решение мастера':row.review.acceptedPartId?'Принято мастером':'Не принято'}</h3><p>{amount(row.review.acceptedQuantity)} {row.unit}. Разница: {amount(row.review.differenceQuantity)} {row.unit}.</p>{row.review.reason?<p>{row.review.reason}</p>:null}<p className="quiet">{row.review.actorName} · {new Date(row.review.createdAt).toLocaleString('ru-RU')}</p><p className="quiet">Решение сохранено в истории. Изменение закрытого результата требует отдельной корректировки.</p></section>:null}
       {pending?<p role="status">Исходное решение ждёт подтверждения. <button className="fill desk-action" type="button" disabled={busy} onClick={()=>void save()}>Повторить решение</button></p>:null}
       {!row.review&&session.role==='master'?<form onSubmit={event=>{event.preventDefault();void save();}}>
         <p className="quiet">{row.checklist?.passed&&!row.checklist.blocksNext?`Самоконтроль №${row.checklist.version} пройден.`:'Для решения нужен пройденный самоконтроль задания.'}</p>
@@ -92,8 +93,11 @@ function ReviewDialog({session,projectId,reportId,onClose,onSaved}: {session:Ses
           <button className="fill desk-action" type="submit" disabled={!row.checklist?.passed||row.checklist.blocksNext}>Подтвердить объём</button>
         </fieldset>
       </form>:null}
-      {row.remainder?<VolumeRemainder key={`${session.userId}:${projectId}:${reportId}`} session={session} projectId={projectId} reportId={reportId} unit={row.unit} total={row.totalAcceptedQuantity??row.review?.acceptedQuantity??'0'} row={row.remainder} checklistId={row.checklist?.id??''} onSaved={confirmed=>{if(confirmed){setSaved('Остаток подтверждён сервером.');setSavedPulse(value=>value+1);}read.retry();onSaved();}}/>:null}
-      {row.review?.acceptedPartId?<InternalInspection key={`${session.userId}:${projectId}:${row.review.acceptedPartId}`} session={session} projectId={projectId} partId={row.review.acceptedPartId}/>:null}
+      {row.correction?<VolumeCorrection session={session} projectId={projectId} reportId={reportId} unit={row.unit} row={row.correction} parts={row.currentParts??[]} checklistId={row.checklist?.id??''} onSaved={confirmed=>{if(confirmed){setSaved('Корректировка подтверждена сервером.');setSavedPulse(value=>value+1);}read.retry();onSaved();}}/>:null}
+      {row.remainder?<VolumeRemainder key={`${session.userId}:${projectId}:${reportId}`} session={session} projectId={projectId} reportId={reportId} unit={row.unit} total={row.totalAcceptedQuantity??row.review?.acceptedQuantity??'0'} row={row.remainder} currentParts={row.currentParts} checklistId={row.checklist?.id??''} onSaved={confirmed=>{if(confirmed){setSaved('Остаток подтверждён сервером.');setSavedPulse(value=>value+1);}read.retry();onSaved();}}/>:null}
+      {row.review?.acceptedPartId&&(!row.currentParts||row.currentParts.some(p=>p.id===row.review!.acceptedPartId))?<InternalInspection key={`${session.userId}:${projectId}:${row.review.acceptedPartId}`} session={session} projectId={projectId} partId={row.review.acceptedPartId}/>:null}
+      {(row.currentParts??[]).filter(p=>row.correction?.history.some(c=>c.id===p.id)).map(p=><InternalInspection key={p.id} session={session} projectId={projectId} partId={p.id}/>)}
+      {row.correction?.history.length?<details><summary>Прежние части</summary>{row.correction.history.map(c=><InternalInspection key={c.previousPartId} session={session} projectId={projectId} partId={c.previousPartId}/>)}</details>:null}
     </>:null}
     <div className="dialog-actions"><button className="ghost desk-action" type="button" disabled={busy} onClick={onClose}>Закрыть</button></div>
   </Dialog>;
