@@ -75,10 +75,19 @@ test('directory and future timestamp cannot masquerade as a worker heartbeat',as
 test('a live worker with failing queue checks does not refresh its heartbeat',async()=>{
   const root=await mkdtemp(join(tmpdir(),'helios-beat-'));const file=join(root,'worker');await writeWorkerHeartbeat(file);const old=new Date(Date.now()-60000);await utimes(file,old,old);const lines:string[]=[];
   let healthy=false;let attempts=0;
-  const stop=startWorkerHeartbeat(file,async()=>{attempts++;if(!healthy)throw new Error('private')},10,s=>lines.push(s));
+  let recovered!:()=>void;
+  const recovery=new Promise<void>(resolve=>{recovered=resolve;});
+  const stop=startWorkerHeartbeat(file,async()=>{attempts++;if(!healthy)throw new Error('private')},10,s=>{lines.push(s);if(s==='worker_heartbeat recovered')recovered();});
   try{
     while(attempts<2)await new Promise(r=>setTimeout(r,10));assert.equal(await workerCheck(file,Date.now()),'stale');assert.deepEqual(lines,['worker_heartbeat']);
-    healthy=true;for(let i=0;i<100&&(await workerCheck(file,Date.now()))!=='ok';i++)await new Promise(r=>setTimeout(r,10));assert.equal(await workerCheck(file,Date.now()),'ok');assert.deepEqual(lines,['worker_heartbeat','worker_heartbeat recovered']);
+    healthy=true;
+    // The file can become visible before writeFile settles and the recovery log is emitted.
+    // Observe completion before checking both independent outcomes.
+    await new Promise<void>((resolve,reject)=>{
+      const deadline=setTimeout(()=>reject(new Error('heartbeat recovery did not finish')),2000);
+      void recovery.then(()=>{clearTimeout(deadline);resolve();});
+    });
+    assert.equal(await workerCheck(file,Date.now()),'ok');assert.deepEqual(lines,['worker_heartbeat','worker_heartbeat recovered']);
   }finally{stop();await rm(root,{recursive:true,force:true})}
 });
 

@@ -19,10 +19,10 @@ const from = `FROM managed_execution_reports s ${executionJoin}
   JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.project_id=s.project_id AND t.id=s.task_id
   JOIN managed_execution_events ev ON ev.tenant_id=s.tenant_id AND ev.actor_user_id=s.actor_user_id AND ev.request_id=s.request_id
   LEFT JOIN master_volume_reviews v ON v.tenant_id=s.tenant_id AND v.report_id=s.report_id
-  LEFT JOIN LATERAL (SELECT coalesce(sum(accepted_quantity),0) AS accepted FROM volume_remainder_events WHERE tenant_id=s.tenant_id AND report_id=s.report_id) extra ON true`;
+  LEFT JOIN LATERAL (SELECT coalesce(sum(quantity),0) AS accepted FROM current_accepted_volume_parts WHERE tenant_id=s.tenant_id AND report_id=s.report_id) extra ON true`;
 const fields = `s.report_id AS "reportId",s.project_id AS "projectId",s.task_id AS "taskId",s.submitted_quantity::text AS "submittedQuantity",t.title,t.unit,
   ev.occurred_at AS "occurredAt",coalesce(v.version,0) AS version,
-  CASE WHEN v.id IS NULL THEN NULL ELSE (v.accepted_quantity+extra.accepted)::text END AS "totalAcceptedQuantity",
+  CASE WHEN v.id IS NULL THEN NULL ELSE extra.accepted::numeric(14,3)::text END AS "totalAcceptedQuantity",
   CASE WHEN v.id IS NULL THEN NULL ELSE jsonb_build_object('id',v.id,'acceptedPartId',CASE WHEN v.accepted_quantity>0 THEN v.id ELSE NULL END,'acceptedQuantity',v.accepted_quantity::text,'differenceQuantity',v.difference_quantity::text,'reason',v.reason,'checklistRunId',v.checklist_run_id,'actorName',v.actor_name,'createdAt',v.created_at) END AS review,
   (SELECT jsonb_build_object('id',cr.id,'version',cr.version,'passed',cr.passed,'blocksNext',cr.blocks_next,'templateVersion',cr.template_version,'edition',cr.edition)
    FROM checklist_runs cr WHERE cr.tenant_id=s.tenant_id AND cr.project_id=s.project_id AND cr.task_id=s.task_id ORDER BY cr.version DESC LIMIT 1) AS checklist`;
@@ -57,15 +57,29 @@ export class VolumeReviewsService {
   private async card(c: PoolClient, a: Actor, project: string, report: string) {
     const row = (await c.query(`SELECT ${fields} ${from} WHERE ${executionScope} AND ${currentRole} AND s.report_id=$5`, [a.tenantId, a.userId, project, a.role, report])).rows[0];
     if (!row) throw httpError(404, 'not_found');
-    return { ...row, history: row.review ? [row.review] : [], remainder: row.review ? await this.remainderState(c,a,project,report,row) : null };
+    const currentParts = (await c.query(`SELECT id,quantity::text FROM current_accepted_volume_parts WHERE report_id=$1 ORDER BY id`,[report])).rows;
+    const history = (await c.query(`SELECT id,version,previous_part_id AS "previousPartId",quantity::text,reason,checklist_run_id AS "checklistRunId",actor_name AS "actorName",created_at AS "createdAt" FROM volume_corrections WHERE report_id=$1 ORDER BY version`,[report])).rows;
+    const remainder = row.review ? await this.remainderState(c,a,project,report,row) : null;
+    const fresh = row.review && await this.freshControl(c,report,row.checklist?.id);
+    return { ...row, history: row.review ? [row.review] : [], remainder, currentParts,
+      correction: row.review ? {version:1+(remainder?.history.length??0)+history.length,history,needsFreshSelfControl:!fresh,allowed: a.role==='master'&&fresh&&!remainder?.presentation&&currentParts.length>0} : null };
   }
 
   private async remainderState(c: PoolClient,a: Actor,project: string,report: string,row: any) {
     const history=(await c.query(`SELECT id,version,action,presentation_version AS "presentationVersion",presented_quantity::text AS "presentedQuantity",accepted_quantity::text AS "acceptedQuantity",CASE WHEN accepted_quantity>0 THEN id ELSE NULL END AS "acceptedPartId",reason,checklist_run_id AS "checklistRunId",actor_name AS "actorName",created_at AS "createdAt" FROM volume_remainder_events WHERE report_id=$1 ORDER BY version`,[report])).rows;
-    const state=(await c.query(`SELECT (v.difference_quantity-coalesce(sum(e.accepted_quantity),0))::text AS "remainingQuantity" FROM master_volume_reviews v LEFT JOIN volume_remainder_events e USING(tenant_id,report_id) WHERE v.report_id=$1 GROUP BY v.tenant_id,v.report_id`,[report])).rows[0];
-    const fresh=row.checklist?.passed&&!row.checklist.blocksNext && (await c.query(`SELECT cr.created_at>coalesce((SELECT created_at FROM volume_remainder_events WHERE report_id=$2 AND action='review' ORDER BY version DESC LIMIT 1),v.created_at) AS fresh FROM checklist_runs cr JOIN master_volume_reviews v ON v.report_id=$2 WHERE cr.id=$1`,[row.checklist.id,report])).rows[0]?.fresh===true;
+    const state=(await c.query(`SELECT (v.submitted_quantity-coalesce(sum(e.quantity),0))::text AS "remainingQuantity" FROM master_volume_reviews v LEFT JOIN current_accepted_volume_parts e USING(tenant_id,report_id) WHERE v.report_id=$1 GROUP BY v.tenant_id,v.report_id`,[report])).rows[0];
+    const fresh=await this.freshControl(c,report,row.checklist?.id);
     const pending=history.at(-1)?.action==='present'?history.at(-1):null;
     return {...state,version:history.at(-1)?.version??1,presentation:pending,needsFreshSelfControl:!fresh,allowedActions:a.role==='master'&&fresh&&(pending||state.remainingQuantity!=='0.000')?[pending?'review':'present']:[],history};
+  }
+
+  private async freshControl(c: PoolClient,report: string,checklist: string|undefined) {
+    if(!checklist)return false;
+    return (await c.query(`SELECT cr.passed AND NOT cr.blocks_next AND cr.created_at>greatest(v.created_at,
+      (SELECT max(created_at) FROM volume_remainder_events WHERE report_id=$2 AND action='review'),
+      (SELECT max(created_at) FROM volume_corrections WHERE report_id=$2),
+      (SELECT max(ev.created_at) FROM internal_inspection_events ev JOIN accepted_volume_parts p ON p.tenant_id=ev.tenant_id AND p.id=ev.accepted_part_id WHERE p.report_id=$2)) AS fresh
+      FROM checklist_runs cr JOIN master_volume_reviews v ON v.report_id=$2 WHERE cr.id=$1`,[checklist,report])).rows[0]?.fresh===true;
   }
 
   read(a: Actor, project: string, report: string) {
@@ -139,6 +153,41 @@ export class VolumeReviewsService {
       await c.query(`INSERT INTO volume_remainder_events(tenant_id,report_id,version,id,action,presentation_version,presented_quantity,accepted_quantity,reason,checklist_run_id,actor_user_id,actor_name,request_id)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,[a.tenantId,report,body.expectedVersion+1,randomUUID(),body.action,body.action==='review'?body.expectedVersion:null,body.action==='present'?body.quantity:available,body.action==='review'?body.quantity:null,body.reason,body.checklistRunId,a.userId,name,body.requestId]);
       const saved=await this.card(c,a,project,report);
       await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details)VALUES($1,$2,'volumes.remainder','managed_report',$3,'ok',$4)`,[a.tenantId,a.userId,report,JSON.stringify({requestId:body.requestId,action:body.action,version:saved.remainder.version})]);
+      return completeCommand(c,a,body.requestId,201,saved);
+    });
+  }
+
+  correct(a: Actor,project: string,report: string,input: unknown) {
+    const b=object(input,['requestId','expectedVersion','previousPartId','quantity','checklistRunId','reason']);
+    if(typeof b.quantity!=='string'||!/^(?:0|[1-9]\d{0,10})(?:\.\d{1,3})?$/.test(b.quantity))throw httpError(400,'invalid_quantity');
+    const body={requestId:uuid(b.requestId).toLowerCase(),expectedVersion:integer(b.expectedVersion,1),previousPartId:uuid(b.previousPartId).toLowerCase(),quantity:b.quantity,checklistRunId:uuid(b.checklistRunId).toLowerCase(),reason:text(b.reason,500)};
+    if(a.role!=='master')throw httpError(403,'role_denied');
+    return withTenant(this.pool,a.tenantId,a.userId,async c=>{
+      const receipt=await reserveCommand(c,a,`POST /projects/${project}/volume-reviews/${report}/corrections`,body);
+      if(!(await c.query(`SELECT id FROM projects WHERE id=$1 FOR NO KEY UPDATE`,[project])).rowCount)throw httpError(404,'not_found');
+      const role=(await c.query(`SELECT role FROM memberships WHERE user_id=$1 AND status='active' FOR SHARE`,[a.userId])).rows[0]?.role;
+      const assigned=await c.query(`SELECT user_id FROM project_memberships WHERE project_id=$1 AND user_id=$2 AND status='active' FOR SHARE`,[project,a.userId]);
+      if(role!=='master'||!assigned.rowCount)throw httpError(403,'role_denied');
+      const row=await this.card(c,a,project,report);
+      await c.query(`SELECT id FROM daily_tasks WHERE project_id=$1 AND id=$2 FOR NO KEY UPDATE`,[project,row.taskId]);
+      if(!receipt.inserted)return replayCommand(c,a,body.requestId,receipt.hash);
+      const current=await this.card(c,a,project,report);
+      if(!current.correction)throw httpError(422,'initial_review_required');
+      if(current.correction.version!==body.expectedVersion)throw httpError(409,'stale_version');
+      const previous=current.currentParts.find((p:any)=>p.id===body.previousPartId);
+      if(!previous)throw httpError(409,'part_superseded');
+      if(current.remainder?.presentation)throw httpError(409,'remainder_pending');
+      if(!current.checklist?.passed||current.checklist.blocksNext)throw httpError(422,'self_control_required');
+      if(current.checklist.id!==body.checklistRunId)throw httpError(409,'checklist_changed');
+      if(current.correction.needsFreshSelfControl)throw httpError(422,'fresh_self_control_required');
+      if(Number(previous.quantity)===Number(body.quantity))throw httpError(422,'quantity_unchanged');
+      const available=(await c.query(`SELECT ($1::numeric-coalesce(sum(quantity),0))::text AS quantity FROM current_accepted_volume_parts WHERE report_id=$2 AND id<>$3`,[current.submittedQuantity,report,body.previousPartId])).rows[0].quantity;
+      try{partialAcceptance(available,body.quantity);}catch{throw httpError(422,'quantity_exceeds_submitted');}
+      const name=(await c.query(`SELECT name FROM users WHERE id=$1`,[a.userId])).rows[0].name;
+      const id=randomUUID();
+      await c.query(`INSERT INTO volume_corrections(tenant_id,report_id,id,version,previous_part_id,quantity,reason,checklist_run_id,actor_user_id,actor_name,request_id)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,[a.tenantId,report,id,body.expectedVersion+1,body.previousPartId,body.quantity,body.reason,body.checklistRunId,a.userId,name,body.requestId]);
+      const saved=await this.card(c,a,project,report);
+      await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details)VALUES($1,$2,'volumes.correction','managed_report',$3,'ok',$4)`,[a.tenantId,a.userId,report,JSON.stringify({requestId:body.requestId,previousPartId:body.previousPartId,previousQuantity:previous.quantity,quantity:body.quantity,correctionId:id,reason:body.reason,version:saved.correction.version})]);
       return completeCommand(c,a,body.requestId,201,saved);
     });
   }

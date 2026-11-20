@@ -24,11 +24,15 @@ export class InternalInspectionsService {
   constructor(private readonly pool: Pool) {}
   private async source(c: PoolClient,a: Actor,project: string,part: string) {
     if (!['master','director','pto','worker'].includes(a.role)) throw httpError(403,'role_denied');
-    const row = (await c.query(`SELECT v.id,s.report_id AS "reportId",s.task_id AS "taskId",t.title,t.unit,v.accepted_quantity::text AS quantity
-      FROM (SELECT tenant_id,id,report_id,accepted_quantity FROM master_volume_reviews UNION ALL SELECT tenant_id,id,report_id,accepted_quantity FROM volume_remainder_events WHERE action='review') v JOIN managed_execution_reports s ON s.tenant_id=v.tenant_id AND s.report_id=v.report_id
+    const row = (await c.query(`SELECT v.id,s.report_id AS "reportId",s.task_id AS "taskId",t.title,t.unit,v.quantity::text AS quantity
+      FROM accepted_volume_parts v JOIN managed_execution_reports s ON s.tenant_id=v.tenant_id AND s.report_id=v.report_id
       ${executionJoin} JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.project_id=s.project_id AND t.id=s.task_id
       WHERE ${executionScope} AND v.id=$4 AND EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id=$1 AND m.user_id=$2 AND m.status='active' AND m.role=$5)`,[a.tenantId,a.userId,project,part,a.role])).rows[0];
-    if (!row) throw httpError(404,'not_found');
+    if (!row) {
+      const zero=(await c.query(`SELECT v.id FROM master_volume_reviews v JOIN managed_execution_reports s ON s.tenant_id=v.tenant_id AND s.report_id=v.report_id ${executionJoin} WHERE ${executionScope} AND v.id=$4 AND v.accepted_quantity=0 AND EXISTS(SELECT 1 FROM memberships m WHERE m.tenant_id=$1 AND m.user_id=$2 AND m.status='active' AND m.role=$5)`,[a.tenantId,a.userId,project,part,a.role])).rowCount;
+      throw httpError(zero?422:404,zero?'positive_part_required':'not_found');
+    }
+    row.replacedBy=(await c.query(`SELECT id,quantity::text FROM volume_corrections WHERE previous_part_id=$1`,[part])).rows[0]??null;
     if (Number(row.quantity) <= 0) throw httpError(422,'positive_part_required');
     return row;
   }
@@ -73,7 +77,7 @@ export class InternalInspectionsService {
     if(actor && a.role==='master' && lastReturn && record.snapshot.preparer.userId===a.userId && fresh && participantsReady)allowedActions.push('resubmit');
     if (actor && a.role==='director' && state==='awaiting_responsibility' && record?.snapshot.responsible.userId===a.userId) allowedActions.push('responsible');
     if (actor && a.role==='pto' && state==='awaiting_pto' && record?.snapshot.approver.userId===a.userId) {if(passed)allowedActions.push('approve');allowedActions.push('return');}
-    return {acceptedPart,version,state,currentRoute,selfControl,record,history,attempts,attemptNumber:Math.floor((Math.max(version,1)-1)/3)+1,resubmission:lastReturn?{needsFreshSelfControl:!fresh,participantsReady}:null,allowedActions};
+    return {acceptedPart,version,state,currentRoute,selfControl,record,history,attempts,attemptNumber:Math.floor((Math.max(version,1)-1)/3)+1,resubmission:lastReturn?{needsFreshSelfControl:!fresh,participantsReady}:null,allowedActions:acceptedPart.replacedBy?[]:allowedActions};
   }
   read(a: Actor,project: string,part: string) {
     return withTenant(this.pool,a.tenantId,a.userId,async c=>{
@@ -94,6 +98,7 @@ export class InternalInspectionsService {
       const source=await this.source(c,a,project,part);
       await c.query(`SELECT id FROM daily_tasks WHERE project_id=$1 AND id=$2 FOR NO KEY UPDATE`,[project,source.taskId]);
       if(!receipt.inserted)return replayCommand(c,a,b.requestId,receipt.hash);
+      if(source.replacedBy)throw httpError(409,'part_superseded');
       const current=await this.view(c,a,project,part,source);
       if(current.version!==b.expectedVersion)throw httpError(409,'stale_version');
       if(current.state==='accepted'||(current.state==='returned'&&b.action!=='resubmit'))throw httpError(409,'inspection_closed');

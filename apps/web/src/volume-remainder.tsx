@@ -11,10 +11,10 @@ function message(problem:unknown){
  if(!(problem instanceof ApiError))return 'Нет ответа сервера. Исходная команда ждёт подтверждения.';
  return ({stale_version:'Остаток изменился в другом окне. Обновите карточку и проверьте результат.',remainder_state_changed:'Предъявление уже изменилось. Обновите карточку.',quantity_exceeds_remainder:'Количество больше доступного остатка или текущего предъявления.',positive_quantity_required:'Предъявляемый остаток должен быть больше нуля.',invalid_quantity:'Введите число от нуля с точностью до трёх знаков.',reason_required:'Укажите основание исправления или причину неполного принятия.',invalid_text:'Укажите непустое основание до 500 символов.',self_control_required:'Нужен последний успешный самоконтроль задания.',fresh_self_control_required:'После последнего решения нужен новый успешный самоконтроль.',checklist_changed:'Самоконтроль изменился. Обновите карточку.',role_denied:'Изменение остатка доступно действующему мастеру объекта.',not_found:'Исходное предъявление недоступно этому входу.'}as Record<string,string>)[problem.message]??'Сервер не подтвердил действие. Обновите карточку или повторите исходную команду.';
 }
-export function VolumeRemainder({session,projectId,reportId,unit,total,row,checklistId,onSaved}:{session:Session;projectId:string;reportId:string;unit:string;total:string;row:Remainder;checklistId:string;onSaved:(confirmed?:boolean)=>void}){
+export function VolumeRemainder({session,projectId,reportId,unit,total,row,currentParts,checklistId,onSaved}:{session:Session;projectId:string;reportId:string;unit:string;total:string;row:Remainder;currentParts?:{id:string}[];checklistId:string;onSaved:(confirmed?:boolean)=>void}){
  const path=`/projects/${projectId}/volume-reviews/${reportId}/remainder`,key=`helios.volume-remainder:${session.tenantId}:${session.userId}:${projectId}:${reportId}`;
  const[pending,setPending]=useState(()=>readRemainderCommand(key)),[form,setForm]=useState<'present'|'review'|null>(null),[quantity,setQuantity]=useState(''),[reason,setReason]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- const lock=useRef(false),active=useRef(true);useEffect(()=>()=>{active.current=false;},[]);
+ const lock=useRef(false),active=useRef(true);useEffect(()=>{active.current=true;return()=>{active.current=false;};},[]);
  function open(action:'present'|'review'){setForm(action);setQuantity(action==='present'?row.remainingQuantity:row.presentation!.presentedQuantity);setReason('');setError('');}
  async function save(){
   if(lock.current)return;
@@ -41,6 +41,6 @@ export function VolumeRemainder({session,projectId,reportId,unit,total,row,check
    </fieldset>
   </form>:null}
   {row.history.length?<details><summary>История остатка · {row.history.length}</summary><ol>{row.history.map(event=><li key={event.version}><p>{event.action==='present'?`Предъявлено ${amount(event.presentedQuantity)}`:`Принято ${amount(event.acceptedQuantity??'0')}`} {unit} · {event.actorName}</p>{event.reason?<p>{event.reason}</p>:null}<p className="quiet">{new Date(event.createdAt).toLocaleString('ru-RU')}</p></li>)}</ol></details>:null}
-  {row.history.filter(event=>event.acceptedPartId).map(event=><details key={event.id}><summary>ПТО: часть {amount(event.acceptedQuantity!)} {unit}</summary><InternalInspection session={session} projectId={projectId} partId={event.acceptedPartId!}/></details>)}
+  {row.history.filter(event=>event.acceptedPartId&&(!currentParts||currentParts.some(p=>p.id===event.acceptedPartId))).map(event=><details key={event.id}><summary>ПТО: часть {amount(event.acceptedQuantity!)} {unit}</summary><InternalInspection session={session} projectId={projectId} partId={event.acceptedPartId!}/></details>)}
  </section>;
 }
