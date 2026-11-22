@@ -7,6 +7,7 @@ export type WorkType = Zone & {
   requiresMaterialControl: boolean;
   requiresPredecessorAcceptance: boolean;
   requiresId: boolean;
+  hiddenWork: boolean;
 };
 export type CatalogItem = Zone | WorkType;
 export type CatalogPage<T> = { items: T[]; total: number; limit: number; offset: number };
@@ -17,6 +18,7 @@ export type WorkTypeDraft = ZoneDraft & {
   requiresMaterialControl: boolean;
   requiresPredecessorAcceptance: boolean;
   requiresId: boolean;
+  hiddenWork: boolean;
 };
 
 export function activeForNewTask<T extends { status: CatalogStatus }>(items: T[]) {
@@ -39,6 +41,7 @@ export function workTypeDraft(row: WorkType | null): WorkTypeDraft {
     requiresMaterialControl: row?.requiresMaterialControl ?? false,
     requiresPredecessorAcceptance: row?.requiresPredecessorAcceptance ?? false,
     requiresId: row?.requiresId ?? false,
+    hiddenWork: row?.hiddenWork ?? false,
     status: row?.status ?? "active",
   };
 }
@@ -63,6 +66,7 @@ export function catalogBody(kind: CatalogKind, draft: ZoneDraft | WorkTypeDraft,
     requiresMaterialControl: type.requiresMaterialControl,
     requiresPredecessorAcceptance: type.requiresPredecessorAcceptance,
     requiresId: type.requiresId,
+    hiddenWork: type.hiddenWork,
   };
 }
 
@@ -84,5 +88,6 @@ export function requirementLabels(row: WorkType) {
     row.requiresMaterialControl ? "материалы" : "",
     row.requiresPredecessorAcceptance ? "предшественник" : "",
     row.requiresId ? "ИД" : "",
+    row.hiddenWork ? "скрытые" : "",
   ].filter(Boolean);
 }

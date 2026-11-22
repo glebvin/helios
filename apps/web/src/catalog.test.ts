@@ -6,7 +6,7 @@ const zone: Zone = { id: "z", projectId: "p", name: "Этаж 2", version: 3, st
 const archived: Zone = { ...zone, id: "old", name: "Старый этаж", status: "archived" };
 const work: WorkType = {
   id: "w", projectId: "p", name: "Бетонирование", version: 2, status: "active", unit: "м3",
-  requiresRd: true, requiresMaterialControl: true, requiresPredecessorAcceptance: false, requiresId: true,
+  requiresRd: true, requiresMaterialControl: true, requiresPredecessorAcceptance: false, requiresId: true, hiddenWork: false,
 };
 
 test("archived zone and work type are not offered for a new task", () => {
@@ -27,6 +27,7 @@ test("work type keeps every requirement and does not invent a pass", () => {
   assert.equal(body.requiresMaterialControl, true);
   assert.equal(body.requiresPredecessorAcceptance, false);
   assert.equal(body.requiresId, true);
+  assert.equal(body.hiddenWork, false);
   assert.equal("passed" in body, false);
   assert.equal(body.expectedVersion, 2);
   assert.equal(body.unit, "м3");
