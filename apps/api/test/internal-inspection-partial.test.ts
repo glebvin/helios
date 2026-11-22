@@ -109,6 +109,25 @@ test('заменённая корректировкой часть не дели
  const totals=await currentSum(f.parts[5].reportId,f.parts[5].partId);assert.equal(totals.total,'16.000');assert.equal(totals.original,false);
  const source=(await admin.query('SELECT accepted_quantity::text AS accepted FROM master_volume_reviews WHERE report_id=$1',[f.parts[5].reportId])).rows[0];assert.equal(source.accepted,'17.000');
 });
+test('повторное деление возвращённой доли показывает своё решение, сохраняя связь с предыдущим',async()=>{
+ const first=await expect(f.call(f.path(1),undefined,'master'),200);
+ const returnedId=first.split.returnedPartId;
+ const card=await expect(f.call(root(1)),200);
+ await f.ok(`/projects/${f.project}/tasks/${f.parts[1].taskId}/checklist-runs`,f.command({expectedVersion:card.checklist.version,templateId:f.template,edition:1,answers:[{itemId:'ready',value:'yes'}]}),'master');
+ await expect(f.call(partPath(returnedId),f.command({action:'resubmit',expectedVersion:3,reason:'Повторная проверка'}),'master'));
+ await expect(f.call(partPath(returnedId),f.command({action:'responsible',expectedVersion:4}),'director'));
+ const second=await expect(f.call(partPath(returnedId),f.command({action:'partial',expectedVersion:5,acceptedQuantity:'0.5',reason:'Остался дефект'}),'pto'));
+ assert.equal(second.state,'split');
+ assert.equal(second.split.role,'source');
+ assert.equal(second.split.originalPartId,returnedId);
+ assert.equal(second.split.acceptedQuantity,'0.500');
+ assert.notEqual(second.split.acceptedPartId,first.split.acceptedPartId);
+ const reread=await expect(f.call(partPath(returnedId),undefined,'master'),200);
+ assert.deepEqual(reread.split,second.split);
+ const original=await expect(f.call(f.path(1),undefined,'master'),200);
+ assert.equal(original.split.returnedPartId,returnedId);
+ assert.equal((await currentSum(f.parts[1].reportId,f.parts[1].partId)).total,'17.000');
+});
 test('ошибка самоконтроля блокирует частичную приёмку, прямой обход суммы запрещён',async()=>{
  await toPto(6);
  await assert.rejects(withTenant(runtime,f.tenant,f.actors.pto.id,async c=>{
