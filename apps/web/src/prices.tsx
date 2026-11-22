@@ -5,6 +5,7 @@ import { Flash } from "./flash";
 import { Mark } from "./mark";
 import { ApiError, v1 } from "./v1";
 import { readPriceCommand, keepPriceCommand, clearPriceCommand, type PriceCommand } from "./price-command";
+import { readPriceImport, keepPriceImport, clearPriceImport, type PriceImportCommand } from "./price-import-command";
 
 type Project = { id: string; name: string };
 type Revision = { version: number; unit: string; price: string; start: string; end: string; createdAt: string };
@@ -60,6 +61,8 @@ export function PriceDesk({ session, theme, onTheme, onLogout }: { session: Sess
   const previewList = useRef<HTMLUListElement>(null);
   const [checking, setChecking] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [pendingImport, setPendingImport] = useState<PriceImportCommand | null>(null);
+  const importLock = useRef(false);
   const generation = useRef(0);
   const activeScope = useRef("");
   const scope = `helios.price:${session.tenantId}:${session.userId}:${projectId}`;
@@ -86,6 +89,9 @@ export function PriceDesk({ session, theme, onTheme, onLogout }: { session: Sess
     if (!projectId) { setRegister(null); return; }
     let live = true;
     setRegister(null); setError("");
+    const heldImport = readPriceImport(`${scope}:import`);
+    setPendingImport(heldImport); setTable(heldImport?.text ?? ""); setPreview(null);
+    setChecking(false); setImporting(false);
     const held = readPriceCommand(scope); setPending(held);
     if (held) { setSelected(held.workTypeId); setPrice(held.price); setStart(held.start); setEnd(held.end); }
     else { setPrice(""); setStart(""); setEnd(""); }
@@ -122,35 +128,39 @@ export function PriceDesk({ session, theme, onTheme, onLogout }: { session: Sess
   }
 
   async function checkTable() {
-    if (!projectId) return;
+    if (!projectId || checking || importing || pendingImport) return;
+    const submittedScope = scope;
     setChecking(true); setError(""); setPreview(null);
     try {
       const next = await call<ImportPreview>(session, `/projects/${projectId}/contract-prices/checks`, { rows: tableRows(table) });
+      if (activeScope.current !== submittedScope) return;
       setPreview(next);
     } catch (reason) {
+      if (activeScope.current !== submittedScope) return;
       setError(reason instanceof ApiError ? reasons[reason.message] ?? "Сервер не принял таблицу." : "Не удалось проверить таблицу.");
-    } finally { setChecking(false); }
+    } finally { if (activeScope.current === submittedScope) setChecking(false); }
   }
 
   async function confirmTable() {
-    if (!projectId || !preview?.acceptable) return;
-    const key = `helios.price-import.${projectId}`;
-    const saved = sessionStorage.getItem(key);
-    const remembered = saved ? JSON.parse(saved) as { text: string; requestId: string } : null;
-    const requestId = remembered?.text === table ? remembered.requestId : crypto.randomUUID();
-    sessionStorage.setItem(key, JSON.stringify({ text: table, requestId }));
+    if (!projectId || importLock.current || (!pendingImport && !preview?.acceptable)) return;
+    const submittedScope = scope, target = projectId, key = `${scope}:import`;
+    const command = pendingImport ?? keepPriceImport(key, { requestId: crypto.randomUUID(), text: table, rows: tableRows(table) });
+    importLock.current = true; setPendingImport(command);
     setImporting(true); setError("");
     try {
-      await call(session, `/projects/${projectId}/contract-prices/imports`, { requestId, rows: tableRows(table) });
-      sessionStorage.removeItem(key);
-      setTable(""); setPreview(null);
+      await call(session, `/projects/${target}/contract-prices/imports`, { requestId: command.requestId, rows: command.rows });
+      clearPriceImport(key, command.requestId);
+      if (activeScope.current !== submittedScope) return;
+      setPendingImport(null); setTable(""); setPreview(null);
       setNotice("Таблица записана."); setPulse((value) => value + 1);
-      await loadRegister(projectId).catch(() => setError("Таблица записана. Не удалось обновить реестр; повторите чтение."));
+      await loadRegister(target).catch(() => { if (activeScope.current === submittedScope) setError("Таблица записана. Не удалось обновить реестр; повторите чтение."); });
     } catch (reason) {
+      if (activeScope.current !== submittedScope) return;
       const code = reason instanceof Error ? reason.message : "request_failed";
-      if (reason instanceof ApiError && reason.status < 500) sessionStorage.removeItem(key);
-      setError(reason instanceof ApiError && reason.status < 500 ? reasons[code] ?? "Сервер не принял таблицу." : "Ответ сервера не подтверждён. Повтор отправит ту же таблицу.");
-    } finally { setImporting(false); }
+      const rejected = reason instanceof ApiError && reason.status < 500 && reason.status !== 429;
+      if (rejected) { clearPriceImport(key, command.requestId); setPendingImport(null); setPreview(null); }
+      setError(rejected ? reasons[code] ?? "Сервер не принял таблицу." : "Ответ сервера не подтверждён. Повтор отправит ту же таблицу.");
+    } finally { importLock.current = false; if (activeScope.current === submittedScope) setImporting(false); }
   }
 
   return (
@@ -171,15 +181,16 @@ export function PriceDesk({ session, theme, onTheme, onLogout }: { session: Sess
         <p className="price-import-note">Таблица: каждая строка «название; цена; начало; окончание». Это проверочный формат, не файл заказчика. Пустая цена не становится нулём.</p>
         {projectId ? (
           <div className="price-import">
-            <textarea aria-label="Таблица цен" rows={4} value={table} disabled={importing || checking} onChange={(event) => { setTable(event.target.value); setPreview(null); }} />
-            <button className="desk-action" type="button" disabled={importing || checking || tableRows(table).length === 0} onClick={() => void checkTable()}>{checking ? "Проверяем…" : "Проверить"}</button>
-            <button className="desk-action" type="button" disabled={importing || checking || !preview?.acceptable} onClick={() => void confirmTable()}>{importing ? "Записываем…" : "Записать проверенные"}</button>
+            <textarea aria-label="Таблица цен" rows={4} value={table} disabled={importing || checking || !!pendingImport} onChange={(event) => { setTable(event.target.value); setPreview(null); }} />
+            {pendingImport ? <p role="status">Таблица ждёт подтверждения. Повтор сохранит исходные строки и номер запроса.</p> : null}
+            <button className="desk-action" type="button" disabled={importing || checking || !!pendingImport || tableRows(table).length === 0} onClick={() => void checkTable()}>{checking ? "Проверяем…" : "Проверить"}</button>
+            <button className="desk-action" type="button" disabled={importing || checking || (!pendingImport && !preview?.acceptable)} onClick={() => void confirmTable()}>{importing ? "Записываем…" : pendingImport ? "Повторить запись таблицы" : "Записать проверенные"}</button>
             {preview ? <ul ref={previewList} className="price-import-rows" tabIndex={-1} role={preview.acceptable ? "status" : "alert"}>{preview.rows.map((row) => <li key={row.line}>{row.line}. {row.workTypeName || "Пустая строка"} — {row.error ? reasons[row.error] ?? row.error : `${row.price} за ${row.unit}, ${row.start} — ${row.end}`}</li>)}</ul> : null}
           </div>
         ) : null}
         {projects === null ? (!error ? <p className="price-hold">Читаем объекты…</p> : null) : projects.length === 0 ? <p>Нет объектов, к которым вам открыт доступ. Попросите руководителя проекта добавить вас на объект.</p> : (
           <div className="roles" role="tablist" aria-label="Объект">
-            {projects.map((item) => <button key={item.id} type="button" role="tab" aria-selected={item.id === projectId} className={item.id === projectId ? "is-on" : ""} disabled={saving} onClick={() => setProjectId(item.id)}>{item.name}</button>)}
+            {projects.map((item) => <button key={item.id} type="button" role="tab" aria-selected={item.id === projectId} className={item.id === projectId ? "is-on" : ""} disabled={saving || checking || importing} onClick={() => setProjectId(item.id)}>{item.name}</button>)}
           </div>
         )}
       </section>
