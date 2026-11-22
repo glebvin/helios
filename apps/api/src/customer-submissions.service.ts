@@ -186,6 +186,30 @@ export class CustomerSubmissionsService {
       return { filename: file.filename as string, contentType: file.contentType as string, bytes: file.bytes as Buffer };
     });
   }
+  zones(a: Actor, project: string) {
+    if (!['master', 'director', 'pto', 'worker'].includes(a.role)) throw httpError(403, 'role_denied');
+    return withTenant(this.pool, a.tenantId, a.userId, async c => {
+      if (!(await c.query(`SELECT p.id FROM projects p WHERE p.tenant_id=$1 AND p.id=$3 AND EXISTS (
+        SELECT 1 FROM memberships m WHERE m.tenant_id=p.tenant_id AND m.user_id=$2 AND m.status='active' AND m.role=$4
+        AND (m.role='director' OR EXISTS (SELECT 1 FROM project_memberships pm WHERE pm.tenant_id=p.tenant_id AND pm.project_id=p.id AND pm.user_id=m.user_id AND pm.status='active')))`, [a.tenantId, a.userId, project, a.role])).rowCount) throw httpError(404, 'not_found');
+      const zones = (await c.query(`SELECT z.id AS "zoneId", z.name,
+        sum(part.attempt_number)::int AS "attemptCount",
+        coalesce(sum(part.open_remarks),0)::int AS "openRemarks",
+        bool_or(part.has_scan) AS "hasScan"
+        FROM (SELECT t.zone_id, cs.attempt_number,
+          (SELECT count(*)::int FROM customer_submission_remarks r WHERE r.accepted_part_id=cs.accepted_part_id AND r.closed_at IS NULL) AS open_remarks,
+          EXISTS (SELECT 1 FROM customer_submission_scans sc WHERE sc.accepted_part_id=cs.accepted_part_id) AS has_scan
+          FROM customer_submissions cs
+          JOIN accepted_volume_parts v ON v.tenant_id=cs.tenant_id AND v.id=cs.accepted_part_id
+          JOIN managed_execution_reports s ON s.tenant_id=v.tenant_id AND s.report_id=v.report_id ${executionJoin}
+          JOIN daily_tasks t ON t.tenant_id=s.tenant_id AND t.project_id=s.project_id AND t.id=s.task_id
+          WHERE ${executionScope} AND cs.project_id=$3 AND t.zone_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM memberships m WHERE m.tenant_id=$1 AND m.user_id=$2 AND m.status='active' AND m.role=$4)) part
+        JOIN project_work_zones z ON z.tenant_id=$1 AND z.project_id=$3 AND z.id=part.zone_id
+        GROUP BY z.id, z.name ORDER BY z.name, z.id`, [a.tenantId, a.userId, project, a.role])).rows;
+      return { zones };
+    });
+  }
   private async withPhotos<T extends { id: string }>(c: PoolClient, remarks: T[]) {
     if (!remarks.length) return [];
     const photos = (await c.query(`SELECT id AS "fileId", remark_id AS "remarkId", filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256 FROM customer_remark_photos WHERE remark_id = ANY($1::uuid[]) ORDER BY created_at, id`, [remarks.map((item) => item.id)])).rows as { remarkId: string }[];

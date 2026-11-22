@@ -11150,6 +11150,24 @@
         }
       }
     },
+    "/api/v1/projects/{project}/customer-submission-zones": {
+      "get": {
+        "operationId": "readCustomerSubmissionZones",
+        "summary": "Показатели внешней приёмки по зоне",
+        "description": "Master, director, PTO or worker who can see the project. Only zones that already have a recorded submission. A part without a zone is omitted. Counts are recorded attempts and open remarks; hasScan is whether a PDF is stored.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "responses": {
+          "200": {"description": "Zones with recorded submissions", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerSubmissionZones"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden project", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
     "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/remarks/{remark}/close": {
       "post": {
         "operationId": "closeCustomerRemark",
@@ -21185,6 +21203,24 @@
           "contentType": {"type": "string", "enum": ["application/pdf"]},
           "contentBase64": {"type": "string"}
         }
+      },
+      "CustomerSubmissionZone": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["zoneId", "name", "attemptCount", "openRemarks", "hasScan"],
+        "properties": {
+          "zoneId": {"type": "string", "format": "uuid"},
+          "name": {"type": "string"},
+          "attemptCount": {"type": "integer", "minimum": 1},
+          "openRemarks": {"type": "integer", "minimum": 0},
+          "hasScan": {"type": "boolean"}
+        }
+      },
+      "CustomerSubmissionZones": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["zones"],
+        "properties": {"zones": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerSubmissionZone"}}}
       },
       "CustomerRemarkInput": {
         "type": "object",

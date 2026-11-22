@@ -1,5 +1,5 @@
 import { CustomerSubmissionsService } from "./customer-submissions.service.js";
-import { CustomerSubmissionsController } from "./customer-submissions.controller.js";
+import { CustomerSubmissionZonesController, CustomerSubmissionsController } from "./customer-submissions.controller.js";
 import { InternalInspectionsService } from "./internal-inspections.service.js";
 import { InternalInspectionPolicyController, InternalInspectionsController } from "./internal-inspections.controller.js";
 import { VolumeReviewsService } from "./volume-reviews.service.js";
@@ -176,7 +176,7 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [CustomerSubmissionsController, InternalInspectionPolicyController, InternalInspectionsController, VolumeReviewsController, MaterialBatchController, MaterialBatchProjectController, StaffImportController, ChecklistRunsController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [CustomerSubmissionZonesController, CustomerSubmissionsController, InternalInspectionPolicyController, InternalInspectionsController, VolumeReviewsController, MaterialBatchController, MaterialBatchProjectController, StaffImportController, ChecklistRunsController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
 
 
   providers: [

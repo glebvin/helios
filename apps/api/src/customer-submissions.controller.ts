@@ -64,3 +64,14 @@ export class CustomerSubmissionsController {
     response.end(file.bytes);
   }
 }
+
+@Controller('api/v1/projects/:project/customer-submission-zones')
+@UseGuards(TenantGuard)
+export class CustomerSubmissionZonesController {
+  constructor(@Inject(CustomerSubmissionsService) private readonly submissions: CustomerSubmissionsService) {}
+  @Get()
+  zones(@Req() r: ActorRequest, @Param('project') p: string, @Query() q: Record<string, unknown>) {
+    queryInput(q, []);
+    return this.submissions.zones(actorOf(r), uuid(p).toLowerCase());
+  }
+}
