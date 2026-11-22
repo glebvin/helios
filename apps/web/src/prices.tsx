@@ -57,7 +57,7 @@ export function PriceDesk({ session, theme, onTheme, onLogout }: { session: Sess
   const [saving, setSaving] = useState(false);
   const [pending, setPending] = useState<PriceCommand | null>(null);
   const [table, setTable] = useState("");
-  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [preview, setPreview] = useState<(ImportPreview & { scope: string }) | null>(null);
   const previewList = useRef<HTMLUListElement>(null);
   const [checking, setChecking] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -134,7 +134,7 @@ export function PriceDesk({ session, theme, onTheme, onLogout }: { session: Sess
     try {
       const next = await call<ImportPreview>(session, `/projects/${projectId}/contract-prices/checks`, { rows: tableRows(table) });
       if (activeScope.current !== submittedScope) return;
-      setPreview(next);
+      setPreview({ ...next, scope: submittedScope });
     } catch (reason) {
       if (activeScope.current !== submittedScope) return;
       setError(reason instanceof ApiError ? reasons[reason.message] ?? "Сервер не принял таблицу." : "Не удалось проверить таблицу.");
@@ -142,9 +142,10 @@ export function PriceDesk({ session, theme, onTheme, onLogout }: { session: Sess
   }
 
   async function confirmTable() {
-    if (!projectId || importLock.current || (!pendingImport && !preview?.acceptable)) return;
     const submittedScope = scope, target = projectId, key = `${scope}:import`;
-    const command = pendingImport ?? keepPriceImport(key, { requestId: crypto.randomUUID(), text: table, rows: tableRows(table) });
+    const held = readPriceImport(key);
+    if (!target || importLock.current || (!held && (!preview?.acceptable || preview.scope !== scope))) return;
+    const command = held ?? keepPriceImport(key, { requestId: crypto.randomUUID(), text: table, rows: tableRows(table) });
     importLock.current = true; setPendingImport(command);
     setImporting(true); setError("");
     try {
@@ -184,7 +185,7 @@ export function PriceDesk({ session, theme, onTheme, onLogout }: { session: Sess
             <textarea aria-label="Таблица цен" rows={4} value={table} disabled={importing || checking || !!pendingImport} onChange={(event) => { setTable(event.target.value); setPreview(null); }} />
             {pendingImport ? <p role="status">Таблица ждёт подтверждения. Повтор сохранит исходные строки и номер запроса.</p> : null}
             <button className="desk-action" type="button" disabled={importing || checking || !!pendingImport || tableRows(table).length === 0} onClick={() => void checkTable()}>{checking ? "Проверяем…" : "Проверить"}</button>
-            <button className="desk-action" type="button" disabled={importing || checking || (!pendingImport && !preview?.acceptable)} onClick={() => void confirmTable()}>{importing ? "Записываем…" : pendingImport ? "Повторить запись таблицы" : "Записать проверенные"}</button>
+            <button className="desk-action" type="button" disabled={importing || checking || (!pendingImport && (!preview?.acceptable || preview.scope !== scope))} onClick={() => void confirmTable()}>{importing ? "Записываем…" : pendingImport ? "Повторить запись таблицы" : "Записать проверенные"}</button>
             {preview ? <ul ref={previewList} className="price-import-rows" tabIndex={-1} role={preview.acceptable ? "status" : "alert"}>{preview.rows.map((row) => <li key={row.line}>{row.line}. {row.workTypeName || "Пустая строка"} — {row.error ? reasons[row.error] ?? row.error : `${row.price} за ${row.unit}, ${row.start} — ${row.end}`}</li>)}</ul> : null}
           </div>
         ) : null}
