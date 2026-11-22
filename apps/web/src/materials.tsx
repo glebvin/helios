@@ -66,7 +66,7 @@ export function Materials({ session, projectId, canEdit }: { session: Session; p
   const mutation = useRef(false);
   const commandKey = `helios.material:${session.tenantId}:${session.userId}:${projectId}`;
   const [pending, setPending] = useState<MaterialCommand | null>(() => readMaterialCommand(commandKey));
-  useEffect(() => () => { live.current = false; }, []);
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   const [query, setQuery] = useState("");
   const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<Page | null>(null);

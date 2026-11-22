@@ -50,7 +50,7 @@ export function MaterialControl({ session, projectId, batchId, documents, contro
   const commandKey = `helios.material-control:${session.tenantId}:${session.userId}:${projectId}:${batchId}`;
   const [pending, setPending] = useState(() => readMaterialCommand(commandKey));
   const mutation = useRef(false), live = useRef(true);
-  useEffect(() => () => { live.current = false; }, []);
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   const role = session.role;
   const version = control?.version ?? 0;
 

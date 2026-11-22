@@ -96,6 +96,46 @@ test('the server accepts a batch only after the checklist and the route', async 
   assert.equal((await step(supply, batch, { expectedVersion: 1, action: 'data', dataMark: 'provided' })).body.control.verdict, 'awaiting');
   assert.equal((await step(master, batch, { expectedVersion: 2, action: 'data', dataMark: 'provided' })).status, 403);
   assert.equal((await step(director, batch, { expectedVersion: 2, action: 'responsible' })).body.control.verdict, 'awaiting');
+  for (const [update, reason] of [
+    ["document_types=ARRAY['internal-inspection']", 'type'],
+    ["project_id='"+other+"'", 'object'],
+    ["organization_id='"+foreignOrg+"'", 'company'],
+    ["valid_from=current_date-10,valid_until=current_date-1", 'expired'],
+    ["valid_from=current_date+1,valid_until='2099-12-31'", 'not_started'],
+  ]) {
+    await admin.query(`UPDATE responsibility_orders SET ${update} WHERE id=$1`, [order]);
+    try {
+      const denied = await step(pto, batch, { expectedVersion: 3, action: 'review', decision: 'agree' });
+      assert.equal(denied.status, 422, JSON.stringify(denied.body));
+      assert.equal(denied.body.error, reason);
+      assert.equal((await admin.query(`SELECT count(*)::int n FROM material_control_steps WHERE control_id=$1`, [prepare.body.control.id])).rows[0].n, 3);
+    } finally {
+      await admin.query(`UPDATE responsibility_orders SET organization_id=$2,project_id=$3,document_types=ARRAY['incoming-materials'],valid_from='2026-01-01',valid_until='2099-12-31' WHERE id=$1`, [order, org, project]);
+    }
+  }
+  const orderLock = await admin.connect();
+  await orderLock.query('BEGIN');
+  await orderLock.query('SELECT id FROM responsibility_orders WHERE id=$1 FOR UPDATE', [order]);
+  const waitingAgreement = step(pto, batch, { expectedVersion: 3, action: 'review', decision: 'agree' });
+  try {
+    let waiting = false;
+    for (let i = 0; i < 100; i++) {
+      const blocked = await admin.query("SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%FROM responsibility_orders WHERE employee_id=%'");
+      if (blocked.rowCount) { waiting = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(waiting, true, 'Согласование должно дождаться изменения приказа');
+    await orderLock.query("UPDATE responsibility_orders SET status='revoked',revocation_reason='Отозван во время ожидания' WHERE id=$1", [order]);
+    await orderLock.query('COMMIT');
+    const denied = await waitingAgreement;
+    assert.equal(denied.status, 422);
+    assert.equal(denied.body.error, 'revoked');
+    assert.equal((await admin.query(`SELECT count(*)::int n FROM material_control_steps WHERE control_id=$1`, [prepare.body.control.id])).rows[0].n, 3);
+  } finally {
+    await orderLock.query('ROLLBACK'); orderLock.release();
+    await admin.query("UPDATE responsibility_orders SET status='active',revocation_reason=NULL WHERE id=$1", [order]);
+    await waitingAgreement.catch(() => {});
+  }
   const agreed = await step(pto, batch, { expectedVersion: 3, action: 'review', decision: 'agree' });
   assert.equal(agreed.body.control.verdict, 'accepted');
   assert.equal(agreed.body.control.steps.length, 4);
