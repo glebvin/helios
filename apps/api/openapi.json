@@ -11106,6 +11106,50 @@
         }
       }
     },
+    "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/scans": {
+      "post": {
+        "operationId": "recordCustomerSubmissionScan",
+        "summary": "Приложить подписанный скан внешней заявки",
+        "description": "Project master only. One PDF up to 8 MiB; the bytes must start with the PDF marker. The same file stays one scan. Same requestId returns the original result. This is not a remark photo.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerSubmissionScanInput"}}}},
+        "responses": {
+          "201": {"description": "Stored scan", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerSubmissionScan"}}}},
+          "400": {"description": "Invalid file", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden part", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "409": {"description": "idempotency_payload_mismatch", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "413": {"description": "file_too_large", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "422": {"description": "file_denied or submission_required", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/scans/{scan}": {
+      "get": {
+        "operationId": "readCustomerSubmissionScan",
+        "summary": "Прочитать байты подписанного скана",
+        "description": "Master, director, PTO or worker who can see the part. The response is the PDF itself.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "scan", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "responses": {
+          "200": {"description": "PDF bytes", "content": {"application/pdf": {"schema": {"type": "string", "format": "binary"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden scan", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
     "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/remarks/{remark}/close": {
       "post": {
         "operationId": "closeCustomerRemark",
@@ -21071,7 +21115,7 @@
       "CustomerSubmission": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["recorded", "attemptNumber", "acceptedPartId", "checklistRunId", "recordedAt", "openRemarks", "remarks"],
+        "required": ["recorded", "attemptNumber", "acceptedPartId", "checklistRunId", "recordedAt", "openRemarks", "remarks", "scans"],
         "properties": {
           "recorded": {"type": "boolean"},
           "attemptNumber": {"type": "integer", "minimum": 1, "nullable": true},
@@ -21079,7 +21123,8 @@
           "checklistRunId": {"type": "string", "format": "uuid", "nullable": true},
           "recordedAt": {"type": "string", "format": "date-time", "nullable": true},
           "openRemarks": {"type": "integer", "minimum": 0},
-          "remarks": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerRemark"}}
+          "remarks": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerRemark"}},
+          "scans": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerSubmissionScan"}}
         }
       },
       "CustomerRemark": {
@@ -21115,6 +21160,29 @@
           "requestId": {"type": "string", "format": "uuid"},
           "filename": {"type": "string"},
           "contentType": {"type": "string", "enum": ["image/jpeg", "image/png"]},
+          "contentBase64": {"type": "string"}
+        }
+      },
+      "CustomerSubmissionScan": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fileId", "filename", "contentType", "sizeBytes", "sha256"],
+        "properties": {
+          "fileId": {"type": "string", "format": "uuid"},
+          "filename": {"type": "string"},
+          "contentType": {"type": "string", "enum": ["application/pdf"]},
+          "sizeBytes": {"type": "integer", "minimum": 1},
+          "sha256": {"type": "string"}
+        }
+      },
+      "CustomerSubmissionScanInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "filename", "contentType", "contentBase64"],
+        "properties": {
+          "requestId": {"type": "string", "format": "uuid"},
+          "filename": {"type": "string"},
+          "contentType": {"type": "string", "enum": ["application/pdf"]},
           "contentBase64": {"type": "string"}
         }
       },
