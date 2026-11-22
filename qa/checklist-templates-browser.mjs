@@ -11,8 +11,8 @@ const password = "fixture-checklist-2026";
 const dbPort = Number(process.env.HELIOS_CHECKLIST_QA_DB_PORT ?? 54563);
 assert.ok([54563,54595].includes(dbPort));
 const db = `postgres://helios:helios@127.0.0.1:${dbPort}/helios`;
-const api = `http://127.0.0.1:${dbPort === 54595 ? 4411 : 4395}`;
-const web = `http://127.0.0.1:${dbPort === 54595 ? 5283 : 5272}`;
+const api = process.env.HELIOS_CHECKLIST_API ?? `http://127.0.0.1:${dbPort === 54595 ? 4411 : 4395}`;
+const web = process.env.HELIOS_CHECKLIST_WEB ?? `http://127.0.0.1:${dbPort === 54595 ? 5283 : 5272}`;
 const admin = new pg.Pool({ connectionString: db });
 const tenant = randomUUID();
 const project = randomUUID();
@@ -80,6 +80,10 @@ for (const person of people) {
     await admin.query("INSERT INTO project_memberships(tenant_id,project_id,user_id) VALUES($1,$2,$3)", [tenant, project, person.id]);
   }
 }
+const organization = randomUUID(), ptoEmployee = randomUUID(), order = randomUUID();
+await admin.query("INSERT INTO organizations(tenant_id,id,kind,name)VALUES($1,$2,'own','QA')",[tenant,organization]);
+await admin.query("INSERT INTO employees(tenant_id,id,organization_id,user_id,full_name)VALUES($1,$2,$3,$4,'PTO QA')",[tenant,ptoEmployee,organization,byName.pto.id]);
+await admin.query("INSERT INTO responsibility_orders(tenant_id,id,organization_id,project_id,employee_id,order_number,order_date,valid_from,valid_until,document_types,status,version)VALUES($1,$2,$3,$4,$5,'QA','2026-01-01','2026-01-01','2099-12-31',ARRAY['inspection-template'],'active',1)",[tenant,order,organization,project,ptoEmployee]);
 const configuration = defaultRouteConfiguration();
 const route = configuration.routes.find((item) => item.documentType === "inspection-template");
 route.preparers[0].userId = byName.engineer.id;
@@ -148,6 +152,11 @@ try {
   await templates(page);
   await draft().click();
   assert.equal(await page.getByRole("button", { name: "Утвердить" }).count(), 0);
+  await admin.query("UPDATE responsibility_orders SET status='revoked',revocation_reason='QA' WHERE id=$1", [order]);
+  await page.getByRole("button", { name: "Принять ответственность" }).click();
+  await page.getByText("Приказ отозван. Принятие шаблона им не подтверждается.", { exact: true }).waitFor();
+  assert.equal((await admin.query("SELECT count(*)::int n FROM checklist_template_events WHERE tenant_id=$1 AND action='accept'", [tenant])).rows[0].n, 0);
+  await admin.query("UPDATE responsibility_orders SET status='active',revocation_reason=NULL WHERE id=$1", [order]);
   await page.getByRole("button", { name: "Принять ответственность" }).click();
   await draft().getByText("На согласовании").waitFor();
   await logout(page);
@@ -215,7 +224,7 @@ try {
   await page.close();
   await browser.close();
   const tenants = [tenant, byName.foreign.tenant];
-  for (const table of ["checklist_template_events", "checklist_template_editions", "checklist_templates", "people_command_receipts", "route_config_versions", "audit_log", "project_memberships", "memberships", "projects"]) {
+  for (const table of ["checklist_template_events", "checklist_template_editions", "checklist_templates", "responsibility_order_revisions", "responsibility_orders", "people_command_receipts", "route_config_versions", "audit_log", "employees", "organizations", "project_memberships", "memberships", "projects"]) {
     await admin.query(`DELETE FROM ${table} WHERE tenant_id = ANY($1::uuid[])`, [tenants]);
   }
   await admin.query("DELETE FROM sessions WHERE user_id = ANY($1::uuid[])", [people.map((person) => person.id)]);

@@ -159,6 +159,29 @@ test("template draft follows PTO, both reviews and ZDS, then a new edition leave
   assert.equal(blocked.body.error, "revoked");
   assert.equal((await admin.query("SELECT count(*)::int n FROM checklist_template_events WHERE template_id=$1 AND action='accept'", [created.body.templateId])).rows[0].n, 0);
   await admin.query("UPDATE responsibility_orders SET status='active', revocation_reason=NULL WHERE id=$1", [ids.get("order")]);
+  const orderLock = await admin.connect();
+  await orderLock.query('BEGIN');
+  await orderLock.query('SELECT id FROM responsibility_orders WHERE id=$1 FOR UPDATE', [ids.get('order')]);
+  const pendingAccept = call('pto', 'POST', `${template}/decision`, decision('accept', submitted.body.version));
+  try {
+    let waiting = false;
+    for (let i = 0; i < 100; i++) {
+      const blocked = await admin.query("SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%FROM responsibility_orders WHERE employee_id=%'");
+      if (blocked.rowCount) { waiting = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(waiting, true, 'Принятие должно дождаться изменения приказа');
+    await orderLock.query("UPDATE responsibility_orders SET status='revoked',revocation_reason='Отозван во время принятия' WHERE id=$1", [ids.get('order')]);
+    await orderLock.query('COMMIT');
+    const denied = await pendingAccept;
+    assert.equal(denied.status, 422);
+    assert.equal(denied.body.error, 'revoked');
+    assert.equal((await admin.query("SELECT count(*)::int n FROM checklist_template_events WHERE template_id=$1 AND action='accept'", [created.body.templateId])).rows[0].n, 0);
+  } finally {
+    await orderLock.query('ROLLBACK'); orderLock.release();
+    await admin.query("UPDATE responsibility_orders SET status='active',revocation_reason=NULL WHERE id=$1", [ids.get('order')]);
+    await pendingAccept.catch(() => {});
+  }
   const accepted = await call("pto", "POST", `${template}/decision`, decision("accept", submitted.body.version));
   assert.equal(accepted.status, 201);
   assert.equal(accepted.body.status, "in_review");
