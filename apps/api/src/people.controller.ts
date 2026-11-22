@@ -43,6 +43,10 @@ export class PeopleController {
   safetyReview(@Req() r:ActorRequest,@Param('id') id:string,@Param('check') check:string,@Query() q:Record<string,unknown>) {queryInput(q,[]);return this.people.safetyReview(actorOf(r),uuid(id),uuid(check));}
   @Post('employees/:id/admission-checks/:check/safety-review')
   safetyReviewWrite(@Req() r:ActorRequest,@Param('id') id:string,@Param('check') check:string,@Body() b:unknown,@Res() s:Response) {return this.send(s,this.people.writeSafetyReview(actorOf(r),uuid(id).toLowerCase(),uuid(check).toLowerCase(),b));}
+  @Get('employees/:id/admission-checks/:check/approval')
+  approval(@Req() r:ActorRequest,@Param('id') id:string,@Param('check') check:string,@Query() q:Record<string,unknown>) {queryInput(q,[]);return this.people.approval(actorOf(r),uuid(id),uuid(check));}
+  @Post('employees/:id/admission-checks/:check/approval')
+  approvalWrite(@Req() r:ActorRequest,@Param('id') id:string,@Param('check') check:string,@Body() b:unknown,@Res() s:Response) {return this.send(s,this.people.writeApproval(actorOf(r),uuid(id).toLowerCase(),uuid(check).toLowerCase(),b));}
   @Get('projects/:p/memberships')
   memberships(@Req() r:ActorRequest,@Param('p') p:string,@Query() q:Record<string,unknown>) {queryInput(q,['limit','offset']);return this.people.memberships(actorOf(r),uuid(p),page(q));}
   @Put('projects/:p/memberships/:user')

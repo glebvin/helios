@@ -210,6 +210,7 @@ export class PeopleService {
         if(!current || !recorded || current.id!==recorded.id || current.version!==recorded.version)reasons.push(`qualification_changed:${code}`);
       }
       if(check.passed && await this.safetyReviewRequired(c,p,check.id)) reasons.push('safety_review_required');
+      if(check.passed && await this.approvalRequired(c,p,check.id)) reasons.push('approval_required');
     }
     return {eligible:reasons.length===0,reasons,checkId:check?.id??null,templateVersion:t?.version??null};
   }
@@ -267,6 +268,50 @@ export class PeopleService {
     const reviewer=await this.safetyReviewer(c,projectId);
     if(typeof reviewer!=='string') return false;
     return !(await c.query(`SELECT 1 FROM admission_safety_reviews WHERE check_id=$1`,[checkId])).rowCount;
+  }
+  approval(a:Actor,e:string,check:string) {
+    return this.with(a,async c=>{
+      const row=await this.visibleCheck(c,a,e,check);
+      const required=await this.admissionApprover(c,row.projectId);
+      const recorded=(await c.query(`SELECT recorded_at::text AS "recordedAt" FROM admission_approvals WHERE check_id=$1`,[check])).rows[0];
+      return {recorded:!!recorded,required:typeof required==='string',recordedAt:recorded?.recordedAt??null};
+    });
+  }
+  async writeApproval(a:Actor,e:string,check:string,input:unknown) {
+    if(a.role!=='director') throw httpError(403,'role_denied');
+    const b=safetyReviewInput(input);
+    const operation=`POST /employees/${e}/admission-checks/${check}/approval`;
+    try { return await this.with(a,async c=>{
+      await this.director(c,a);
+      const row=await this.visibleCheck(c,a,e,check);
+      const {inserted,hash}=await reserveCommand(c,a,operation,b);
+      await this.director(c,a);
+      if(!inserted) return replayCommand(c,a,b.requestId,hash);
+      if(!row.snapshot.passed) throw httpError(422,'check_not_passed');
+      if(await this.safetyReviewRequired(c,row.projectId,check)) throw httpError(422,'safety_review_required');
+      const approver=await this.admissionApprover(c,row.projectId);
+      if(typeof approver!=='string') throw httpError(422,'approver_not_assigned');
+      if(approver!==a.userId) throw httpError(403,'route_denied');
+      if((await c.query(`SELECT 1 FROM admission_approvals WHERE check_id=$1`,[check])).rowCount) throw httpError(409,'already_approved');
+      const recordedAt=(await c.query(`SELECT clock_timestamp()::text AS time`)).rows[0].time;
+      await c.query(`INSERT INTO admission_approvals(tenant_id,id,project_id,employee_id,check_id,approver_user_id,actor_user_id,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[a.tenantId,randomUUID(),row.projectId,e,check,a.userId,a.userId,b.requestId]);
+      return completeCommand(c,a,b.requestId,201,{recorded:true,required:true,recordedAt});
+    }); }
+    catch(error:any) {
+      if(error.code==='23505') throw httpError(409,'already_approved');
+      throw error;
+    }
+  }
+  private async admissionApprover(c:PoolClient,projectId:string) {
+    const stored=(await c.query(`SELECT configuration FROM route_config_versions WHERE project_id=$1 ORDER BY version DESC LIMIT 1`,[projectId])).rows[0];
+    const route=stored?.configuration?.routes?.find((item:{documentType?:string})=>item.documentType==='employee-admission');
+    const userId=route?.approvers?.[0]?.userId;
+    return typeof userId==='string'?userId:null;
+  }
+  private async approvalRequired(c:PoolClient,projectId:string,checkId:string) {
+    const approver=await this.admissionApprover(c,projectId);
+    if(typeof approver!=='string') return false;
+    return !(await c.query(`SELECT 1 FROM admission_approvals WHERE check_id=$1`,[checkId])).rowCount;
   }
   memberships(a:Actor,p:string,pg:Page) {
     return this.with(a,async c=>{

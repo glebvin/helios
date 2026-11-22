@@ -2119,6 +2119,47 @@
         }
       }
     },
+    "/api/v1/employees/{id}/admission-checks/{check}/approval": {
+      "get": {
+        "operationId": "getAdmissionApproval",
+        "summary": "getAdmissionApproval",
+        "description": "Whether the director named in the employee-admission route has approved this check. Required is false until that person is named.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "check", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Current approval", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SafetyReview" } } } },
+          "400": { "description": "Invalid UUID", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role denied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Hidden check", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "operationId": "approveAdmissionCheck",
+        "summary": "approveAdmissionCheck",
+        "description": "The director named in the employee-admission route approves one passed check. Safety agreement is required first when a safety reviewer is named. Same requestId replays the stored body.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "check", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["requestId"], "properties": { "requestId": { "type": "string", "format": "uuid" } } } } } },
+        "responses": {
+          "201": { "description": "Approval stored", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SafetyReview" } } } },
+          "400": { "description": "Invalid body", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role or assigned approver denied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Hidden check", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Already approved or idempotency mismatch", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Check did not pass, safety has not agreed, or approver is not assigned", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
     "/api/v1/projects/{p}/memberships": {
       "get": {
         "operationId": "listProjectMemberships",

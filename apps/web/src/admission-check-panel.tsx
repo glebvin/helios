@@ -8,7 +8,7 @@ import { staffRequest } from "./staff-form";
 import type { AdmissionTemplate } from "./admission-template";
 import { Flash } from "./flash";
 import { NoteMark } from "./note-mark";
-import { answersComplete, blankAnswers, checkBody, checkError, checkReason, reviewError, reviewLine, type AdmissionCheck, type CheckAnswers, type CheckPage, type SafetyReview } from "./admission-check";
+import { answersComplete, approvalError, approvalLine, blankAnswers, checkBody, checkError, checkReason, reviewError, reviewLine, type AdmissionCheck, type CheckAnswers, type CheckPage, type SafetyReview } from "./admission-check";
 
 const describe = (reason: unknown) => checkError(reason instanceof ApiError ? reason.status : null, reason instanceof ApiError ? reason.message : "");
 async function currentTemplate(session: Session, projectId: string) {
@@ -73,16 +73,21 @@ export function AdmissionChecksPanel({ session, employeeId, projectId, archived 
 function CheckResult({ session, path, row, template, onAgreed }: { session: Session; path: string; row: AdmissionCheck; template: AdmissionTemplate | null; onAgreed: (message: string) => void }) {
   const [open, setOpen] = useState(false);
   const [review, setReview] = useState<SafetyReview | null>(null);
+  const [approval, setApproval] = useState<SafetyReview | null>(null);
   const [reviewPass, setReviewPass] = useState(0);
+  const [approvalPass, setApprovalPass] = useState(0);
   const reduce = useReducedMotion();
   const stale = !!template && (row.templateVersion !== template.version || row.templateCode !== template.code);
   const line = reviewLine(review, session.role);
+  const decision = approvalLine(approval, session.role);
+  const safetyClear = !review?.required || review.recorded;
   useEffect(() => {
     if (!row.passed) return;
     let live = true;
     void v1<SafetyReview>(session, `${path}/${row.id}/safety-review`).then(next => { if (live) setReview(next); }).catch(() => { if (live) setReview(null); });
+    void v1<SafetyReview>(session, `${path}/${row.id}/approval`).then(next => { if (live) setApproval(next); }).catch(() => { if (live) setApproval(null); });
     return () => { live = false; };
-  }, [session, path, row.id, row.passed, reviewPass]);
+  }, [session, path, row.id, row.passed, reviewPass, approvalPass]);
   return <article className={open ? "check-result is-open" : "check-result"}>
     <div className="check-summary">
       <button type="button" className="check-toggle" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
@@ -90,7 +95,9 @@ function CheckResult({ session, path, row, template, onAgreed }: { session: Sess
         <span className="check-state">{stale ? <span className="check-stale">Прежний шаблон</span> : null}<DeskBadge tone={!row.passed || stale ? "warn" : "done"}>{row.passed ? "Пройдена" : "Не пройдена"}</DeskBadge><motion.span className="check-chevron" aria-hidden="true" animate={{ rotate: open ? 180 : 0 }} transition={{ type: "spring", bounce: 0, duration: reduce ? 0 : 0.28 }}>⌄</motion.span></span>
       </button>
       {line ? <p className="quiet" role="status">{line}</p> : null}
+      {decision ? <p className="quiet" role="status">{decision}</p> : null}
       {session.role === "safety" && review?.required && !review.recorded ? <SafetyAgree session={session} path={`${path}/${row.id}/safety-review`} onAgreed={message => { onAgreed(message); setReviewPass(value => value + 1); }} /> : null}
+      {session.role === "director" && safetyClear && approval?.required && !approval.recorded ? <ApprovalAgree session={session} path={`${path}/${row.id}/approval`} onAgreed={message => { onAgreed(message); setApprovalPass(value => value + 1); }} /> : null}
       <NoteMark label={`Сведения попытки №${row.sequence}`}><p>{row.templateSnapshot.title} · шаблон версии {row.templateVersion} · дата проверки {row.civilDate}.</p><p>Требуемые квалификации: {row.templateSnapshot.requiredQualificationCodes.join(", ") || "не требовались"}.</p>{row.qualificationEvidence.length ? <p>{row.qualificationEvidence.map(item => `${item.code} · версия ${item.version} · ${item.validUntil ? `по ${item.validUntil.split("-").reverse().join(".")}` : "без срока"}`).join("; ")}</p> : null}{!template ? <p>Актуальность шаблона не подтверждена.</p> : null}</NoteMark>
     </div>
     <motion.div className="check-fold" initial={false} animate={{ height: open ? "auto" : 0, opacity: open ? 1 : 0 }} transition={{ type: "spring", bounce: 0, duration: reduce ? 0 : 0.24 }} inert={open ? undefined : true}>
@@ -123,6 +130,27 @@ function SafetyAgree({ session, path, onAgreed }: { session: Session; path: stri
     finally { lock.current = false; setBusy(false); }
   }
   return <div className="template-bar">{error ? <p role="alert">{error}</p> : null}<button className="desk-action" type="button" disabled={busy} onClick={() => void agree()}>{busy ? "Записываем…" : "Согласовать допуск"}</button></div>;
+}
+function ApprovalAgree({ session, path, onAgreed }: { session: Session; path: string; onAgreed: (message: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const lock = useRef(false);
+  const pendingKey = `helios.admission-approval:${session.tenantId}:${session.userId}:${path}`;
+  async function approve() {
+    if (lock.current) return;
+    let requestId = "";
+    try { const previous = sessionStorage.getItem(pendingKey); if (previous) requestId = previous; } catch { /* The same click can still finish. */ }
+    if (!requestId) requestId = crypto.randomUUID();
+    try { sessionStorage.setItem(pendingKey, requestId); } catch { /* A lost answer can be repeated from this button. */ }
+    lock.current = true; setBusy(true); setError("");
+    try {
+      await v1(session, path, { requestId });
+      try { sessionStorage.removeItem(pendingKey); } catch { /* The server result is the confirmation. */ }
+      onAgreed("Сервер записал утверждение допуска.");
+    } catch (reason) { setError(approvalError(reason instanceof ApiError ? reason.status : null, reason instanceof ApiError ? reason.message : "")); }
+    finally { lock.current = false; setBusy(false); }
+  }
+  return <div className="template-bar">{error ? <p role="alert">{error}</p> : null}<button className="desk-action" type="button" disabled={busy} onClick={() => void approve()}>{busy ? "Записываем…" : "Утвердить допуск"}</button></div>;
 }
 function CheckForm({ session, path, projectId, initial, latest, onCancel, onSaved }: { session: Session; path: string; projectId: string; initial: AdmissionTemplate; latest: AdmissionTemplate | null; onCancel: () => void; onSaved: (row: AdmissionCheck) => void }) {
   const [source, setSource] = useState(initial);
