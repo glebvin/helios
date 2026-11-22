@@ -32,6 +32,11 @@ try{
  assert.ok(await page.getByRole('button',{name:'Подтвердить частичную приёмку',exact:true}).isDisabled());
  await page.getByLabel('Принятый объём',{exact:true}).fill('16');
  await page.getByLabel('Причина возврата остатка',{exact:true}).fill('1 м² с дефектом');
+ await admin.query("UPDATE responsibility_orders SET status='revoked',revocation_reason='QA' WHERE id=$1",[f.orderId]);
+ await page.getByRole('button',{name:'Подтвердить частичную приёмку',exact:true}).click();
+ await page.getByText('Приказ отозван. Принятие им не подтверждается.',{exact:true}).waitFor();
+ assert.equal((await f.call(f.path(0),undefined,'pto')).body.state,'awaiting_pto');
+ await admin.query("UPDATE responsibility_orders SET status='active',revocation_reason=NULL WHERE id=$1",[f.orderId]);
  const commands:unknown[]=[];
  let done:()=>void=()=>{};
  const committed=new Promise<void>(resolve=>{done=resolve;});
