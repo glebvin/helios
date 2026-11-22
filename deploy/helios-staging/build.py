@@ -28,8 +28,10 @@ assert all(isinstance(value,str) and value.startswith('./src/') and value.endswi
 index=out/'web/index.html'
 text=index.read_text()
 banner='<aside role="note" style="padding:8px 16px;background:#fff4dc;color:#604000;font:13px/1.4 system-ui">HELIOS · тестовый стенд, 13 кабинетов. Офлайн подключён к «Моей смене»; проверка физических телефонов — отдельный этап.</aside>'
-recovery='<aside role="status" style="padding:8px 16px;background:#fff4dc;color:#604000;font:13px/1.4 system-ui">Recovery mode: new corrections, partial PTO decisions, PTO policy and price imports are paused. Existing data and receipts are preserved.</aside>'
+recovery='<aside role="status" style="padding:8px 16px;background:#fff4dc;color:#604000;font:13px/1.4 system-ui">Режим восстановления: новые корректировки, частичная приёмка ПТО, настройка ПТО и импорт цен приостановлены. Данные и прежние решения сохранены.</aside>'
 index.write_text(text.replace('<body>','<body>'+banner+recovery))
+sw=out/'web/sw.js'
+sw.write_text(sw.read_text().replace('";\nconst shell', '-recovery";\nconst shell',1))
 shutil.copy2(deploy/'Dockerfile',out/'Dockerfile')
 shutil.copy2(deploy/'compose.yaml',out/'compose.yaml')
 shutil.copy2(deploy/'gateway.Caddyfile',out/'gateway.Caddyfile')
