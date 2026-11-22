@@ -50,7 +50,7 @@ export function MaterialControl({ session, projectId, batchId, documents, contro
   const commandKey = `helios.material-control:${session.tenantId}:${session.userId}:${projectId}:${batchId}`;
   const [pending, setPending] = useState(() => readMaterialCommand(commandKey));
   const mutation = useRef(false), live = useRef(true);
-  useEffect(() => () => { live.current = false; }, []);
+  useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
   const role = session.role;
   const version = control?.version ?? 0;
 
@@ -68,7 +68,8 @@ export function MaterialControl({ session, projectId, batchId, documents, contro
       const code = error instanceof ApiError ? error.message : "";
       const known = error instanceof ApiError && error.status < 500 && error.status !== 429;
       if (known) { clearMaterialCommand(commandKey); setPending(null); }
-      setProblem(code === "stale_version" ? "Контроль уже изменили. Обновите карточку и проверьте шаг." : code === "control_outdated" ? "Реквизиты партии изменены. Нужна новая подготовка контроля." : code === "control_completed" ? "Этот маршрут уже согласован." : code === "control_refused" ? "Критичный пункт не пройден. Согласование его не отменяет." : code === "route_incomplete" ? "Маршрут ещё не собран: нужны данные ОМТС и ответственность РП." : code === "route_denied" || code === "role_denied" ? "Этот шаг входу не разрешён." : code === "template_not_approved" ? "Нужен утверждённый чек-лист." : code === "document_not_ready" ? "Нужен загруженный документ подходящего типа." : known ? "Сервер отклонил шаг контроля." : "Ответ сервера не получен. Повторите исходный шаг.");
+      const orderProblem: Record<string, string> = { person: "На этого сотрудника нет приказа на входной контроль.", company: "Приказ относится к другой компании.", object: "Приказ выдан на другой объект.", type: "Приказ не разрешает входной контроль материалов.", revoked: "Приказ отозван. Согласование им не подтверждается.", expired: "Срок приказа на входной контроль истёк.", not_started: "Срок приказа на входной контроль ещё не начался." };
+      setProblem(orderProblem[code] ?? (code === "stale_version" ? "Контроль уже изменили. Обновите карточку и проверьте шаг." : code === "control_outdated" ? "Реквизиты партии изменены. Нужна новая подготовка контроля." : code === "control_completed" ? "Этот маршрут уже согласован." : code === "control_refused" ? "Критичный пункт не пройден. Согласование его не отменяет." : code === "route_incomplete" ? "Маршрут ещё не собран: нужны данные ОМТС и ответственность РП." : code === "route_denied" || code === "role_denied" ? "Этот шаг входу не разрешён." : code === "template_not_approved" ? "Нужен утверждённый чек-лист." : code === "document_not_ready" ? "Нужен загруженный документ подходящего типа." : known ? "Сервер отклонил шаг контроля." : "Ответ сервера не получен. Повторите исходный шаг."));
     } finally { mutation.current = false; if (live.current) setBusy(false); }
   }
 
