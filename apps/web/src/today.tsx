@@ -127,7 +127,7 @@ function TodayBody({ body, day, openLabel, onOpen, onOpenTasks, onOpenSheet }: {
         { value: String(managed.submittedReportsForDay), label: "сообщений объёма" },
       ]} />
       <section className="panel">
-        <h2>Сводка дня <NoteMark label="Что не считается"><p>Присутствие, работа и простой — снимок сервера, не утверждённые часы. Качество, приёмка объёма и исполнительная документация не подключены: вместо них не ставится ноль. Нет строки табеля — день не записан, это не подтверждённое отсутствие.</p></NoteMark></h2>
+        <h2>Сводка дня <NoteMark label="Что не считается"><p>Присутствие, работа и простой — снимок сервера, не утверждённые часы. Принятый мастером объём показывается, только когда по единице решены все сообщения дня. Качество и исполнительная документация не подключены: вместо них не ставится ноль. Нет строки табеля — день не записан, это не подтверждённое отсутствие.</p></NoteMark></h2>
         <div className="summary-facts">
           <div><b>{durationLabel(managed.presenceMs) || "—"}</b><span>присутствие по источнику</span></div>
           <div><b>{durationLabel(managed.workMs) || "—"}</b><span>работа по заданиям</span></div>
@@ -137,10 +137,10 @@ function TodayBody({ body, day, openLabel, onOpen, onOpenTasks, onOpenSheet }: {
         <p className="quiet person-note">
           {body.overview.day === day ? `День сводки совпадает с шапкой: ${civilLabel(day)}.` : `Шапка просит ${civilLabel(day)}, сводка сервера — ${civilLabel(body.overview.day) || body.overview.day}.`}
           {managed.hasOpenIntervals ? " Есть незакрытый интервал: длительность ещё растёт." : ""}
-          {" "}Приёмка объёма ещё не подключена.
+          {" "}Принятое мастером количество есть только у полностью решённой единицы. Это не приёмка ПТО.
           {body.overview.quality.status !== "unavailable" || body.overview.idReadiness.status !== "unavailable" ? " Сервер прислал поле, которое кабинет не показывает числом." : ""}
         </p>
-        {managed.quantities.map((item) => <p className="quiet" key={item.unit}>Сообщено {item.submittedQuantity} {item.unit}. Принято: не подключено.</p>)}
+        {managed.quantities.map((item) => <p className="quiet" key={item.unit}>Сообщено {item.submittedQuantity} {item.unit}. {item.acceptedQuantity === null ? "Мастер ещё не принял все сообщения этой единицы." : `Принято мастером ${item.acceptedQuantity} ${item.unit}. Это не приёмка ПТО.`}</p>)}
       </section>
       <div className="split">
         <section className="panel">

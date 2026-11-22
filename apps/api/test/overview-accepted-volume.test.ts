@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { test, before, after } from 'node:test';
+import { NestFactory } from '@nestjs/core';
+import type { INestApplication } from '@nestjs/common';
+import { AppModule } from '../src/app.module.js';
+import { AllExceptionsFilter } from '../src/http.js';
+import { createPool, adminUrl } from '../src/db.js';
+import { volumeReviewFixture, assertVolumeReviewDatabase } from './volume-review-fixture.js';
+const admin = createPool(adminUrl);
+let app: INestApplication, f: Awaited<ReturnType<typeof volumeReviewFixture>>;
+before(async () => {
+  await assertVolumeReviewDatabase(admin, true);
+  app = await NestFactory.create(AppModule, { logger: false });
+  app.useGlobalFilters(new AllExceptionsFilter());
+  const server = await app.listen(0, '127.0.0.1');
+  f = await volumeReviewFixture(admin, `http://127.0.0.1:${server.address().port}`);
+});
+after(async () => { await app?.close(); await admin.end(); });
+const line = async () => {
+  const read = await f.call(`/overview?projectId=${f.project}&day=${f.day}`, undefined, 'director');
+  assert.equal(read.status, 200, JSON.stringify(read.body));
+  return read.body.managedExecution.quantities[0];
+};
+test('сводка дня показывает принятое мастером только когда решены все сообщения единицы', async () => {
+  const first = await f.report('18');
+  const open = await line();
+  assert.equal(open.submittedQuantity, '18.000');
+  assert.equal(open.acceptedQuantity, null);
+  const decision = { requestId: randomUUID(), expectedVersion: 0, checklistRunId: first.checklistRunId, acceptedQuantity: '17', reason: '1 м² требует доработки' };
+  const saved = await f.call(`/projects/${f.project}/volume-reviews/${first.reportId}`, decision);
+  assert.equal(saved.status, 201, JSON.stringify(saved.body));
+  const accepted = await line();
+  assert.equal(accepted.submittedQuantity, '18.000');
+  assert.equal(accepted.acceptedQuantity, '17.000');
+  const same = await f.call(`/overview?projectId=${f.project}&day=${f.day}`, undefined, 'master');
+  assert.equal(same.body.managedExecution.quantities[0].acceptedQuantity, '17.000');
+  const foreign = await f.call(`/overview?projectId=${f.otherProject}&day=${f.day}`, undefined, 'director');
+  assert.equal(foreign.status, 200);
+  assert.deepEqual(foreign.body.managedExecution.quantities, []);
+  await f.report('18');
+  const mixed = await line();
+  assert.equal(mixed.submittedQuantity, '36.000');
+  assert.equal(mixed.acceptedQuantity, null);
+});
