@@ -171,3 +171,64 @@ test('price command rechecks project access after a real database wait', async (
     await pending.catch(()=>{});
   }
 });
+
+test('cost previews a price table and confirms every row or none', async () => {
+  const created = await req(`/projects/${project}/work-types`, command({ name: 'Импорт', unit: 'м²', requiresRd: false, requiresMaterialControl: false, requiresPredecessorAcceptance: false, requiresId: false }), director);
+  const archived = await req(`/projects/${project}/work-types`, command({ name: 'Архив цены', unit: 'м²', requiresRd: false, requiresMaterialControl: false, requiresPredecessorAcceptance: false, requiresId: false }), director);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(archived.status, 201, JSON.stringify(archived.body));
+  await admin.query(`UPDATE project_work_types SET status='archived' WHERE id=$1`, [archived.body.id]);
+  const checkPath = `/projects/${project}/contract-prices/checks`;
+  const importPath = `/projects/${project}/contract-prices/imports`;
+  const bad = { rows: [
+    { workTypeName: 'Импорт', price: '12.5', start: '2026-03-01', end: '2026-03-31' },
+    { workTypeName: 'Нет такого', price: '4', start: '2026-03-01', end: '2026-03-31' },
+    { workTypeName: 'Импорт', price: '', start: '2026-04-01', end: '2026-04-30' },
+    { workTypeName: 'Архив цены', price: '8', start: '2026-03-01', end: '2026-03-31' },
+  ] };
+  const preview = await req(checkPath, bad);
+  assert.equal(preview.status, 200, JSON.stringify(preview.body));
+  assert.equal(preview.body.acceptable, false);
+  assert.deepEqual(preview.body.rows.map((row: { error: string | null }) => row.error), [null, 'unknown_work_type', 'invalid_price', 'archived_work_type']);
+  const doubled = await req(checkPath, { rows: [
+    { workTypeName: 'Импорт', price: '1', start: '2026-08-01', end: '2026-08-31' },
+    { workTypeName: 'Импорт', price: '2', start: '2026-09-01', end: '2026-09-30' },
+  ] });
+  assert.deepEqual(doubled.body.rows.map((row: { error: string | null }) => row.error), ['duplicate_work_type', 'duplicate_work_type']);
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM contract_price_revisions WHERE work_type_id=$1`, [created.body.id])).rows[0].n, 0);
+  const rows = [{ workTypeName: 'Импорт', price: '12.5', start: '2026-03-01', end: '2026-03-31' }];
+  const accepted = await req(checkPath, { rows });
+  assert.equal(accepted.body.acceptable, true);
+  assert.equal(accepted.body.rows[0].error, null);
+  assert.equal(accepted.body.rows[0].unit, 'м²');
+  const body = command({ rows });
+  const saved = await req(importPath, body);
+  assert.equal(saved.status, 201, JSON.stringify(saved.body));
+  assert.equal(saved.body.revisions.length, 1);
+  assert.equal(saved.body.revisions[0].price, '12.5');
+  assert.equal(saved.body.revisions[0].version, 1);
+  const replay = await req(importPath, body);
+  assert.equal(replay.status, 201);
+  assert.deepEqual(replay.body, saved.body);
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM contract_price_revisions WHERE work_type_id=$1`, [created.body.id])).rows[0].n, 1);
+  const mismatch = await req(importPath, { ...body, rows: [{ ...rows[0], price: '13' }] });
+  assert.equal(mismatch.status, 409);
+  assert.equal(mismatch.body.error, 'idempotency_payload_mismatch');
+  const overlap = await req(importPath, command({ rows }));
+  assert.equal(overlap.status, 422);
+  assert.equal(overlap.body.error, 'price_import_rejected');
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM contract_price_revisions WHERE work_type_id=$1`, [created.body.id])).rows[0].n, 1);
+  const blank = await req(importPath, command({ rows: [{ workTypeName: 'Импорт', price: ' ', start: '2027-01-01', end: '2027-01-31' }] }));
+  assert.equal(blank.status, 422);
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM contract_price_revisions WHERE project_id=$1 AND price='0' AND work_type_id=$2`, [project, created.body.id])).rows[0].n, 0);
+  assert.equal((await req(checkPath, { rows }, worker)).status, 403);
+  assert.equal((await req(`/projects/${other}/contract-prices/imports`, command({ rows }))).status, 403);
+  const secondType = await req(`/projects/${project}/work-types`, command({ name: 'Вторая цена', unit: 'м²', requiresRd: false, requiresMaterialControl: false, requiresPredecessorAcceptance: false, requiresId: false }), director);
+  assert.equal(secondType.status, 201, JSON.stringify(secondType.body));
+  const pair = [{ workTypeName: 'Вторая цена', price: '7', start: '2026-05-01', end: '2026-05-31' }];
+  const raced = await Promise.all([req(importPath, command({ rows: pair })), req(importPath, command({ rows: pair }), second)]);
+  const outcomes = raced.sort((left, right) => left.status - right.status);
+  assert.deepEqual(outcomes.map((item) => item.status), [201, 422]);
+  assert.equal(outcomes[1].body.error, 'price_import_rejected');
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM contract_price_revisions WHERE work_type_id=$1`, [secondType.body.id])).rows[0].n, 1);
+});

@@ -90,6 +90,8 @@ test('reserved roles authenticate identity/logout but cannot fall through any bu
   await assert.rejects(guard('constructor','GET','/api/v1/me'),{message:'role_denied'});
   assert.equal(await guard('cost','GET','/api/v1/contract-prices/projects'),true);
   assert.equal(await guard('cost','POST',`/api/v1/projects/${project}/contract-prices`),true);
+  assert.equal(await guard('cost','POST',`/api/v1/projects/${project}/contract-prices/checks`),true);
+  assert.equal(await guard('cost','POST',`/api/v1/projects/${project}/contract-prices/imports`),true);
   await assert.rejects(guard('brigadier','GET','/api/v1/contract-prices/projects'),{message:'role_denied'});
   await assert.rejects(guard('cost','GET','/api/v1/projects'),{message:'role_denied'});
   await assert.rejects(guard('cost','POST',`/api/v1/projects/${project}/work-types`),{message:'role_denied'});
