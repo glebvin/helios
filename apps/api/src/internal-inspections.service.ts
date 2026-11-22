@@ -8,16 +8,18 @@ import { httpError } from './errors.js';
 import { executionScope, executionJoin } from './execution-read.js';
 import { reserveCommand, replayCommand, completeCommand } from './durable-command.js';
 
-type Action = 'submit' | 'resubmit' | 'responsible' | 'approve' | 'return';
+type Action = 'submit' | 'resubmit' | 'responsible' | 'approve' | 'return' | 'partial';
 type Row = Record<string, any>;
 function input(value: unknown) {
-  const b = object(value, ['requestId','expectedVersion','action','expectedRouteVersion','reason']);
-  if (!['submit','resubmit','responsible','approve','return'].includes(String(b.action))) throw httpError(400,'invalid_action');
-  const action = b.action as Action;
-  if (!['return','resubmit'].includes(action) && b.reason !== undefined) throw httpError(400,'invalid_body');
+  const action = value && typeof value === 'object' && !Array.isArray(value) ? String((value as {action?: unknown}).action) : '';
+  const b = object(value, action === 'partial' ? ['requestId','expectedVersion','action','acceptedQuantity','reason'] : ['requestId','expectedVersion','action','expectedRouteVersion','reason']);
+  if (!['submit','resubmit','responsible','approve','return','partial'].includes(action)) throw httpError(400,'invalid_action');
+  if (!['return','resubmit','partial'].includes(action) && b.reason !== undefined) throw httpError(400,'invalid_body');
   if (action !== 'submit' && b.expectedRouteVersion !== undefined) throw httpError(400,'invalid_body');
-  return {requestId: uuid(b.requestId).toLowerCase(), expectedVersion: integer(b.expectedVersion,0), action,
+  if (action === 'partial' && (typeof b.acceptedQuantity !== 'string' || !/^(?:0|[1-9]\d{0,10})(?:\.\d{1,3})?$/.test(b.acceptedQuantity))) throw httpError(400,'invalid_quantity');
+  return {requestId: uuid(b.requestId).toLowerCase(), expectedVersion: integer(b.expectedVersion,0), action: action as Action,
     ...(action === 'submit' ? {expectedRouteVersion: integer(b.expectedRouteVersion,0)} : {}),
+    ...(action === 'partial' ? {acceptedQuantity: b.acceptedQuantity as string, reason: text(b.reason,500)} : {}),
     ...(['return','resubmit'].includes(action) ? {reason: text(b.reason,500)} : {})};
 }
 export class InternalInspectionsService {
@@ -32,7 +34,7 @@ export class InternalInspectionsService {
       const zero=(await c.query(`SELECT v.id FROM master_volume_reviews v JOIN managed_execution_reports s ON s.tenant_id=v.tenant_id AND s.report_id=v.report_id ${executionJoin} WHERE ${executionScope} AND v.id=$4 AND v.accepted_quantity=0 AND EXISTS(SELECT 1 FROM memberships m WHERE m.tenant_id=$1 AND m.user_id=$2 AND m.status='active' AND m.role=$5)`,[a.tenantId,a.userId,project,part,a.role])).rowCount;
       throw httpError(zero?422:404,zero?'positive_part_required':'not_found');
     }
-    row.replacedBy=(await c.query(`SELECT id,quantity::text FROM volume_corrections WHERE previous_part_id=$1`,[part])).rows[0]??null;
+    row.replacedBy=(await c.query(`SELECT id,quantity::text FROM volume_corrections WHERE previous_part_id=$1 UNION ALL SELECT accepted_part_id,accepted_quantity::text FROM internal_inspection_splits WHERE original_part_id=$1 LIMIT 1`,[part])).rows[0]??null;
     if (Number(row.quantity) <= 0) throw httpError(422,'positive_part_required');
     return row;
   }
@@ -69,15 +71,16 @@ export class InternalInspectionsService {
     const passed = selfControl?.passed===true && selfControl.blocksNext===false;
     const attempts = (await c.query(`SELECT start_version AS "startVersion",previous_return_version AS "previousReturnVersion",snapshot,created_at AS "createdAt" FROM internal_inspection_attempts WHERE accepted_part_id=$1 ORDER BY start_version`,[part])).rows;
     const lastReturn=state==='returned'?history.at(-1):null;
-    const fresh=!!lastReturn && passed && (await c.query(`SELECT EXISTS(SELECT 1 FROM checklist_runs cr JOIN internal_inspection_events ev ON ev.tenant_id=cr.tenant_id AND ev.accepted_part_id=$2 AND ev.version=$3 AND ev.action='return' WHERE cr.id=$1 AND cr.created_at>ev.created_at) AS fresh`,[selfControl.id,part,lastReturn.version])).rows[0].fresh;
+    const fresh=!!lastReturn && passed && (await c.query(`SELECT EXISTS(SELECT 1 FROM checklist_runs cr JOIN internal_inspection_events ev ON ev.tenant_id=cr.tenant_id AND ev.accepted_part_id=$2 AND ev.version=$3 AND ev.action IN('return','returned_share') WHERE cr.id=$1 AND cr.created_at>ev.created_at) AS fresh`,[selfControl.id,part,lastReturn.version])).rows[0].fresh;
     const participantsReady=record?await this.pinnedMembers(c,a,project,record.snapshot):false;
     const actor = await this.member(c,a,project,a.userId,a.role);
     const allowedActions: Action[] = [];
     if (actor && a.role==='master' && state==='not_submitted' && currentRoute.ready && currentRoute.preparer.userId===a.userId && passed) allowedActions.push('submit');
     if(actor && a.role==='master' && lastReturn && record.snapshot.preparer.userId===a.userId && fresh && participantsReady)allowedActions.push('resubmit');
     if (actor && a.role==='director' && state==='awaiting_responsibility' && record?.snapshot.responsible.userId===a.userId) allowedActions.push('responsible');
-    if (actor && a.role==='pto' && state==='awaiting_pto' && record?.snapshot.approver.userId===a.userId) {if(passed)allowedActions.push('approve');allowedActions.push('return');}
-    return {acceptedPart,version,state,currentRoute,selfControl,record,history,attempts,attemptNumber:Math.floor((Math.max(version,1)-1)/3)+1,resubmission:lastReturn?{needsFreshSelfControl:!fresh,participantsReady}:null,allowedActions:acceptedPart.replacedBy?[]:allowedActions};
+    if (actor && a.role==='pto' && state==='awaiting_pto' && record?.snapshot.approver.userId===a.userId) {if(passed)allowedActions.push('approve','partial');allowedActions.push('return');}
+    const split=(await c.query(`SELECT original_part_id AS "originalPartId",accepted_part_id AS "acceptedPartId",returned_part_id AS "returnedPartId",accepted_quantity::text AS "acceptedQuantity",returned_quantity::text AS "returnedQuantity",reason,CASE WHEN original_part_id=$1 THEN 'source' WHEN accepted_part_id=$1 THEN 'accepted' ELSE 'returned' END AS role FROM internal_inspection_splits WHERE original_part_id=$1 OR accepted_part_id=$1 OR returned_part_id=$1`,[part])).rows[0]??null;
+    return {acceptedPart,version,state,currentRoute,selfControl,record,history,split,attempts,attemptNumber:Math.floor((Math.max(version,1)-1)/3)+1,resubmission:lastReturn?{needsFreshSelfControl:!fresh,participantsReady}:null,allowedActions:acceptedPart.replacedBy?[]:allowedActions};
   }
   read(a: Actor,project: string,part: string) {
     return withTenant(this.pool,a.tenantId,a.userId,async c=>{
@@ -117,9 +120,10 @@ export class InternalInspectionsService {
         if(current.resubmission?.needsFreshSelfControl)throw httpError(422,'fresh_self_control_required');
       }
       if(!current.allowedActions.includes(b.action)) {
-        if(['submit','approve'].includes(b.action) && (!current.selfControl?.passed||current.selfControl.blocksNext))throw httpError(422,'self_control_required');
+        if(['submit','approve','partial'].includes(b.action) && (!current.selfControl?.passed||current.selfControl.blocksNext))throw httpError(422,'self_control_required');
         throw httpError(403,'route_denied');
       }
+      if(b.action==='partial')return completeCommand(c,a,b.requestId,201,await this.divide(c,a,project,part,source,current,b));
       const next = ['submit','resubmit'].includes(b.action)?'awaiting_responsibility':b.action==='responsible'?'awaiting_pto':b.action==='approve'?'accepted':'returned';
       if(b.action==='submit'){
         const route=pinnedRoute;
@@ -135,5 +139,26 @@ export class InternalInspectionsService {
       await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'quality.internal_inspection','accepted_part',$3,'ok',$4)`,[a.tenantId,a.userId,part,JSON.stringify({requestId:b.requestId,action:b.action,version:current.version+1,fromState:current.state,toState:next,quantity:source.quantity,selfControl:current.selfControl})]);
       return completeCommand(c,a,b.requestId,201,await this.view(c,a,project,part,source));
     });
+  }
+  private async divide(c: PoolClient,a: Actor,project: string,part: string,source: Row,current: Row,b: {requestId: string; acceptedQuantity?: string; reason?: string}) {
+    const shares=(await c.query(`SELECT ($2::numeric(14,3)>0 AND $2::numeric(14,3)<quantity) AS ok,$2::numeric(14,3)::text AS accepted,(quantity-$2::numeric(14,3))::text AS returned FROM accepted_volume_parts WHERE id=$1`,[part,b.acceptedQuantity])).rows[0];
+    if(!shares?.ok)throw httpError(422,'partial_share_required');
+    const splitId=randomUUID(),acceptedPartId=randomUUID(),returnedPartId=randomUUID();
+    const parent=(await c.query(`SELECT configuration_version,preparer_user_id,responsible_user_id,approver_user_id,checklist_run_id,snapshot FROM internal_inspections WHERE accepted_part_id=$1`,[part])).rows[0];
+    if(!parent)throw httpError(409,'inspection_closed');
+    await c.query(`INSERT INTO internal_inspection_splits(tenant_id,id,report_id,original_part_id,accepted_part_id,returned_part_id,accepted_quantity,returned_quantity,reason,inspection_version,actor_user_id,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,[a.tenantId,splitId,source.reportId,part,acceptedPartId,returnedPartId,shares.accepted,shares.returned,b.reason,current.version+1,a.userId,b.requestId]);
+    const actor=await this.member(c,a,project,a.userId,'pto');
+    if(!actor)throw httpError(403,'route_denied');
+    for(const share of [{id:acceptedPartId,quantity:shares.accepted,action:'accepted_share',to:'accepted',reason:null},{id:returnedPartId,quantity:shares.returned,action:'returned_share',to:'returned',reason:b.reason}]){
+      const requestId=randomUUID();
+      const snapshot={...parent.snapshot,acceptedPart:{...parent.snapshot.acceptedPart,id:share.id,quantity:share.quantity}};
+      await c.query(`INSERT INTO internal_inspections(tenant_id,accepted_part_id,project_id,id,configuration_version,preparer_user_id,responsible_user_id,approver_user_id,checklist_run_id,quantity,snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,[a.tenantId,share.id,project,randomUUID(),parent.configuration_version,parent.preparer_user_id,parent.responsible_user_id,parent.approver_user_id,parent.checklist_run_id,share.quantity,JSON.stringify(snapshot)]);
+      await c.query(`INSERT INTO people_command_receipts(tenant_id,actor_user_id,request_id,operation,command_hash) VALUES($1,$2,$3,'internal-inspection-share',$4)`,[a.tenantId,a.userId,requestId,splitId]);
+      await c.query(`INSERT INTO internal_inspection_events(tenant_id,accepted_part_id,version,action,from_state,to_state,actor_user_id,actor_name,actor_role,reason,request_id) VALUES($1,$2,3,$3,'awaiting_pto',$4,$5,$6,'pto',$7,$8)`,[a.tenantId,share.id,share.action,share.to,a.userId,actor.name,share.reason,requestId]);
+    }
+    await c.query(`INSERT INTO internal_inspection_events(tenant_id,accepted_part_id,version,action,from_state,to_state,actor_user_id,actor_name,actor_role,reason,request_id) VALUES($1,$2,$3,'partial',$4,'split',$5,$6,'pto',$7,$8)`,[a.tenantId,part,current.version+1,current.state,a.userId,actor.name,b.reason,b.requestId]);
+    await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'quality.internal_inspection','accepted_part',$3,'ok',$4)`,[a.tenantId,a.userId,part,JSON.stringify({requestId:b.requestId,action:'partial',version:current.version+1,acceptedPartId,returnedPartId,acceptedQuantity:shares.accepted,returnedQuantity:shares.returned})]);
+    source.replacedBy={id:acceptedPartId,quantity:shares.accepted};
+    return this.view(c,a,project,part,source);
   }
 }

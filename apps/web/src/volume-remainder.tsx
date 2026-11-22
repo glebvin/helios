@@ -42,5 +42,6 @@ export function VolumeRemainder({session,projectId,reportId,unit,total,row,curre
   </form>:null}
   {row.history.length?<details><summary>История остатка · {row.history.length}</summary><ol>{row.history.map(event=><li key={event.version}><p>{event.action==='present'?`Предъявлено ${amount(event.presentedQuantity)}`:`Принято ${amount(event.acceptedQuantity??'0')}`} {unit} · {event.actorName}</p>{event.reason?<p>{event.reason}</p>:null}<p className="quiet">{new Date(event.createdAt).toLocaleString('ru-RU')}</p></li>)}</ol></details>:null}
   {row.history.filter(event=>event.acceptedPartId&&(!currentParts||currentParts.some(p=>p.id===event.acceptedPartId))).map(event=><details key={event.id}><summary>ПТО: часть {amount(event.acceptedQuantity!)} {unit}</summary><InternalInspection session={session} projectId={projectId} partId={event.acceptedPartId!}/></details>)}
+  {row.history.filter(event=>event.acceptedPartId&&currentParts&&!currentParts.some(p=>p.id===event.acceptedPartId)).map(event=><details key={`${event.id}:history`}><summary>Прежняя часть остатка</summary><InternalInspection session={session} projectId={projectId} partId={event.acceptedPartId!}/></details>)}
  </section>;
 }
