@@ -13,6 +13,14 @@ export async function reserveCommand(c:PoolClient,a:Actor,operation:string,b:Rec
   const {requestId,...payload}=b;
   const hash=createHash('sha256').update(canonical({operation,payload})).digest('hex');
   const r=await c.query(`INSERT INTO people_command_receipts(tenant_id,actor_user_id,request_id,operation,command_hash) VALUES($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING request_id`,[a.tenantId,a.userId,requestId,operation,hash]);
+  // Recovery keeps current readers and security fixes, but freezes new release writers.
+  // Throw inside the caller's transaction so no reservation survives the refusal.
+  if(r.rowCount && process.env.HELIOS_RELEASE_RECOVERY==='1' && (
+    operation.endsWith('/corrections') && operation.includes('/volume-reviews/') ||
+    operation.endsWith('/internal-inspection-policy') ||
+    operation.endsWith('/contract-prices/imports') ||
+    operation.endsWith('/internal-inspection') && b.action==='partial'
+  ))throw httpError(503,'release_write_paused');
   return {inserted:!!r.rowCount,hash};
 }
 export async function replayCommand(c:PoolClient,a:Actor,requestId:string,hash:string):Promise<CommandResult> {
