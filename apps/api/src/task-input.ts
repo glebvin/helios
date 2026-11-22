@@ -4,8 +4,9 @@ import {object,text,integer,status} from './people-input.js';
 const id=(v:unknown)=>uuid(v).toLowerCase();
 function boolean(v:unknown):boolean {if(typeof v!=='boolean')throw httpError(400,'invalid_boolean');return v;}
 export function catalogInput(input:unknown,kind:'zones'|'work-types',update=false) {
-  const b=object(input,['requestId','name',...(kind==='work-types'?['unit','requiresRd','requiresMaterialControl','requiresPredecessorAcceptance','requiresId']:[]),...(update?['expectedVersion','status']:[])]);
-  return {requestId:id(b.requestId),name:text(b.name),...(kind==='work-types'?{unit:text(b.unit,40),requiresRd:boolean(b.requiresRd),requiresMaterialControl:boolean(b.requiresMaterialControl),requiresPredecessorAcceptance:boolean(b.requiresPredecessorAcceptance),requiresId:boolean(b.requiresId)}:{}),...(update?{expectedVersion:integer(b.expectedVersion),status:status(b.status,'archived')}:{})};
+  const b=object(input,['requestId','name',...(kind==='work-types'?['unit','requiresRd','requiresMaterialControl','requiresPredecessorAcceptance','requiresId','hiddenWork']:[]),...(update?['expectedVersion','status']:[])]);
+  const hiddenWork=b.hiddenWork===undefined?undefined:boolean(b.hiddenWork);
+  return {requestId:id(b.requestId),name:text(b.name),...(kind==='work-types'?{unit:text(b.unit,40),requiresRd:boolean(b.requiresRd),requiresMaterialControl:boolean(b.requiresMaterialControl),requiresPredecessorAcceptance:boolean(b.requiresPredecessorAcceptance),requiresId:boolean(b.requiresId),...(hiddenWork===undefined?{}:{hiddenWork})}:{}),...(update?{expectedVersion:integer(b.expectedVersion),status:status(b.status,'archived')}:{})};
 }
 export function quantity(v:unknown):string {
   if(typeof v!=='string' || !/^\d{1,11}(?:\.\d{1,3})?$/.test(v) || !/[1-9]/.test(v))throw httpError(400,'invalid_quantity');

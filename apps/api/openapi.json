@@ -10996,6 +10996,45 @@
         }
       }
     },
+    "/api/v1/projects/{project}/internal-inspection-policy": {
+      "get": {
+        "operationId": "readInternalInspectionPolicy",
+        "summary": "Прочитать, обязателен ли наш ПТО для остальных работ объекта",
+        "description": "Director, assigned master or PTO. Hidden work and subcontract stay mandatory regardless of this setting. Worker denied. Unknown query keys rejected.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "responses": {
+          "200": {"description": "Current object setting", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InternalInspectionPolicy"}}}},
+          "400": {"description": "Invalid query", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden project", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      },
+      "post": {
+        "operationId": "saveInternalInspectionPolicy",
+        "summary": "Изменить обязательность нашего ПТО для остальных работ объекта",
+        "description": "Director only. Does not waive hidden work or a subcontractor assignee. Same requestId returns the original result. A stale expectedVersion is 409 and writes nothing. An inspection already started continues.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InternalInspectionPolicyInput"}}}},
+        "responses": {
+          "200": {"description": "Saved setting", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/InternalInspectionPolicy"}}}},
+          "400": {"description": "Invalid body", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden project", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "409": {"description": "stale_version or idempotency_payload_mismatch", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "422": {"description": "Rejected without a business write", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
     "/api/v1/projects/{project}/volume-reviews/{report}/remainder": {
       "post": {
         "operationId": "recordVolumeRemainder",
@@ -13927,6 +13966,9 @@
           },
           "requiresId": {
             "type": "boolean"
+          },
+          "hiddenWork": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -13939,7 +13981,8 @@
           "requiresRd",
           "requiresMaterialControl",
           "requiresPredecessorAcceptance",
-          "requiresId"
+          "requiresId",
+          "hiddenWork"
         ],
         "additionalProperties": false
       },
@@ -14023,6 +14066,9 @@
           },
           "requiresId": {
             "type": "boolean"
+          },
+          "hiddenWork": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -14063,6 +14109,9 @@
             "type": "boolean"
           },
           "requiresId": {
+            "type": "boolean"
+          },
+          "hiddenWork": {
             "type": "boolean"
           },
           "expectedVersion": {
@@ -20873,6 +20922,37 @@
           }
         }
       },
+      "InternalInspectionRequirement": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["required", "projectRequired", "hiddenWork", "subcontract", "reason"],
+        "properties": {
+          "required": {"type": "boolean"},
+          "projectRequired": {"type": "boolean"},
+          "hiddenWork": {"type": "boolean"},
+          "subcontract": {"type": "boolean"},
+          "reason": {"type": "string", "enum": ["hidden", "subcontract", "project", "none"]}
+        }
+      },
+      "InternalInspectionPolicy": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["required", "version"],
+        "properties": {
+          "required": {"type": "boolean"},
+          "version": {"type": "integer", "minimum": 0, "maximum": 2147483646}
+        }
+      },
+      "InternalInspectionPolicyInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "expectedVersion", "required"],
+        "properties": {
+          "requestId": {"type": "string", "format": "uuid"},
+          "expectedVersion": {"type": "integer", "minimum": 0, "maximum": 2147483646},
+          "required": {"type": "boolean"}
+        }
+      },
       "InternalInspectionCard": {
         "type": "object",
         "additionalProperties": false,
@@ -20882,6 +20962,7 @@
           "state",
           "currentRoute",
           "selfControl",
+          "requirement",
           "record",
           "history",
           "split",
@@ -20918,6 +20999,9 @@
                 "type": "null"
               }
             ]
+          },
+          "requirement": {
+            "$ref": "#/components/schemas/InternalInspectionRequirement"
           },
           "record": {
             "oneOf": [

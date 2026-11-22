@@ -58,11 +58,12 @@ function CatalogPanel({ session, projectId, kind, writable }: { session: Session
       <div className="documents-title">
         <h2>{titles[kind]}</h2>
         <NoteMark label={kind === "zones" ? "Как устроены зоны" : "Как устроены виды работ"}>
-          {kind === "zones" ? <p>Архивная зона остаётся в списке, но для нового задания не предлагается.</p> : <p>Единица берётся из вида работ. Требования РД, материалов, предшественника и ИД сохраняются как есть: сервер не даст опубликовать задание, пока обязательной записи нет. Снять требование можно только правкой вида.</p>}
+          {kind === "zones" ? <p>Архивная зона остаётся в списке, но для нового задания не предлагается.</p> : <p>Единица берётся из вида работ. Требования РД, материалов, предшественника и ИД сохраняются как есть: сервер не даст опубликовать задание, пока обязательной записи нет. Скрытые работы всегда сдаются нашему ПТО. Снять отметку можно только правкой вида.</p>}
         </NoteMark>
       </div>
       {canWrite ? <button className="ghost desk-action" type="button" onClick={() => { setEditor("new"); setSaved(""); }}>{kind === "zones" ? "Добавить зону" : "Добавить вид"}</button> : null}
     </div>
+    {kind === "work-types" ? <InspectionPolicy session={session} projectId={projectId} writable={canWrite} /> : null}
     {loading && !page ? <p className="quiet" role="status">Читаем справочник…</p> : null}
     {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={() => setPass((value) => value + 1)}>Повторить чтение</button></p> : null}
     {page && !error ? <>
@@ -143,6 +144,7 @@ function CatalogEditor({ session, path, kind, row, onClose, onSaved }: { session
           <CheckLine checked={type.requiresMaterialControl} onChange={(value) => setDraft({ ...type, requiresMaterialControl: value })}>Нужен входной контроль материалов</CheckLine>
           <CheckLine checked={type.requiresPredecessorAcceptance} onChange={(value) => setDraft({ ...type, requiresPredecessorAcceptance: value })}>Нужна приёмка предшественника</CheckLine>
           <CheckLine checked={type.requiresId} onChange={(value) => setDraft({ ...type, requiresId: value })}>Нужна исполнительная документация</CheckLine>
+          <CheckLine checked={type.hiddenWork} onChange={(value) => setDraft({ ...type, hiddenWork: value })}>Скрытые работы</CheckLine>
         </> : null}
         {source ? <DeskSelect label="Состояние" value={draft.status} options={[{ value: "active", label: "Активна" }, { value: "archived", label: "В архиве" }]} onChange={(value) => setDraft({ ...draft, status: value === "archived" ? "archived" : "active" })} /> : null}
       </fieldset>
@@ -154,6 +156,56 @@ function CatalogEditor({ session, path, kind, row, onClose, onSaved }: { session
       <button className="fill desk-action" type="submit" disabled={busy || !!problem}>{busy ? "Записываем…" : "Сохранить"}</button>
     </form>
   </Dialog>;
+}
+
+function InspectionPolicy({ session, projectId, writable }: { session: Session; projectId: string; writable: boolean }) {
+  const [policy, setPolicy] = useState<{ required: boolean; version: number } | null>(null);
+  const [required, setRequired] = useState(true);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState("");
+  const [pulse, setPulse] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [pass, setPass] = useState(0);
+  const request = useRef({ id: "", key: "" });
+  const path = `/projects/${projectId}/internal-inspection-policy`;
+  const pendingKey = `helios.inspection-policy:${session.tenantId}:${session.userId}:${projectId}`;
+  useEffect(() => {
+    let live = true;
+    void v1<{ required: boolean; version: number }>(session, path).then((row) => {
+      if (!live) return;
+      setPolicy(row); setRequired(row.required); setError("");
+    }).catch((reason) => { if (live) setError(describe(reason)); });
+    return () => { live = false; };
+  }, [session.token, session.tenantId, path, pass]);
+  async function save() {
+    if (!policy || busy) return;
+    const key = JSON.stringify({ required, expectedVersion: policy.version });
+    if (!request.current.id) {
+      try {
+        const previous = JSON.parse(sessionStorage.getItem(pendingKey) ?? "null");
+        if (typeof previous?.id === "string" && previous.key === key) request.current = previous;
+      } catch { /* The open form can still repeat this attempt. */ }
+    }
+    request.current = staffRequest(request.current, key, () => crypto.randomUUID());
+    try { sessionStorage.setItem(pendingKey, JSON.stringify(request.current)); } catch { /* The server answer remains the confirmation. */ }
+    setBusy(true); setError("");
+    try {
+      const savedPolicy = await v1<{ required: boolean; version: number }>(session, path, { requestId: request.current.id, expectedVersion: policy.version, required });
+      try { sessionStorage.removeItem(pendingKey); } catch { /* The server already confirmed the setting. */ }
+      request.current = { id: "", key: "" };
+      setPolicy(savedPolicy); setRequired(savedPolicy.required);
+      setSaved(savedPolicy.required ? "Для остальных работ наш ПТО включён." : "Для остальных работ наш ПТО выключен.");
+      setPulse((value) => value + 1);
+    } catch (reason) { setError(describe(reason)); }
+    finally { setBusy(false); }
+  }
+  return <div>
+    {writable ? <CheckLine checked={required} onChange={setRequired}>Для остальных работ наш ПТО обязателен</CheckLine> : <p>{required ? "Для остальных работ проверка нашего ПТО включена." : "Для остальных работ проверка нашего ПТО выключена."}</p>}
+    <p className="quiet">Скрытые работы и субподряд эта настройка не отменяет.</p>
+    {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={() => setPass((value) => value + 1)}>Прочитать настройку</button></p> : null}
+    {writable ? <button className="fill desk-action" type="button" disabled={busy || !policy || policy.required === required} onClick={() => void save()}>{busy ? "Записываем…" : "Сохранить настройку"}</button> : null}
+    <Flash message={saved} pulse={pulse} />
+  </div>;
 }
 
 function CheckLine({ checked, onChange, children }: { checked: boolean; onChange: (value: boolean) => void; children: ReactNode }) {

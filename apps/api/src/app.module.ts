@@ -1,5 +1,5 @@
 import { InternalInspectionsService } from "./internal-inspections.service.js";
-import { InternalInspectionsController } from "./internal-inspections.controller.js";
+import { InternalInspectionPolicyController, InternalInspectionsController } from "./internal-inspections.controller.js";
 import { VolumeReviewsService } from "./volume-reviews.service.js";
 import { VolumeReviewsController } from "./volume-reviews.controller.js";
 import { MaterialBatchService } from "./material-batches.service.js";
@@ -174,7 +174,7 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [InternalInspectionsController, VolumeReviewsController, MaterialBatchController, MaterialBatchProjectController, StaffImportController, ChecklistRunsController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [InternalInspectionPolicyController, InternalInspectionsController, VolumeReviewsController, MaterialBatchController, MaterialBatchProjectController, StaffImportController, ChecklistRunsController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
 
 
   providers: [
