@@ -10996,6 +10996,47 @@
         }
       }
     },
+    "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission": {
+      "get": {
+        "operationId": "readCustomerSubmission",
+        "summary": "Прочитать внешнюю заявку части",
+        "description": "Master, director, PTO or worker of the project. recorded is false until the master records attempt 1. No remarks or scan in this read.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "responses": {
+          "200": {"description": "Current external application", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerSubmission"}}}},
+          "400": {"description": "Invalid query", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden part", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      },
+      "post": {
+        "operationId": "recordCustomerSubmission",
+        "summary": "Записать первую внешнюю заявку части",
+        "description": "Project master only. Refuses without a passed latest self-control. Refuses hidden work, subcontract or an object that still requires internal PTO until that inspection is accepted. Same requestId returns the original result. A second request writes nothing.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerSubmissionInput"}}}},
+        "responses": {
+          "201": {"description": "Recorded attempt 1", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerSubmission"}}}},
+          "400": {"description": "Invalid body", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden part", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "409": {"description": "stale_version, part_superseded or idempotency_payload_mismatch", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "422": {"description": "self_control_required or internal_inspection_required", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
     "/api/v1/projects/{project}/internal-inspection-policy": {
       "get": {
         "operationId": "readInternalInspectionPolicy",
@@ -20932,6 +20973,27 @@
           "hiddenWork": {"type": "boolean"},
           "subcontract": {"type": "boolean"},
           "reason": {"type": "string", "enum": ["hidden", "subcontract", "project", "none"]}
+        }
+      },
+      "CustomerSubmission": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["recorded", "attemptNumber", "acceptedPartId", "checklistRunId", "recordedAt"],
+        "properties": {
+          "recorded": {"type": "boolean"},
+          "attemptNumber": {"type": "integer", "enum": [1], "nullable": true},
+          "acceptedPartId": {"type": "string", "format": "uuid"},
+          "checklistRunId": {"type": "string", "format": "uuid", "nullable": true},
+          "recordedAt": {"type": "string", "format": "date-time", "nullable": true}
+        }
+      },
+      "CustomerSubmissionInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "expectedVersion"],
+        "properties": {
+          "requestId": {"type": "string", "format": "uuid"},
+          "expectedVersion": {"type": "integer", "minimum": 0, "maximum": 2147483646}
         }
       },
       "InternalInspectionPolicy": {
