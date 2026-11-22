@@ -20884,6 +20884,7 @@
           "selfControl",
           "record",
           "history",
+          "split",
           "allowedActions"
         ],
         "properties": {
@@ -20901,7 +20902,8 @@
               "awaiting_responsibility",
               "awaiting_pto",
               "accepted",
-              "returned"
+              "returned",
+              "split"
             ]
           },
           "currentRoute": {
@@ -20975,7 +20977,10 @@
                     "resubmit",
                     "responsible",
                     "approve",
-                    "return"
+                    "return",
+                    "partial",
+                    "accepted_share",
+                    "returned_share"
                   ]
                 },
                 "fromState": {
@@ -20985,7 +20990,8 @@
                     "awaiting_responsibility",
                     "awaiting_pto",
                     "accepted",
-                    "returned"
+                    "returned",
+                    "split"
                   ]
                 },
                 "toState": {
@@ -20995,7 +21001,8 @@
                     "awaiting_responsibility",
                     "awaiting_pto",
                     "accepted",
-                    "returned"
+                    "returned",
+                    "split"
                   ]
                 },
                 "actorUserId": {
@@ -21029,6 +21036,59 @@
               }
             }
           },
+          "split": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "originalPartId",
+                  "acceptedPartId",
+                  "returnedPartId",
+                  "acceptedQuantity",
+                  "returnedQuantity",
+                  "reason",
+                  "role"
+                ],
+                "properties": {
+                  "originalPartId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "acceptedPartId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "returnedPartId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "acceptedQuantity": {
+                    "type": "string",
+                    "pattern": "^\\d+\\.\\d{3}$"
+                  },
+                  "returnedQuantity": {
+                    "type": "string",
+                    "pattern": "^\\d+\\.\\d{3}$"
+                  },
+                  "reason": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "source",
+                      "accepted",
+                      "returned"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
           "allowedActions": {
             "type": "array",
             "items": {
@@ -21038,7 +21098,8 @@
                 "resubmit",
                 "responsible",
                 "approve",
-                "return"
+                "return",
+                "partial"
               ]
             }
           },
@@ -21184,6 +21245,40 @@
               "action": {
                 "const": "resubmit",
                 "type": "string"
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "requestId",
+              "expectedVersion",
+              "action",
+              "acceptedQuantity",
+              "reason"
+            ],
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "expectedVersion": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "action": {
+                "const": "partial",
+                "type": "string"
+              },
+              "acceptedQuantity": {
+                "type": "string",
+                "pattern": "^(?:0|[1-9]\\d{0,10})(?:\\.\\d{1,3})?$"
               },
               "reason": {
                 "type": "string",
