@@ -7,6 +7,7 @@ import { integer, object, text } from './people-input.js';
 import { httpError } from './errors.js';
 import { executionScope, executionJoin } from './execution-read.js';
 import { reserveCommand, replayCommand, completeCommand } from './durable-command.js';
+import { orderApplies, type ResponsibilityOrderFact } from './responsibility-orders.js';
 
 type Action = 'submit' | 'resubmit' | 'responsible' | 'approve' | 'return' | 'partial';
 type Row = Record<string, any>;
@@ -161,6 +162,13 @@ export class InternalInspectionsService {
       if(!current.allowedActions.includes(b.action)) {
         if(['submit','approve','partial'].includes(b.action) && (!current.selfControl?.passed||current.selfControl.blocksNext))throw httpError(422,'self_control_required');
         throw httpError(403,'route_denied');
+      }
+      if(b.action==='approve'||b.action==='partial'){
+        const today=(await c.query(`SELECT to_char(now() AT TIME ZONE timezone, 'YYYY-MM-DD') AS day FROM tenants WHERE id=$1`,[a.tenantId])).rows[0]?.day as string|undefined;
+        const person=(await c.query(`SELECT id, organization_id AS "organizationId" FROM employees WHERE user_id=$1 AND status='active'`,[a.userId])).rows[0] as {id:string;organizationId:string}|undefined;
+        const orders=person?(await c.query(`SELECT id, employee_id AS "employeeId", organization_id AS "organizationId", project_id AS "projectId", document_types AS "documentTypes", valid_from::text AS "validFrom", valid_until::text AS "validUntil", status FROM responsibility_orders WHERE employee_id=$1`,[person.id])).rows as ResponsibilityOrderFact[]:[];
+        const authority=orderApplies(orders,{employeeId:person?.id??'',organizationId:person?.organizationId??'',projectId:project,documentType:'internal-inspection',on:today??''});
+        if(!authority.applicable)throw httpError(422,authority.reason);
       }
       if(b.action==='partial')return completeCommand(c,a,b.requestId,201,await this.divide(c,a,project,part,source,current,b));
       const next = ['submit','resubmit'].includes(b.action)?'awaiting_responsibility':b.action==='responsible'?'awaiting_pto':b.action==='approve'?'accepted':'returned';

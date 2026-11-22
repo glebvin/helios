@@ -27,7 +27,10 @@ export async function internalInspectionFixture(admin:Pool,base:string) {
   }
   const saved=await f.ok(`/projects/${f.project}/route-config`,f.command({expectedVersion:configVersion,configuration}),'admin');configVersion=saved.version;return saved;
  }
+ const ptoEmployee=randomUUID(),orderId=randomUUID();
+ await admin.query(`INSERT INTO employees(tenant_id,id,organization_id,full_name,user_id)VALUES($1,$2,$3,'Инженер ПТО',$4)`,[f.tenant,ptoEmployee,f.org,f.actors.pto.id]);
+ await admin.query(`INSERT INTO responsibility_orders(tenant_id,id,organization_id,project_id,employee_id,order_number,order_date,valid_from,valid_until,document_types,status,version)VALUES($1,$2,$3,$4,$5,'ПР-ПТО','2026-01-01','2026-01-01','2099-12-31',ARRAY['internal-inspection'],'active',1)`,[f.tenant,orderId,f.org,f.project,ptoEmployee]);
  const path=(n:number)=>`/projects/${f.project}/accepted-parts/${parts[n].partId}/internal-inspection`;
  const action=(n:number,action:string,expectedVersion:number,extra:Record<string,unknown>={},key=['submit','resubmit'].includes(action)?'master':action==='responsible'?'director':'pto')=>f.call(path(n),f.command({action,expectedVersion,...(action==='submit'?{expectedRouteVersion:configVersion}:{}),...extra}),key);
- return {...f,parts,path,action,configure};
+ return {...f,parts,path,action,configure,orderId};
 }
