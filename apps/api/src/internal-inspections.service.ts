@@ -165,8 +165,8 @@ export class InternalInspectionsService {
       }
       if(b.action==='approve'||b.action==='partial'){
         const today=(await c.query(`SELECT to_char(now() AT TIME ZONE timezone, 'YYYY-MM-DD') AS day FROM tenants WHERE id=$1`,[a.tenantId])).rows[0]?.day as string|undefined;
-        const person=(await c.query(`SELECT id, organization_id AS "organizationId" FROM employees WHERE user_id=$1 AND status='active'`,[a.userId])).rows[0] as {id:string;organizationId:string}|undefined;
-        const orders=person?(await c.query(`SELECT id, employee_id AS "employeeId", organization_id AS "organizationId", project_id AS "projectId", document_types AS "documentTypes", valid_from::text AS "validFrom", valid_until::text AS "validUntil", status FROM responsibility_orders WHERE employee_id=$1`,[person.id])).rows as ResponsibilityOrderFact[]:[];
+        const person=(await c.query(`SELECT id, organization_id AS "organizationId" FROM employees WHERE user_id=$1 AND status='active' FOR SHARE`,[a.userId])).rows[0] as {id:string;organizationId:string}|undefined;
+        const orders=person?(await c.query(`SELECT id, employee_id AS "employeeId", organization_id AS "organizationId", project_id AS "projectId", document_types AS "documentTypes", valid_from::text AS "validFrom", valid_until::text AS "validUntil", status FROM responsibility_orders WHERE employee_id=$1 ORDER BY id FOR SHARE`,[person.id])).rows as ResponsibilityOrderFact[]:[];
         const authority=orderApplies(orders,{employeeId:person?.id??'',organizationId:person?.organizationId??'',projectId:project,documentType:'internal-inspection',on:today??''});
         if(!authority.applicable)throw httpError(422,authority.reason);
       }
