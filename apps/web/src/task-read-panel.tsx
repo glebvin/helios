@@ -15,6 +15,7 @@ import { listChecklistCards, openDelivery, type ChecklistCard } from "./delivery
 import { VolumeDesk } from "./volume-panel";
 import { canWriteVolume, reportListPath, volumeLines, type VolumeReport } from "./volume";
 import { boardColumn, shownTaskStatus, taskError, taskListPath, taskStatusText, type BoardColumn, type ServerTask } from "./task-read";
+import { boardVolumeLabel, masterDecisionMap } from "./board-volume";
 
 type Page = { items: ServerTask[]; total: number; limit: number; offset: number };
 type BoardView = "board" | "list";
@@ -39,7 +40,9 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
   const [saved, setSaved] = useState("");
   const [savedPulse, setSavedPulse] = useState(0);
   const [reported, setReported] = useState<Record<string, { reportId: string; submittedQuantity: string }[]> | null>(null);
+  const [decisions, setDecisions] = useState<Record<string, string | null> | null>(null);
   const [volumeNote, setVolumeNote] = useState("");
+  const [decisionNote, setDecisionNote] = useState("");
   const [localTasks, setLocalTasks] = useState<ChecklistCard[]>([]);
   const [stamp, setStamp] = useState("");
   const canWrite = canWriteTaskDraft(session.role);
@@ -80,9 +83,20 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
           setReported(null);
           setVolumeNote("Отчёты объёма прочитать не удалось.");
         }
+        try {
+          const reviews = await v1<{ items: { reportId: string; totalAcceptedQuantity: string | null }[]; total: number }>(session, `/projects/${projectId}/volume-reviews?day=${day}&limit=100&offset=0`);
+          if (!live) return;
+          const map = masterDecisionMap(reviews.items, reviews.total);
+          setDecisions(map);
+          setDecisionNote(map ? "" : "Решения мастера прочитаны не полностью.");
+        } catch {
+          if (!live) return;
+          setDecisions(null);
+          setDecisionNote("Решения мастера прочитать не удалось.");
+        }
       } catch (reason) {
         if (!live) return;
-        if (stamp !== scope) { setPage(null); setReported(null); setVolumeNote(""); }
+        if (stamp !== scope) { setPage(null); setReported(null); setDecisions(null); setVolumeNote(""); setDecisionNote(""); }
         setError(taskError(reason instanceof ApiError ? reason.status : null));
         const cards = await openDelivery(session).then(() => listChecklistCards()).catch(() => []);
         if (live) setLocalTasks(cards.filter((card) => card.projectId === projectId));
@@ -92,7 +106,7 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
   }, [session.token, session.tenantId, projectId, day, offset, pass, ready]);
   const body = !ready ? <div className="page"><DeskEmpty title="Объект и день не подтверждены" description={notice || "Доска читается только после выбора объекта и рабочего дня."} /></div>
     : openId ? <div className="page"><TaskDetail compact={compact} session={session} projectId={projectId} taskId={openId} names={names} canEdit={canWrite} onEdit={setEditing} onBack={() => { setOpenId(null); setPass((value) => value + 1); }} onChanged={() => setPass((value) => value + 1)} onNoted={(message) => { setSaved(message); setSavedPulse((value) => value + 1); }} /></div>
-    : <TaskBoard compact={compact} view={view} onView={setView} canWrite={canWrite} onCreate={() => setCreating(true)} page={stamp === scope ? page : null} loading={loading || stamp !== scope} error={error} offset={offset} names={names} reported={reported} volumeNote={volumeNote} localTasks={localTasks} onOpen={setOpenId} onRetry={() => setPass((value) => value + 1)} onOffset={setOffset} />;
+    : <TaskBoard compact={compact} view={view} onView={setView} canWrite={canWrite} onCreate={() => setCreating(true)} page={stamp === scope ? page : null} loading={loading || stamp !== scope} error={error} offset={offset} names={names} reported={reported} decisions={stamp === scope ? decisions : null} volumeNote={volumeNote} decisionNote={decisionNote} localTasks={localTasks} onOpen={setOpenId} onRetry={() => setPass((value) => value + 1)} onOffset={setOffset} />;
   const savedDraft = (row: ServerTask) => {
     setCreating(false); setEditing(null);
     setSaved(row.workDate === day ? `Сервер записал черновик «${row.title}».` : `Сервер записал черновик на ${row.workDate.split("-").reverse().join(".")}. На доске этого дня его нет.`);
@@ -106,7 +120,7 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
   </div>;
 }
 
-function TaskBoard({ compact, view, onView, canWrite, onCreate, page, loading, error, offset, names, reported, volumeNote, localTasks, onOpen, onRetry, onOffset }: { compact: boolean; view: BoardView; onView: (view: BoardView) => void; canWrite: boolean; onCreate: () => void; page: Page | null; loading: boolean; error: string; offset: number; names: Record<string, string>; reported: Record<string, { reportId: string; submittedQuantity: string }[]> | null; volumeNote: string; localTasks: ChecklistCard[]; onOpen: (id: string) => void; onRetry: () => void; onOffset: (offset: number) => void }) {
+function TaskBoard({ compact, view, onView, canWrite, onCreate, page, loading, error, offset, names, reported, decisions, volumeNote, decisionNote, localTasks, onOpen, onRetry, onOffset }: { compact: boolean; view: BoardView; onView: (view: BoardView) => void; canWrite: boolean; onCreate: () => void; page: Page | null; loading: boolean; error: string; offset: number; names: Record<string, string>; reported: Record<string, { reportId: string; submittedQuantity: string }[]> | null; decisions: Record<string, string | null> | null; volumeNote: string; decisionNote: string; localTasks: ChecklistCard[]; onOpen: (id: string) => void; onRetry: () => void; onOffset: (offset: number) => void }) {
   const items = page?.items ?? [];
   const head = <div className="tasks-head">
     <div className="documents-title"><h1>Задания</h1><NoteMark label="Как устроена доска"><p>Колонка берётся из статуса сервера. Перетаскивание карточку не переносит. Сообщённый объём сам колонку «Сдано» не включает и приёмкой не считается.</p></NoteMark></div>
@@ -126,6 +140,7 @@ function TaskBoard({ compact, view, onView, canWrite, onCreate, page, loading, e
     {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={onRetry}>Повторить чтение</button></p> : null}
     {error ? <LocalTasks tasks={localTasks} onOpen={onOpen} /> : null}
     {volumeNote ? <p className="quiet">{volumeNote}</p> : null}
+    {decisionNote ? <p className="quiet">{decisionNote}</p> : null}
     {page && !error && items.length === 0 ? <p className="quiet">На этот день заданий нет.</p> : null}
       {page && !error ? groups.map(({ column, cards }) => <section className="task-group" key={column.id} aria-label={column.title}>
         <h2>{column.title}</h2>
@@ -134,7 +149,7 @@ function TaskBoard({ compact, view, onView, canWrite, onCreate, page, loading, e
           return <article className="job" key={task.id} role="button" tabIndex={0} aria-label={task.title} onClick={() => onOpen(task.id)} onKeyDown={(event) => { if (event.key === "Enter") onOpen(task.id); }}>
             <div className="rowline"><h3>{task.title}</h3><DeskBadge tone={status === "published" ? "accent" : status === "cancelled" || status === "needs_fix" ? "warn" : "neutral"}>{taskStatusText(status)}</DeskBadge></div>
             <div className="quiet">{task.plannedQuantity} {task.unit}</div>
-            {reported?.[task.id]?.map((row) => <div className="quiet" key={row.reportId}>{row.submittedQuantity} {task.unit} · не принято</div>)}
+            {reported?.[task.id]?.map((row) => <div className="quiet" key={row.reportId}>{boardVolumeLabel(row.submittedQuantity, task.unit, decisions?.[row.reportId])}</div>)}
           </article>;
         })}
       </section>) : null}
@@ -146,6 +161,7 @@ function TaskBoard({ compact, view, onView, canWrite, onCreate, page, loading, e
     {error ? <p role="alert">{error} <button className="ghost desk-action" type="button" onClick={onRetry}>Повторить чтение</button></p> : null}
     {error ? <LocalTasks tasks={localTasks} onOpen={onOpen} /> : null}
     {volumeNote ? <p className="quiet">{volumeNote}</p> : null}
+    {decisionNote ? <p className="quiet">{decisionNote}</p> : null}
     {page && !error && view === "board" ? <div className="kanban">{columns.map((column) => {
       const cards = items.filter((task) => boardColumn(shownTaskStatus(task)) === column.id);
       return <section className="column" key={column.id} aria-label={column.title}>
@@ -159,7 +175,7 @@ function TaskBoard({ compact, view, onView, canWrite, onCreate, page, loading, e
               <div className="card-person"><span className="card-avatar" aria-hidden="true">{person ? initials(person) : "—"}</span><span>{person || "исполнитель не прочитан"}</span></div>
               <p className="title">{task.title}</p>
               <div className="meta">{task.plannedQuantity} {task.unit}</div>
-              {reported?.[task.id]?.map((row) => <div className="quiet" key={row.reportId}>{row.submittedQuantity} {task.unit} · не принято</div>)}
+              {reported?.[task.id]?.map((row) => <div className="quiet" key={row.reportId}>{boardVolumeLabel(row.submittedQuantity, task.unit, decisions?.[row.reportId])}</div>)}
               <DeskBadge tone={status === "published" ? "accent" : status === "cancelled" || status === "needs_fix" ? "warn" : "neutral"}>{taskStatusText(status)}</DeskBadge>
             </article>;
           })}
@@ -172,7 +188,7 @@ function TaskBoard({ compact, view, onView, canWrite, onCreate, page, loading, e
         const status = shownTaskStatus(task);
         const column = columns.find((item) => item.id === boardColumn(status));
         return <tr className="is-link" key={task.id} tabIndex={0} onClick={() => onOpen(task.id)} onKeyDown={(event) => { if (event.key === "Enter") onOpen(task.id); }}>
-          <td><b>{task.title}</b>{reported?.[task.id]?.map((row) => <div className="quiet" key={row.reportId}>Сообщено {row.submittedQuantity} {task.unit}. Не принято.</div>)}</td>
+          <td><b>{task.title}</b>{reported?.[task.id]?.map((row) => <div className="quiet" key={row.reportId}>{boardVolumeLabel(row.submittedQuantity, task.unit, decisions?.[row.reportId], true)}</div>)}</td>
           <td>{names[task.assigneeEmployeeId] ?? "исполнитель не прочитан"}</td>
           <td>{task.plannedQuantity} {task.unit}</td>
           <td>{column?.title}</td>
