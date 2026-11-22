@@ -8,7 +8,7 @@ import type { Page } from "./api-input.js";
 // $1 = trusted actor role, $2 = trusted actor user ID. All callers use withTenant.
 // Project membership alone is insufficient for workers: their employee must be assigned.
 const projectVisible = `($1 = 'director' OR (
-  $1 IN ('master', 'pto', 'worker') AND EXISTS (
+  $1 IN ('master', 'pto', 'worker', 'safety') AND EXISTS (
     SELECT 1 FROM project_memberships pm WHERE pm.tenant_id = p.tenant_id
       AND pm.project_id = p.id AND pm.user_id = $2 AND pm.status = 'active'
   ) AND ($1 <> 'worker' OR EXISTS (

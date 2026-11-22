@@ -78,5 +78,5 @@ test('публичный контракт совпадает с фактичес
   if(s.enum)assert.ok(s.enum.includes(v));if(s.pattern)assert.match(v,new RegExp(s.pattern));
  }
  matches(actual,spec.components.schemas.InternalInspectionCard);
- assert.equal(Object.values(spec.paths).reduce((n:number,p:any)=>n+Object.keys(p).length,0),128);
+ assert.equal(Object.values(spec.paths).reduce((n:number,p:any)=>n+Object.keys(p).length,0),130);
 });

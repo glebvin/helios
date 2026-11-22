@@ -2078,6 +2078,47 @@
         }
       }
     },
+    "/api/v1/employees/{id}/admission-checks/{check}/safety-review": {
+      "get": {
+        "operationId": "getAdmissionSafetyReview",
+        "summary": "getAdmissionSafetyReview",
+        "description": "Whether the assigned safety reviewer has agreed to this check. Required is false until that person is named in the route. Director, master, PTO and the project's safety membership can read it.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "check", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Current agreement", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SafetyReview" } } } },
+          "400": { "description": "Invalid UUID", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role denied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Hidden check", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "operationId": "agreeAdmissionSafetyReview",
+        "summary": "agreeAdmissionSafetyReview",
+        "description": "The safety user named in the employee-admission route agrees to one passed check. Another person, including the master and the project director, cannot record this agreement. Same requestId replays the stored body.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "check", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["requestId"], "properties": { "requestId": { "type": "string", "format": "uuid" } } } } } },
+        "responses": {
+          "201": { "description": "Agreement stored", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SafetyReview" } } } },
+          "400": { "description": "Invalid body", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role or assigned reviewer denied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Hidden check", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Already agreed or idempotency mismatch", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Check did not pass or reviewer is not assigned", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
     "/api/v1/projects/{p}/memberships": {
       "get": {
         "operationId": "listProjectMemberships",
@@ -13759,6 +13800,16 @@
           "offset"
         ],
         "additionalProperties": false
+      },
+      "SafetyReview": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["recorded", "required", "recordedAt"],
+        "properties": {
+          "recorded": { "type": "boolean" },
+          "required": { "type": "boolean" },
+          "recordedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
       },
       "CheckList": {
         "type": "object",
