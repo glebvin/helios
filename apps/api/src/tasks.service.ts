@@ -12,7 +12,7 @@ import {PeopleService} from './people.service.js';
 type Row=Record<string,any>;
 type Catalog='zones'|'work-types';
 const catalogs={zones:'project_work_zones','work-types':'project_work_types'} as const;
-function catalogFields(kind:Catalog) {return `id,project_id AS "projectId",name,version,status${kind==='work-types'?`,unit,requires_rd AS "requiresRd",requires_material_control AS "requiresMaterialControl",requires_predecessor_acceptance AS "requiresPredecessorAcceptance",requires_id AS "requiresId"`:''}`;}
+function catalogFields(kind:Catalog) {return `id,project_id AS "projectId",name,version,status${kind==='work-types'?`,unit,requires_rd AS "requiresRd",requires_material_control AS "requiresMaterialControl",requires_predecessor_acceptance AS "requiresPredecessorAcceptance",requires_id AS "requiresId",hidden_work AS "hiddenWork"`:''}`;}
 export class TasksService {
   constructor(private readonly pool:Pool,private readonly api:DirectorApiService,private readonly people:PeopleService) {}
   private with<T>(a:Actor,f:(c:PoolClient)=>Promise<T>) {return withTenant(this.pool,a.tenantId,a.userId,f);}
@@ -70,8 +70,8 @@ export class TasksService {
       let before=null;
       if(id){before=(await c.query(`SELECT ${fields} FROM ${table} WHERE tenant_id=$1 AND project_id=$2 AND id=$3 FOR NO KEY UPDATE`,[a.tenantId,p,id])).rows[0];if(!before)throw httpError(404,'not_found');this.version(before,b.expectedVersion);}
       const key=id??randomUUID();
-      const cols=kind==='work-types'?['unit','requires_rd','requires_material_control','requires_predecessor_acceptance','requires_id']:[];
-      const data=kind==='work-types'?[b.unit,b.requiresRd,b.requiresMaterialControl,b.requiresPredecessorAcceptance,b.requiresId]:[];
+      const cols=kind==='work-types'?['unit','requires_rd','requires_material_control','requires_predecessor_acceptance','requires_id','hidden_work']:[];
+      const data=kind==='work-types'?[b.unit,b.requiresRd,b.requiresMaterialControl,b.requiresPredecessorAcceptance,b.requiresId,b.hiddenWork??before?.hiddenWork??false]:[];
       const values=[a.tenantId,p,key,b.name,...data];
       let after;
       if(id){
