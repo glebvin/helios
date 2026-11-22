@@ -78,6 +78,14 @@ test.before(async () => {
   route.reviewers = [{ role: "director", userId: ids.get("director")! }, { role: "safety", userId: ids.get("safety")! }];
   route.approvers[0]!.userId = ids.get("zds")!;
   await admin.query("INSERT INTO route_config_versions(tenant_id,project_id,version,schema_version,configuration,created_by) VALUES($1,$2,1,1,$3,$4)", [tenant, project, JSON.stringify(configuration), ids.get("engineer")]);
+  const organization = randomUUID();
+  const ptoEmployee = randomUUID();
+  ids.set("organization", organization);
+  ids.set("ptoEmployee", ptoEmployee);
+  ids.set("order", randomUUID());
+  await admin.query("INSERT INTO organizations(tenant_id,id,kind,name) VALUES($1,$2,'own','Своя')", [tenant, organization]);
+  await admin.query("INSERT INTO employees(tenant_id,id,organization_id,user_id,full_name) VALUES($1,$2,$3,$4,'Инженер ПТО')", [tenant, ptoEmployee, organization, ids.get("pto")]);
+  await admin.query("INSERT INTO responsibility_orders(tenant_id,id,organization_id,project_id,employee_id,order_number,order_date,valid_from,valid_until,document_types,status,version) VALUES($1,$2,$3,$4,$5,'ПР-ШАБЛОН','2026-01-01','2026-01-01','2099-12-31',ARRAY['inspection-template'],'active',1)", [tenant, ids.get("order"), organization, project, ptoEmployee]);
   const server = await NestFactory.create(AppModule, { logger: false });
   server.useGlobalFilters(new AllExceptionsFilter());
   await server.listen(0, "127.0.0.1");
@@ -95,7 +103,7 @@ test.after(async () => {
   try {
     if (tenant) {
       const tenants = [tenant, foreignTenant];
-      for (const table of ["checklist_template_events", "checklist_template_editions", "checklist_templates", "people_command_receipts", "route_config_versions", "audit_log", "project_memberships", "memberships", "projects"]) {
+      for (const table of ["checklist_template_events", "checklist_template_editions", "checklist_templates", "responsibility_order_revisions", "responsibility_orders", "people_command_receipts", "route_config_versions", "audit_log", "employees", "project_memberships", "memberships", "organizations", "projects"]) {
         await admin.query(`DELETE FROM ${table} WHERE tenant_id = ANY($1::uuid[])`, [tenants]);
       }
       await admin.query("DELETE FROM sessions WHERE user_id = ANY($1::uuid[])", [[...ids.values()]]);
@@ -145,6 +153,35 @@ test("template draft follows PTO, both reviews and ZDS, then a new edition leave
   const early = await call("zds", "POST", `${template}/decision`, decision("approve", submitted.body.version));
   assert.equal(early.status, 409);
   assert.equal(early.body.error, "reviews_required");
+  await admin.query("UPDATE responsibility_orders SET status='revoked', revocation_reason='проверка отзыва' WHERE id=$1", [ids.get("order")]);
+  const blocked = await call("pto", "POST", `${template}/decision`, decision("accept", submitted.body.version));
+  assert.equal(blocked.status, 422);
+  assert.equal(blocked.body.error, "revoked");
+  assert.equal((await admin.query("SELECT count(*)::int n FROM checklist_template_events WHERE template_id=$1 AND action='accept'", [created.body.templateId])).rows[0].n, 0);
+  await admin.query("UPDATE responsibility_orders SET status='active', revocation_reason=NULL WHERE id=$1", [ids.get("order")]);
+  const orderLock = await admin.connect();
+  await orderLock.query('BEGIN');
+  await orderLock.query('SELECT id FROM responsibility_orders WHERE id=$1 FOR UPDATE', [ids.get('order')]);
+  const pendingAccept = call('pto', 'POST', `${template}/decision`, decision('accept', submitted.body.version));
+  try {
+    let waiting = false;
+    for (let i = 0; i < 100; i++) {
+      const blocked = await admin.query("SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%FROM responsibility_orders WHERE employee_id=%'");
+      if (blocked.rowCount) { waiting = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(waiting, true, 'Принятие должно дождаться изменения приказа');
+    await orderLock.query("UPDATE responsibility_orders SET status='revoked',revocation_reason='Отозван во время принятия' WHERE id=$1", [ids.get('order')]);
+    await orderLock.query('COMMIT');
+    const denied = await pendingAccept;
+    assert.equal(denied.status, 422);
+    assert.equal(denied.body.error, 'revoked');
+    assert.equal((await admin.query("SELECT count(*)::int n FROM checklist_template_events WHERE template_id=$1 AND action='accept'", [created.body.templateId])).rows[0].n, 0);
+  } finally {
+    await orderLock.query('ROLLBACK'); orderLock.release();
+    await admin.query("UPDATE responsibility_orders SET status='active',revocation_reason=NULL WHERE id=$1", [ids.get('order')]);
+    await pendingAccept.catch(() => {});
+  }
   const accepted = await call("pto", "POST", `${template}/decision`, decision("accept", submitted.body.version));
   assert.equal(accepted.status, 201);
   assert.equal(accepted.body.status, "in_review");

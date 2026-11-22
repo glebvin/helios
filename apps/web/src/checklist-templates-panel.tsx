@@ -81,6 +81,13 @@ function explain(reason: unknown) {
   if (code === "reviews_required") return "Нельзя утвердить, пока оба согласования не записаны.";
   if (code === "review_recorded") return "Это согласование уже записано.";
   if (code === "role_denied") return "Это действие вашей роли не разрешено.";
+  if (code === "person") return "На этого сотрудника нет приказа на шаблон сдачи.";
+  if (code === "company") return "Приказ относится к другой компании.";
+  if (code === "object") return "Приказ выдан на другой объект.";
+  if (code === "type") return "Приказ не разрешает шаблоны сдачи.";
+  if (code === "revoked") return "Приказ отозван. Принятие шаблона им не подтверждается.";
+  if (code === "expired") return "Срок приказа на шаблон сдачи истёк.";
+  if (code === "not_started") return "Срок приказа на шаблон сдачи ещё не начался.";
   if (code === "reason_required") return "Укажите причину возврата.";
   if (code === "invalid_template") return "Проверьте пункты: тип, допуск и обязательные поля.";
   if (code === "route_not_configured") return "Маршрут шаблона на объекте не назначен.";
