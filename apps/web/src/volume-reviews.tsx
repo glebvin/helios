@@ -1,6 +1,7 @@
 import {VolumeCorrection,type CurrentPart,type Correction} from './volume-correction';
 import {VolumeRemainder,type Remainder} from './volume-remainder';
 import { InternalInspection } from './internal-inspection';
+import { CustomerZones } from './customer-submission';
 import { useEffect, useRef, useState } from 'react';
 import type { Session } from './api';
 import { ApiError, v1 } from './v1';
@@ -30,6 +31,7 @@ export function VolumeReviews({session,projectId,projectName,day,notice,onBack}:
   return <section className="page">
     <div className="documents-heading"><button className="ghost desk-action" type="button" onClick={onBack}>К фактам</button></div>
     <div><h1>Приёмка</h1><p className="sub">{blocked||`${projectName} · ${civilLabel(pickedDay)}`}</p></div>
+    {!blocked && projectId ? <CustomerZones session={session} projectId={projectId} /> : null}
     <div className="panel-head"><h2>Самоконтроль мастера</h2><NoteMark label="Этап приёмки"><p>Мастер подтверждает фактический объём после самоконтроля. После решения мастера часть передаётся нашему ПТО. Внешний СК — отдельный этап.</p></NoteMark></div>
     <label className="field" style={{maxWidth:220}}><span>День предъявления</span><input type="date" aria-label="День предъявления" value={pickedDay} onChange={event=>{setPickedDay(event.target.value);setOffset(0);setSelected('');}}/></label>
     {blocked?<DeskEmpty title="День не подтверждён" description={blocked}/>:null}
