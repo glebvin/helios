@@ -522,7 +522,7 @@ test('OpenAPI81 retains exact old58 inventory plus time days and route configura
   const newKeys=[...added03b,...routeConfig,...orders,...phoneRoutes,...prices,...checklistTemplates,...checklistRuns,...primaryDayOps,...staffImports,...materialRoutes,...volumeReviewOps,...internalInspectionOps].map(([m,p])=>`${m} ${p}`),retained=actual.filter(k=>!newKeys.includes(k));
   assert.equal(originalOperationInventory.length,53);assert.equal(retained.length,58);assert.deepEqual(retained.sort(),[...originalOperationInventory,...added].map(([m,p])=>`${m} ${p}`).sort());
   assert.equal(added03b.length,12);assert.equal(orders.length,6);assert.equal(actual.length,120);assert.deepEqual(actual.sort(),[...originalOperationInventory,...added,...added03b,...routeConfig,...orders,...phoneRoutes,...prices,...checklistTemplates,...checklistRuns,...primaryDayOps,...staffImports,...materialRoutes,...volumeReviewOps,...internalInspectionOps].map(([m,p])=>`${m} ${p}`).sort());
-  const ids=Object.values(spec.paths).flatMap((p:any)=>Object.values(p).map((v:any)=>v.operationId));assert.equal(new Set(ids).size,126);
+  const ids=Object.values(spec.paths).flatMap((p:any)=>Object.values(p).map((v:any)=>v.operationId));assert.equal(new Set(ids).size,128);
 
   const scan=(v:any):void=>{if(v&&typeof v==='object'){if(v.$ref?.startsWith('#/'))assert.ok(v.$ref.slice(2).split('/').reduce((o:any,k:string)=>o?.[k],spec),v.$ref);Object.values(v).forEach(scan);}};scan(spec);
   function matches(v:any,s:any):void{
