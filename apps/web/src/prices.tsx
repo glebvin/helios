@@ -22,7 +22,24 @@ const reasons: Record<string, string> = {
   invalid_price: "Цена должна быть нулём или положительным числом, не больше 6 знаков после запятой.",
   invalid_period: "Укажите существующие даты, конец не раньше начала.",
   reference_denied: "Вид работ архивный, новую цену к нему не записать.",
+  price_import_rejected: "Таблица не записана: есть строка с ошибкой.",
+  unknown_work_type: "Нет такого вида работ на объекте.",
+  duplicate_work_type: "Вид работ повторяется в таблице.",
+  ambiguous_work_type: "На объекте несколько видов работ с таким названием.",
+  archived_work_type: "Вид работ архивный.",
+  invalid_text: "Укажите название вида работ.",
+  conflict: "Эту таблицу уже записывают в другом окне.",
 };
+
+type ImportRow = { line: number; workTypeName: string; unit: string | null; price: string; start: string; end: string; error: string | null };
+type ImportPreview = { acceptable: boolean; rows: ImportRow[] };
+
+function tableRows(text: string) {
+  return text.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
+    const [workTypeName = "", price = "", start = "", end = ""] = line.split(";").map((part) => part.trim());
+    return { workTypeName, price, start, end };
+  });
+}
 
 export function PriceDesk({ session, theme, onTheme, onLogout }: { session: Session; theme: "light" | "dark"; onTheme: () => void; onLogout: () => void }) {
   const reduce = useReducedMotion();
@@ -38,6 +55,11 @@ export function PriceDesk({ session, theme, onTheme, onLogout }: { session: Sess
   const [pulse, setPulse] = useState(0);
   const [saving, setSaving] = useState(false);
   const [pending, setPending] = useState<PriceCommand | null>(null);
+  const [table, setTable] = useState("");
+  const [preview, setPreview] = useState<ImportPreview | null>(null);
+  const previewList = useRef<HTMLUListElement>(null);
+  const [checking, setChecking] = useState(false);
+  const [importing, setImporting] = useState(false);
   const generation = useRef(0);
   const activeScope = useRef("");
   const scope = `helios.price:${session.tenantId}:${session.userId}:${projectId}`;
@@ -59,6 +81,7 @@ export function PriceDesk({ session, theme, onTheme, onLogout }: { session: Sess
   }
 
   useEffect(() => { void loadProjects().catch((reason: Error) => setError(reasons[reason.message] ?? reason.message)); }, [session.token]);
+  useEffect(() => { if (preview && !preview.acceptable) previewList.current?.focus(); }, [preview]);
   useEffect(() => {
     if (!projectId) { setRegister(null); return; }
     let live = true;
@@ -98,6 +121,38 @@ export function PriceDesk({ session, theme, onTheme, onLogout }: { session: Sess
     } finally { setSaving(false); }
   }
 
+  async function checkTable() {
+    if (!projectId) return;
+    setChecking(true); setError(""); setPreview(null);
+    try {
+      const next = await call<ImportPreview>(session, `/projects/${projectId}/contract-prices/checks`, { rows: tableRows(table) });
+      setPreview(next);
+    } catch (reason) {
+      setError(reason instanceof ApiError ? reasons[reason.message] ?? "Сервер не принял таблицу." : "Не удалось проверить таблицу.");
+    } finally { setChecking(false); }
+  }
+
+  async function confirmTable() {
+    if (!projectId || !preview?.acceptable) return;
+    const key = `helios.price-import.${projectId}`;
+    const saved = sessionStorage.getItem(key);
+    const remembered = saved ? JSON.parse(saved) as { text: string; requestId: string } : null;
+    const requestId = remembered?.text === table ? remembered.requestId : crypto.randomUUID();
+    sessionStorage.setItem(key, JSON.stringify({ text: table, requestId }));
+    setImporting(true); setError("");
+    try {
+      await call(session, `/projects/${projectId}/contract-prices/imports`, { requestId, rows: tableRows(table) });
+      sessionStorage.removeItem(key);
+      setTable(""); setPreview(null);
+      setNotice("Таблица записана."); setPulse((value) => value + 1);
+      await loadRegister(projectId).catch(() => setError("Таблица записана. Не удалось обновить реестр; повторите чтение."));
+    } catch (reason) {
+      const code = reason instanceof Error ? reason.message : "request_failed";
+      if (reason instanceof ApiError && reason.status < 500) sessionStorage.removeItem(key);
+      setError(reason instanceof ApiError && reason.status < 500 ? reasons[code] ?? "Сервер не принял таблицу." : "Ответ сервера не подтверждён. Повтор отправит ту же таблицу.");
+    } finally { setImporting(false); }
+  }
+
   return (
     <main className="prices">
       <header>
@@ -113,6 +168,15 @@ export function PriceDesk({ session, theme, onTheme, onLogout }: { session: Sess
           <button className="info" type="button" aria-label="Что это за цена" aria-pressed={pinned} onClick={() => setPinned((value) => !value)}>i</button>
           <p className={pinned ? "price-note is-pinned" : "price-note"}>Договорная цена единицы для готовности к КС-2. Это не зарплата и не себестоимость. Новая запись не стирает прежнюю редакцию.</p>
         </div>
+        <p className="price-import-note">Таблица: каждая строка «название; цена; начало; окончание». Это проверочный формат, не файл заказчика. Пустая цена не становится нулём.</p>
+        {projectId ? (
+          <div className="price-import">
+            <textarea aria-label="Таблица цен" rows={4} value={table} disabled={importing || checking} onChange={(event) => { setTable(event.target.value); setPreview(null); }} />
+            <button className="desk-action" type="button" disabled={importing || checking || tableRows(table).length === 0} onClick={() => void checkTable()}>{checking ? "Проверяем…" : "Проверить"}</button>
+            <button className="desk-action" type="button" disabled={importing || checking || !preview?.acceptable} onClick={() => void confirmTable()}>{importing ? "Записываем…" : "Записать проверенные"}</button>
+            {preview ? <ul ref={previewList} className="price-import-rows" tabIndex={-1} role={preview.acceptable ? "status" : "alert"}>{preview.rows.map((row) => <li key={row.line}>{row.line}. {row.workTypeName || "Пустая строка"} — {row.error ? reasons[row.error] ?? row.error : `${row.price} за ${row.unit}, ${row.start} — ${row.end}`}</li>)}</ul> : null}
+          </div>
+        ) : null}
         {projects === null ? (!error ? <p className="price-hold">Читаем объекты…</p> : null) : projects.length === 0 ? <p>Нет объектов, к которым вам открыт доступ. Попросите руководителя проекта добавить вас на объект.</p> : (
           <div className="roles" role="tablist" aria-label="Объект">
             {projects.map((item) => <button key={item.id} type="button" role="tab" aria-selected={item.id === projectId} className={item.id === projectId ? "is-on" : ""} disabled={saving} onClick={() => setProjectId(item.id)}>{item.name}</button>)}

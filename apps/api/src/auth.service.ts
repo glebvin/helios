@@ -168,7 +168,8 @@ export class TenantGuard implements CanActivate {
     const identityRoute = (["GET", "HEAD"].includes(method) && path === "/api/v1/me") || (method === "POST" && path === "/api/v1/auth/logout");
     const priceRoute = actor.role === "cost" && (
       (["GET", "HEAD"].includes(method) && path === "/api/v1/contract-prices/projects") ||
-      (["GET", "HEAD", "POST"].includes(method) && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/contract-prices\/?$/i.test(path)));
+      (["GET", "HEAD", "POST"].includes(method) && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/contract-prices\/?$/i.test(path)) ||
+      (method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/contract-prices\/(?:checks|imports)\/?$/i.test(path)));
     const checklistProject = /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates(?:\/[0-9a-f-]{36}(?:\/(?:submit|decision))?)?\/?$/i.test(path);
     const checklistRead = ["GET", "HEAD"].includes(method) && (path === "/api/v1/checklist-templates" || /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates(?:\/[0-9a-f-]{36})?\/?$/i.test(path));
     const engineerChecklist = actor.role === "engineer-pto" && (checklistRead || (method === "POST" && checklistProject));
@@ -190,7 +191,8 @@ export class TenantGuard implements CanActivate {
 function contractPriceRoute(role: string, method: string, path: string) {
   if (role !== "cost") return false;
   if (method === "GET" && path === "/api/v1/contract-prices/projects") return true;
-  return ["GET", "POST"].includes(method) && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/contract-prices\/?$/i.test(path);
+  return (["GET", "POST"].includes(method) && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/contract-prices\/?$/i.test(path))
+    || (method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/contract-prices\/(?:checks|imports)\/?$/i.test(path));
 }
 
 export function actorOf(request: ActorRequest): Actor {
