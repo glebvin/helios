@@ -18,4 +18,16 @@ export class CustomerSubmissionsController {
     const saved = await this.submissions.submit(actorOf(r), uuid(p).toLowerCase(), uuid(part).toLowerCase(), b);
     res.status(saved.status).json(saved.body);
   }
+  @Post('remarks')
+  async remark(@Req() r: ActorRequest, @Param('project') p: string, @Param('part') part: string, @Body() b: unknown, @Query() q: Record<string, unknown>, @Res() res: { status(n: number): { json(body: unknown): void } }) {
+    queryInput(q, []);
+    const saved = await this.submissions.remark(actorOf(r), uuid(p).toLowerCase(), uuid(part).toLowerCase(), b);
+    res.status(saved.status).json(saved.body);
+  }
+  @Post('remarks/:remark/close')
+  async close(@Req() r: ActorRequest, @Param('project') p: string, @Param('part') part: string, @Param('remark') remark: string, @Body() b: unknown, @Query() q: Record<string, unknown>, @Res() res: { status(n: number): { json(body: unknown): void } }) {
+    queryInput(q, []);
+    const saved = await this.submissions.closeRemark(actorOf(r), uuid(p).toLowerCase(), uuid(part).toLowerCase(), uuid(remark).toLowerCase(), b);
+    res.status(saved.status).json(saved.body);
+  }
 }
