@@ -61,8 +61,20 @@ export class InternalInspectionsService {
   private async latest(c: PoolClient,project: string,task: string) {
     return (await c.query(`SELECT id,version,passed,blocks_next AS "blocksNext",created_at AS "createdAt" FROM checklist_runs WHERE project_id=$1 AND task_id=$2 ORDER BY version DESC LIMIT 1`,[project,task])).rows[0]??null;
   }
+  private async requirement(c: PoolClient,project: string,taskId: string) {
+    const row=(await c.query(`SELECT COALESCE(wt.hidden_work,false) AS "hiddenWork",COALESCE(o.kind='subcontractor',false) AS subcontract,p.internal_inspection_required AS "projectRequired"
+      FROM projects p LEFT JOIN daily_tasks t ON t.tenant_id=p.tenant_id AND t.project_id=p.id AND t.id=$2
+      LEFT JOIN project_work_types wt ON wt.tenant_id=t.tenant_id AND wt.id=t.work_type_id
+      LEFT JOIN employees e ON e.tenant_id=t.tenant_id AND e.id=t.assignee_employee_id
+      LEFT JOIN organizations o ON o.tenant_id=e.tenant_id AND o.id=e.organization_id
+      WHERE p.id=$1`,[project,taskId])).rows[0];
+    const hiddenWork=row?.hiddenWork===true,subcontract=row?.subcontract===true,projectRequired=row?.projectRequired!==false;
+    const required=hiddenWork||subcontract||projectRequired;
+    return {required,projectRequired,hiddenWork,subcontract,reason:hiddenWork?'hidden':subcontract?'subcontract':projectRequired?'project':'none'};
+  }
   private async view(c: PoolClient,a: Actor,project: string,part: string,source?: Row) {
     const acceptedPart = source??await this.source(c,a,project,part);
+    const requirement=await this.requirement(c,project,acceptedPart.taskId);
     const record = (await c.query(`SELECT id,snapshot,created_at AS "createdAt" FROM internal_inspections WHERE project_id=$1 AND accepted_part_id=$2`,[project,part])).rows[0]??null;
     const history = (await c.query(`SELECT version,action,from_state AS "fromState",to_state AS "toState",actor_user_id AS "actorUserId",actor_name AS "actorName",actor_role AS "actorRole",reason,request_id AS "requestId",created_at AS "createdAt" FROM internal_inspection_events WHERE accepted_part_id=$1 ORDER BY version`,[part])).rows;
     const state = history.at(-1)?.toState??'not_submitted',version=history.at(-1)?.version??0;
@@ -75,12 +87,12 @@ export class InternalInspectionsService {
     const participantsReady=record?await this.pinnedMembers(c,a,project,record.snapshot):false;
     const actor = await this.member(c,a,project,a.userId,a.role);
     const allowedActions: Action[] = [];
-    if (actor && a.role==='master' && state==='not_submitted' && currentRoute.ready && currentRoute.preparer.userId===a.userId && passed) allowedActions.push('submit');
+    if (actor && a.role==='master' && state==='not_submitted' && currentRoute.ready && currentRoute.preparer.userId===a.userId && passed && requirement.required) allowedActions.push('submit');
     if(actor && a.role==='master' && lastReturn && record.snapshot.preparer.userId===a.userId && fresh && participantsReady)allowedActions.push('resubmit');
     if (actor && a.role==='director' && state==='awaiting_responsibility' && record?.snapshot.responsible.userId===a.userId) allowedActions.push('responsible');
     if (actor && a.role==='pto' && state==='awaiting_pto' && record?.snapshot.approver.userId===a.userId) {if(passed)allowedActions.push('approve','partial');allowedActions.push('return');}
     const split=(await c.query(`SELECT original_part_id AS "originalPartId",accepted_part_id AS "acceptedPartId",returned_part_id AS "returnedPartId",accepted_quantity::text AS "acceptedQuantity",returned_quantity::text AS "returnedQuantity",reason,CASE WHEN original_part_id=$1 THEN 'source' WHEN accepted_part_id=$1 THEN 'accepted' ELSE 'returned' END AS role FROM internal_inspection_splits WHERE original_part_id=$1 OR accepted_part_id=$1 OR returned_part_id=$1`,[part])).rows[0]??null;
-    return {acceptedPart,version,state,currentRoute,selfControl,record,history,split,attempts,attemptNumber:Math.floor((Math.max(version,1)-1)/3)+1,resubmission:lastReturn?{needsFreshSelfControl:!fresh,participantsReady}:null,allowedActions:acceptedPart.replacedBy?[]:allowedActions};
+    return {acceptedPart,version,state,currentRoute,selfControl,requirement,record,history,split,attempts,attemptNumber:Math.floor((Math.max(version,1)-1)/3)+1,resubmission:lastReturn?{needsFreshSelfControl:!fresh,participantsReady}:null,allowedActions:acceptedPart.replacedBy?[]:allowedActions};
   }
   read(a: Actor,project: string,part: string) {
     return withTenant(this.pool,a.tenantId,a.userId,async c=>{
@@ -88,6 +100,32 @@ export class InternalInspectionsService {
       // A read must not combine the header from before submit with newer events.
       if(!(await c.query(`SELECT id FROM projects WHERE id=$1 FOR SHARE`,[project])).rowCount)throw httpError(404,'not_found');
       return this.view(c,a,project,part);
+    });
+  }
+  readPolicy(a: Actor,project: string) {
+    if(!['director','master','pto'].includes(a.role))throw httpError(403,'role_denied');
+    return withTenant(this.pool,a.tenantId,a.userId,async c=>{
+      const row=(await c.query(`SELECT internal_inspection_required AS required,inspection_policy_version AS version FROM projects p WHERE p.id=$1 AND ($2='director' OR EXISTS(SELECT 1 FROM project_memberships pm WHERE pm.tenant_id=p.tenant_id AND pm.project_id=p.id AND pm.user_id=$3 AND pm.status='active'))`,[project,a.role,a.userId])).rows[0];
+      if(!row)throw httpError(404,'not_found');
+      return row;
+    });
+  }
+  savePolicy(a: Actor,project: string,value: unknown) {
+    const b=object(value,['requestId','expectedVersion','required']);
+    if(typeof b.required!=='boolean')throw httpError(400,'invalid_boolean');
+    const body={requestId:uuid(b.requestId).toLowerCase(),expectedVersion:integer(b.expectedVersion,0),required:b.required};
+    if(a.role!=='director')throw httpError(403,'role_denied');
+    return withTenant(this.pool,a.tenantId,a.userId,async c=>{
+      const receipt=await reserveCommand(c,a,`POST /projects/${project}/internal-inspection-policy`,body);
+      if(!(await c.query(`SELECT id FROM projects WHERE id=$1 FOR NO KEY UPDATE`,[project])).rowCount)throw httpError(404,'not_found');
+      const member=(await c.query(`SELECT role,status FROM memberships WHERE tenant_id=$1 AND user_id=$2`,[a.tenantId,a.userId])).rows[0];
+      if(!member||member.status!=='active'||member.role!=='director')throw httpError(403,'role_denied');
+      if(!receipt.inserted)return replayCommand(c,a,body.requestId,receipt.hash);
+      const current=(await c.query(`SELECT inspection_policy_version AS version FROM projects WHERE id=$1`,[project])).rows[0];
+      if(Number(current.version)!==body.expectedVersion)throw httpError(409,'stale_version');
+      const saved=(await c.query(`UPDATE projects SET internal_inspection_required=$2,inspection_policy_version=inspection_policy_version+1 WHERE id=$1 RETURNING internal_inspection_required AS required,inspection_policy_version AS version`,[project,body.required])).rows[0];
+      await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'quality.internal_inspection_policy','project',$3,'ok',$4)`,[a.tenantId,a.userId,project,JSON.stringify({requestId:body.requestId,required:saved.required,version:saved.version})]);
+      return completeCommand(c,a,body.requestId,200,saved);
     });
   }
   act(a: Actor,project: string,part: string,value: unknown) {
@@ -104,6 +142,7 @@ export class InternalInspectionsService {
       if(source.replacedBy)throw httpError(409,'part_superseded');
       const current=await this.view(c,a,project,part,source);
       if(current.version!==b.expectedVersion)throw httpError(409,'stale_version');
+      if(b.action==='submit' && !current.requirement.required)throw httpError(422,'inspection_not_required');
       if(current.state==='accepted'||(current.state==='returned'&&b.action!=='resubmit'))throw httpError(409,'inspection_closed');
       let pinnedRoute=current.currentRoute;
       if(b.action==='submit'){
