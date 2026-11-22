@@ -11,7 +11,14 @@ import {
 } from "./task-action";
 import { taskStatusText, type ServerTask } from "./task-read";
 
-type RouteInfo={configured:boolean;taskVersion:number;allowedActions:TaskActionName[]|null;route:{attempt:{number:number;configurationVersion:number}|null;currentConfigurationVersion:number|null;holder:{userId:string;name:string}|null;dueAt:null;deadlineState:string;nextStep:string;history:{id:string;action:TaskActionName;actorName:string;reason:string|null;createdAt:string}[]}|null};
+type RouteInfo={configured:boolean;taskVersion:number;allowedActions:TaskActionName[]|null;route:{attempt:{number:number;configurationVersion:number}|null;currentConfigurationVersion:number|null;holder:{userId:string;name:string}|null;dueAt:string|null;deadlineState:string;nextStep:string;history:{id:string;action:TaskActionName;actorName:string;reason:string|null;createdAt:string}[]}|null};
+function deadlineText(dueAt:string|null,state:string,timezone:string){
+  if(!dueAt||state==="not-configured")return "Не настроен";
+  const parts=new Intl.DateTimeFormat("en-GB",{timeZone:timezone||"UTC",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date(dueAt));
+  const pick=(type:string)=>parts.find((part)=>part.type===type)?.value??"";
+  const when=`${pick("day")}.${pick("month")}.${pick("year")} ${pick("hour")}:${pick("minute")}`;
+  return state==="overdue"?`Срок прошёл, ${when}`:when;
+}
 const routedLabel=(action:TaskActionName,routed:boolean)=>routed&&action==='publish'?'Утвердить и опубликовать':routed&&action==='submit'?'Отправить РП':taskActionLabel(action);
 const nextStepText:Record<string,string>={'approve-or-return':'РП проверяет и утверждает или возвращает','reopen-and-submit':'Мастер возвращает в черновик и отправляет по маршруту','prepare-and-submit':'Мастер готовит и отправляет РП',execute:'Задание можно выполнять',none:'Маршрут завершён'};
 const historyText:Record<TaskActionName,string>={submit:'Отправлено РП',publish:'Утверждено и опубликовано',reject:'Возвращено РП',reopen:'Возвращено в черновик',cancel:'Отменено'};
@@ -43,7 +50,7 @@ export function TaskActionPanel({ session, projectId, task, onDone, timezone="UT
     {routed&&current.route?<div className="daily-route-facts">
       <div><span className="quiet">Сейчас у</span><b>{current.route.holder?.name??(task.status==='draft'?'Мастер не назначен':'—')}</b></div>
       <div><span className="quiet">Следующий шаг</span><b>{nextStepText[current.route.nextStep]??'Обновите маршрут'}</b></div>
-      <div><span className="quiet">Срок</span><b>Не настроен</b></div>
+      <div><span className="quiet">Срок</span><b className={current.route.deadlineState==="overdue"?"orders-warn":undefined}>{deadlineText(current.route.dueAt,current.route.deadlineState,timezone)}</b></div>
       <p className="quiet">{current.route.attempt?`Попытка ${current.route.attempt.number} · настройка версии ${current.route.attempt.configurationVersion}`:'По маршруту ещё не отправлено'}{task.status==='draft'&&current.route.attempt&&current.route.currentConfigurationVersion!==current.route.attempt.configurationVersion?` · следующая отправка по версии ${current.route.currentConfigurationVersion}`:''}.</p>
     </div>:null}
     <div className="template-bar">

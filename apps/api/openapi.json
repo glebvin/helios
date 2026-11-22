@@ -19609,7 +19609,9 @@
               "deadlineState": {
                 "type": "string",
                 "enum": [
-                  "not-configured"
+                  "not-configured",
+                  "scheduled",
+                  "overdue"
                 ]
               },
               "nextStep": {
