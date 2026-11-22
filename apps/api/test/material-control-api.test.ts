@@ -15,7 +15,7 @@ const id = () => randomUUID();
 const tenant = id(), project = id(), other = id(), org = id(), foreignOrg = id();
 const zone = id(), work = id(), template = id(), batch = id(), rejectedBatch = id();
 const master = id(), supply = id(), otherSupply = id(), director = id(), pto = id(), worker = id();
-const employee = id();
+const employee = id(), ptoEmployee = id(), order = id();
 const users = [master, supply, otherSupply, director, pto, worker];
 const password = 'material-control-password';
 const tokens = new Map<string, string>();
@@ -45,7 +45,8 @@ test.before(async () => {
   }
   for (const user of [master, supply, otherSupply, director, pto]) await admin.query(`INSERT INTO project_memberships(tenant_id,project_id,user_id) VALUES($1,$2,$3)`, [tenant, project, user]);
   await admin.query(`INSERT INTO project_memberships(tenant_id,project_id,user_id) VALUES($1,$2,$3)`, [tenant, other, otherSupply]);
-  await admin.query(`INSERT INTO employees(tenant_id,id,organization_id,user_id,full_name) VALUES($1,$2,$3,$4,'Кладовщик'),($1,$5,$6,$7,'Чужой'),($1,$8,$3,NULL,'Исполнитель')`, [tenant, id(), org, supply, id(), foreignOrg, otherSupply, employee]);
+  await admin.query(`INSERT INTO employees(tenant_id,id,organization_id,user_id,full_name) VALUES($1,$2,$3,$4,'Кладовщик'),($1,$5,$6,$7,'Чужой'),($1,$8,$3,NULL,'Исполнитель'),($1,$9,$3,$10,'Инженер ПТО')`, [tenant, id(), org, supply, id(), foreignOrg, otherSupply, employee, ptoEmployee, pto]);
+  await admin.query(`INSERT INTO responsibility_orders(tenant_id,id,organization_id,project_id,employee_id,order_number,order_date,valid_from,valid_until,document_types,status,version) VALUES($1,$2,$3,$4,$5,'ПР-ВК','2026-01-01','2026-01-01','2099-12-31',ARRAY['incoming-materials'],'active',1)`, [tenant, order, org, project, ptoEmployee]);
   await admin.query(`INSERT INTO project_work_zones(tenant_id,project_id,id,name) VALUES($1,$2,$3,'Секция')`, [tenant, project, zone]);
   await admin.query(`INSERT INTO project_work_types(tenant_id,project_id,id,name,unit,requires_rd,requires_material_control,requires_predecessor_acceptance,requires_id) VALUES($1,$2,$3,'Кладка','м3',false,true,false,false)`, [tenant, project, work]);
   await admin.query(`INSERT INTO checklist_templates(tenant_id,project_id,id,created_by) VALUES($1,$2,$3,$4)`, [tenant, project, template, director]);
@@ -68,7 +69,7 @@ test.before(async () => {
 
 test.after(async () => {
   try { await app?.close(); } finally {
-    for (const table of ['material_control_steps', 'material_controls', 'daily_tasks', 'material_batch_documents', 'material_batch_revisions', 'material_batches', 'checklist_template_editions', 'checklist_templates', 'project_work_types', 'project_work_zones', 'people_command_receipts', 'employees', 'project_memberships', 'memberships', 'organizations', 'projects', 'audit_log']) {
+    for (const table of ['material_control_steps', 'material_controls', 'daily_tasks', 'material_batch_documents', 'material_batch_revisions', 'material_batches', 'checklist_template_editions', 'checklist_templates', 'project_work_types', 'project_work_zones', 'responsibility_order_revisions', 'responsibility_orders', 'people_command_receipts', 'employees', 'project_memberships', 'memberships', 'organizations', 'projects', 'audit_log']) {
       await admin.query(`DELETE FROM ${table} WHERE tenant_id=$1`, [tenant]);
     }
     await admin.query(`DELETE FROM sessions WHERE user_id=ANY($1::uuid[])`, [users]);
@@ -83,6 +84,12 @@ test('the server accepts a batch only after the checklist and the route', async 
   assert.equal(prepare.status, 201, JSON.stringify(prepare.body));
   assert.equal(prepare.body.control.verdict, 'awaiting');
   assert.equal(prepare.body.status, 'awaiting_control');
+  await admin.query(`UPDATE responsibility_orders SET status='revoked', revocation_reason='проверка отзыва' WHERE id=$1`, [order]);
+  const blocked = await step(pto, batch, { expectedVersion: 1, action: 'review', decision: 'agree' });
+  assert.equal(blocked.status, 422);
+  assert.equal(blocked.body.error, 'revoked');
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM material_control_steps WHERE control_id=$1`, [prepare.body.control.id])).rows[0].n, 1);
+  await admin.query(`UPDATE responsibility_orders SET status='active', revocation_reason=NULL WHERE id=$1`, [order]);
   const early = await step(pto, batch, { expectedVersion: 1, action: 'review', decision: 'agree' });
   assert.equal(early.status, 409);
   assert.equal(early.body.error, 'route_incomplete');

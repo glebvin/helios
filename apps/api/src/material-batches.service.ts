@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { orderApplies, type ResponsibilityOrderFact } from './responsibility-orders.js';
 import type { IncomingMessage } from 'node:http';
 import type { Pool, PoolClient } from 'pg';
 import type { Actor } from './workforce.service.js';
@@ -309,7 +310,17 @@ export class MaterialBatchService {
       if (checklist.refused && command.action !== 'prepare' && !(command.action === 'review' && command.decision === 'return')) throw httpError(409, 'control_refused');
       const steps = [...(current?.steps ?? []), { action: command.action, decision: 'decision' in command ? command.decision : null, dataMark: 'dataMark' in command ? command.dataMark : null }];
       const verdict = controlVerdict(checklist, steps);
-      if (command.action === 'review' && command.decision === 'agree' && verdict !== 'accepted') throw httpError(409, 'route_incomplete');
+      if (command.action === 'review' && command.decision === 'agree') {
+        const today = (await c.query(`SELECT to_char(now() AT TIME ZONE timezone, 'YYYY-MM-DD') AS day FROM tenants WHERE id=$1`, [actor.tenantId])).rows[0]?.day as string | undefined;
+        const person = (await c.query(`SELECT id FROM employees WHERE user_id=$1 AND status='active'`, [actor.userId])).rows[0] as { id: string } | undefined;
+        const orders = person ? (await c.query(
+          `SELECT id, employee_id AS "employeeId", organization_id AS "organizationId", project_id AS "projectId", document_types AS "documentTypes", valid_from::text AS "validFrom", valid_until::text AS "validUntil", status FROM responsibility_orders WHERE employee_id=$1`,
+          [person.id],
+        )).rows as ResponsibilityOrderFact[] : [];
+        const authority = orderApplies(orders, { employeeId: person?.id ?? '', organizationId: head.organization_id, projectId: project, documentType: 'incoming-materials', on: today ?? '' });
+        if (!authority.applicable) throw httpError(422, authority.reason);
+        if (verdict !== 'accepted') throw httpError(409, 'route_incomplete');
+      }
       await c.query(
         `INSERT INTO material_control_steps(tenant_id,project_id,control_id,version,action,answers,data_mark,decision,verdict,actor_user_id,actor_role,reason,request_id,snapshot,batch_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [actor.tenantId, project, controlId, command.expectedVersion + 1, command.action, command.action === 'prepare' ? JSON.stringify(answers) : null, 'dataMark' in command ? command.dataMark : null, 'decision' in command ? command.decision : null, verdict, actor.userId, role, 'reason' in command ? command.reason : null, command.requestId, command.action === 'prepare' ? JSON.stringify(snapshot) : null, command.action === 'prepare' ? batchVersion : null],
