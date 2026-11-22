@@ -8,7 +8,7 @@ import { NoteMark } from "./note-mark";
 import { customerLine } from "./customer-submission-text";
 
 type FileRow = { fileId: string; filename: string; contentType: string };
-type Remark = { id: string; body: string; dueOn: string; closedAt: string | null; photos: FileRow[] };
+type Remark = { id: string; body: string; dueOn: string; closedAt: string | null; photos: FileRow[]; taskId: string };
 type Card = { recorded: boolean; attemptNumber: number | null; openRemarks: number; remarks: Remark[]; scans: FileRow[] };
 type Person = { id: string; fullName: string };
 const ease = [0.23, 1, 0.32, 1] as const;
@@ -104,7 +104,7 @@ export function CustomerSubmission({ session, projectId, partId }: { session: Se
           {card.remarks.map((remark) => (
             <div key={remark.id}>
               <p>{remark.body}</p>
-              <p className="quiet">Срок {remark.dueOn}.{remark.closedAt ? " Закрыто." : " Открыто."}</p>
+              <p className="quiet">Срок {remark.dueOn}.{remark.closedAt ? " Закрыто." : " Открыто."} На это замечание есть отдельная задача.</p>
               {remark.photos.length ? <p className="quiet">{remark.photos.map((photo) => photo.filename).join(", ")}</p> : <p className="quiet">Фото к этому замечанию нет.</p>}
               {master && !remark.closedAt ? <button className="ghost desk-action" type="button" disabled={busy || held} onClick={() => void send(`${path}/remarks/${remark.id}/close`, {}, "Замечание закрыто сервером.")}>Закрыть замечание</button> : null}
               {master && !remark.closedAt ? <label className="field"><span>Фото JPEG или PNG</span><input aria-label={`Фото к замечанию ${remark.body}`} type="file" accept="image/jpeg,image/png" disabled={busy || held} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void fileBody(file).then((row) => send(`${path}/remarks/${remark.id}/photos`, row, "Фото записано сервером.")); }} /></label> : null}

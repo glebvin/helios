@@ -21148,14 +21148,15 @@
       "CustomerRemark": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "body", "responsibleEmployeeId", "dueOn", "closedAt", "photos"],
+        "required": ["id", "body", "responsibleEmployeeId", "dueOn", "closedAt", "photos", "taskId"],
         "properties": {
           "id": {"type": "string", "format": "uuid"},
           "body": {"type": "string"},
           "responsibleEmployeeId": {"type": "string", "format": "uuid"},
           "dueOn": {"type": "string", "format": "date"},
           "closedAt": {"type": "string", "format": "date-time", "nullable": true},
-          "photos": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerRemarkPhoto"}}
+          "photos": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerRemarkPhoto"}},
+          "taskId": {"type": "string", "format": "uuid"}
         }
       },
       "CustomerRemarkPhoto": {

@@ -9,6 +9,7 @@ import { executionScope, executionJoin } from './execution-read.js';
 import { reserveCommand, replayCommand, completeCommand } from './durable-command.js';
 
 type Part = { id: string; taskId: string; replacedBy: { id: string } | null };
+const remarkRow = `SELECT r.id, r.body, r.responsible_employee_id AS "responsibleEmployeeId", r.due_on::text AS "dueOn", r.closed_at AS "closedAt", t.id AS "taskId" FROM customer_submission_remarks r JOIN customer_remark_tasks t ON t.tenant_id=r.tenant_id AND t.remark_id=r.id`;
 function input(value: unknown) {
   const b = object(value, ['requestId', 'expectedVersion']);
   return { requestId: uuid(b.requestId).toLowerCase(), expectedVersion: integer(b.expectedVersion, 0) };
@@ -47,7 +48,7 @@ export class CustomerSubmissionsService {
   private async card(c: PoolClient, a: Actor, project: string, id: string, source?: Part) {
     const accepted = source ?? await this.part(c, a, project, id);
     const row = (await c.query(`SELECT attempt_number AS "attemptNumber", checklist_run_id AS "checklistRunId", created_at AS "recordedAt" FROM customer_submissions WHERE project_id=$1 AND accepted_part_id=$2`, [project, id])).rows[0] ?? null;
-    const remarks = row ? await this.withPhotos(c, (await c.query(`SELECT id, body, responsible_employee_id AS "responsibleEmployeeId", due_on::text AS "dueOn", closed_at AS "closedAt" FROM customer_submission_remarks WHERE project_id=$1 AND accepted_part_id=$2 ORDER BY created_at, id`, [project, id])).rows) : [];
+    const remarks = row ? await this.withPhotos(c, (await c.query(`${remarkRow} WHERE r.project_id=$1 AND r.accepted_part_id=$2 ORDER BY r.created_at, r.id`, [project, id])).rows) : [];
     const scans = row ? (await c.query(`SELECT id AS "fileId", filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256 FROM customer_submission_scans WHERE project_id=$1 AND accepted_part_id=$2 ORDER BY created_at, id`, [project, id])).rows : [];
     return { recorded: !!row, attemptNumber: row?.attemptNumber ?? null, acceptedPartId: accepted.id, checklistRunId: row?.checklistRunId ?? null, recordedAt: row?.recordedAt ?? null, openRemarks: remarks.filter((item: { closedAt: string | null }) => item.closedAt === null).length, remarks, scans };
   }
@@ -99,8 +100,10 @@ export class CustomerSubmissionsService {
       const responsible = (await c.query(`SELECT e.id FROM employees e JOIN employee_project_assignments a ON a.tenant_id=e.tenant_id AND a.employee_id=e.id WHERE e.tenant_id=$1 AND e.id=$2 AND e.status='active' AND a.project_id=$3 AND a.status='active'`, [a.tenantId, b.responsibleEmployeeId, project])).rowCount;
       if (!responsible) throw httpError(422, 'responsible_not_assigned');
       const remarkId = randomUUID();
+      const taskId = randomUUID();
       await c.query(`INSERT INTO customer_submission_remarks(tenant_id,id,accepted_part_id,project_id,body,responsible_employee_id,due_on,actor_user_id,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [a.tenantId, remarkId, id, project, b.body, b.responsibleEmployeeId, b.dueOn, a.userId, b.requestId]);
-      const saved = (await this.withPhotos(c, (await c.query(`SELECT id, body, responsible_employee_id AS "responsibleEmployeeId", due_on::text AS "dueOn", closed_at AS "closedAt" FROM customer_submission_remarks WHERE id=$1`, [remarkId])).rows))[0];
+      await c.query(`INSERT INTO customer_remark_tasks(tenant_id,id,remark_id,project_id,assignee_employee_id,due_on) VALUES($1,$2,$3,$4,$5,$6)`, [a.tenantId, taskId, remarkId, project, b.responsibleEmployeeId, b.dueOn]);
+      const saved = (await this.withPhotos(c, (await c.query(`${remarkRow} WHERE r.id=$1`, [remarkId])).rows))[0];
       await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'quality.customer_remark','accepted_part',$3,'ok',$4)`, [a.tenantId, a.userId, id, JSON.stringify({ requestId: b.requestId, remarkId })]);
       return completeCommand(c, a, b.requestId, 201, saved);
     });
@@ -117,7 +120,7 @@ export class CustomerSubmissionsService {
       if (!row) throw httpError(404, 'not_found');
       if (row.closedAt) throw httpError(409, 'remark_closed');
       await c.query(`UPDATE customer_submission_remarks SET closed_at=now() WHERE id=$1`, [remark]);
-      const saved = (await this.withPhotos(c, (await c.query(`SELECT id, body, responsible_employee_id AS "responsibleEmployeeId", due_on::text AS "dueOn", closed_at AS "closedAt" FROM customer_submission_remarks WHERE id=$1`, [remark])).rows))[0];
+      const saved = (await this.withPhotos(c, (await c.query(`${remarkRow} WHERE r.id=$1`, [remark])).rows))[0];
       await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'quality.customer_remark_close','accepted_part',$3,'ok',$4)`, [a.tenantId, a.userId, id, JSON.stringify({ requestId: b.requestId, remarkId: remark })]);
       return completeCommand(c, a, b.requestId, 200, saved);
     });
