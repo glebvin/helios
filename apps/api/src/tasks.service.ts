@@ -5,8 +5,8 @@ import type {Actor} from './workforce.service.js';
 import type {Page} from './api-input.js';
 import {withTenant} from './db.js';
 import {httpError} from './errors.js';
-import {DirectorApiService,taskFields} from './director-api.service.js';
-import {catalogInput,taskInput,frontTemplateInput,frontCheckInput,taskActionInput,type TaskAction} from './task-input.js';
+import {DirectorApiService,crewView,taskFields} from './director-api.service.js';
+import {catalogInput,crewTaskInput,crewVolumeInput,taskInput,frontTemplateInput,frontCheckInput,taskActionInput,type TaskAction} from './task-input.js';
 import {reserveCommand,replayCommand,completeCommand,type CommandResult} from './durable-command.js';
 import {PeopleService} from './people.service.js';
 type Row=Record<string,any>;
@@ -126,6 +126,49 @@ export class TasksService {
       if(id)after=(await c.query(`UPDATE daily_tasks t SET title=$4,work_date=$5,planned_quantity=$6,unit=$7,assignee_employee_id=$8,zone_id=$9,work_type_id=$10,responsible_user_id=$11,rd_reference=$12,planned_start=$13,planned_end=$14,material_batch_id=$15,version=version+1,plan_revision=plan_revision+1 WHERE tenant_id=$1 AND project_id=$2 AND id=$3 RETURNING ${taskFields}`,values)).rows[0];
       else after=(await c.query(`INSERT INTO daily_tasks AS t(tenant_id,project_id,id,title,work_date,planned_quantity,unit,assignee_employee_id,zone_id,work_type_id,responsible_user_id,rd_reference,planned_start,planned_end,material_batch_id,workflow_kind,status,plan_revision) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'managed02b','draft',1) RETURNING ${taskFields}`,values)).rows[0];
       await this.audit(c,a,b.requestId,'daily_task',key,before,after);return after;
+    });
+  }
+  private async crewRows(c:PoolClient,a:Actor,p:string,crewId:string) {
+    const crew=(await c.query(`SELECT id,name FROM crews WHERE tenant_id=$1 AND project_id=$2 AND id=$3 FOR NO KEY UPDATE`,[a.tenantId,p,crewId])).rows[0];
+    if(!crew)throw httpError(404,'not_found');
+    await c.query(`SELECT employee_id FROM crew_members WHERE tenant_id=$1 AND project_id=$2 AND crew_id=$3 AND status='active' ORDER BY employee_id FOR NO KEY UPDATE`,[a.tenantId,p,crewId]);
+    const members=(await c.query(`SELECT cm.employee_id AS "employeeId",e.full_name AS "fullName",e.organization_id AS "organizationId" FROM crew_members cm JOIN employees e ON e.tenant_id=cm.tenant_id AND e.id=cm.employee_id WHERE cm.tenant_id=$1 AND cm.project_id=$2 AND cm.crew_id=$3 AND cm.status='active' AND e.status='active' ORDER BY cm.employee_id`,[a.tenantId,p,crewId])).rows;
+    return {crew,members};
+  }
+  writeCrewTask(a:Actor,p:string,input:unknown) {
+    const b:Row=crewTaskInput(input);
+    return this.command(a,p,`POST /projects/${p}/crew-tasks`,b,201,false,async c=>{
+      const {members}=await this.crewRows(c,a,p,b.crewId);
+      if(members.length)await this.planLocks(c,a,p,{...b,assigneeEmployeeId:members[0].employeeId});
+      else await this.memberLocks(c,a,p,[a.userId,b.responsibleUserId]);
+    },async c=>{
+      const {crew,members}=await this.crewRows(c,a,p,b.crewId);
+      if(!members.length)throw httpError(422,'crew_empty');
+      const organizations=[...new Set(members.map(member=>member.organizationId))];
+      if(organizations.length!==1)throw httpError(422,'mixed_employer');
+      const snapshot={schemaVersion:1,crewId:b.crewId,name:crew.name,organizationId:organizations[0],members:members.map(member=>({employeeId:member.employeeId,fullName:member.fullName}))};
+      const plan={...b,assigneeEmployeeId:members[0].employeeId};
+      const refs=await this.validatePlan(c,a,p,plan);
+      const key=randomUUID();
+      const values=[a.tenantId,p,key,b.title,b.workDate,b.plannedQuantity,refs.workType.unit,plan.assigneeEmployeeId,b.zoneId,b.workTypeId,b.responsibleUserId,b.rdReference,b.plannedStart,b.plannedEnd,b.materialBatchId??null,b.crewId,JSON.stringify(snapshot)];
+      const after=(await c.query(`INSERT INTO daily_tasks AS t(tenant_id,project_id,id,title,work_date,planned_quantity,unit,assignee_employee_id,zone_id,work_type_id,responsible_user_id,rd_reference,planned_start,planned_end,material_batch_id,crew_id,crew_snapshot,workflow_kind,status,plan_revision) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17::jsonb,'managed02b','draft',1) RETURNING ${taskFields}`,values)).rows[0];
+      const body={...after,crew:crewView(snapshot,null)};
+      await this.audit(c,a,b.requestId,'daily_task',key,null,body);return body;
+    });
+  }
+  writeCrewVolume(a:Actor,p:string,taskId:string,input:unknown) {
+    const b:Row=crewVolumeInput(input);
+    return this.command(a,p,`POST /projects/${p}/tasks/${taskId}/crew-volume`,b,201,false,async c=>{
+      if(!(await c.query(`SELECT id FROM daily_tasks WHERE tenant_id=$1 AND project_id=$2 AND id=$3 FOR NO KEY UPDATE`,[a.tenantId,p,taskId])).rowCount)throw httpError(404,'not_found');
+    },async c=>{
+      const task=(await c.query(`SELECT version,crew_id FROM daily_tasks WHERE tenant_id=$1 AND project_id=$2 AND id=$3`,[a.tenantId,p,taskId])).rows[0];
+      if(!task)throw httpError(404,'not_found');
+      if(!task.crew_id)throw httpError(422,'not_crew_task');
+      this.version(task,b.expectedVersion);
+      if((await c.query(`SELECT 1 FROM crew_volume_submissions WHERE tenant_id=$1 AND task_id=$2`,[a.tenantId,taskId])).rowCount)throw httpError(409,'already_submitted');
+      const recorded=(await c.query(`INSERT INTO crew_volume_submissions(tenant_id,project_id,task_id,quantity,actor_user_id,request_id) VALUES($1,$2,$3,$4,$5,$6) RETURNING recorded_at AS "recordedAt"`,[a.tenantId,p,taskId,b.quantity,a.userId,b.requestId])).rows[0];
+      const body={taskId,quantity:b.quantity,recordedAt:new Date(recorded.recordedAt).toISOString()};
+      await this.audit(c,a,b.requestId,'crew_volume',taskId,null,body);return body;
     });
   }
   private async taskRow(c:PoolClient,a:Actor,p:string,id:string) {
@@ -273,7 +316,7 @@ export class TasksService {
         if(r.reasons.includes('front_template_changed'))throw httpError(409,'template_changed');
         if(!r.ready)throw httpError(422,'task_not_ready');
         // Employee lock serializes this cross-project predicate without taking any second project/task lock.
-        if((await c.query(`SELECT 1 FROM daily_tasks WHERE tenant_id=$1 AND assignee_employee_id=$2 AND workflow_kind='managed02b' AND status='published' AND id<>$3 AND planned_start<$5::timestamptz AND planned_end>$4::timestamptz LIMIT 1`,[a.tenantId,before.assigneeEmployeeId,id,before.plannedStart,before.plannedEnd])).rowCount)throw httpError(409,'assignment_overlap');
+        if((await c.query(`SELECT 1 FROM daily_tasks WHERE tenant_id=$1 AND assignee_employee_id=$2 AND crew_id IS NULL AND workflow_kind='managed02b' AND status='published' AND id<>$3 AND planned_start<$5::timestamptz AND planned_end>$4::timestamptz LIMIT 1`,[a.tenantId,before.assigneeEmployeeId,id,before.plannedStart,before.plannedEnd])).rowCount)throw httpError(409,'assignment_overlap');
         snapshotId=randomUUID();const publishedAt=(await c.query(`SELECT clock_timestamp()::text time`)).rows[0].time;
         const actorMembership=(await c.query(`SELECT role,status,version FROM memberships WHERE tenant_id=$1 AND user_id=$2`,[a.tenantId,a.userId])).rows[0];
         const snapshot={id:snapshotId,taskId:id,projectId:p,plan:{...before,version:before.version+1,status:'published',publicationSnapshotId:snapshotId},tenantTimezone:r.timezone,employee:r.employee,linkedUserId:r.employee.user_id,linkedMembership:r.linkedMembership,employeeProjectMembership:r.employeeProjectMembership,assignment:r.assignment,admission:r.admission,admissionCheck:r.admissionCheck,front:r.front,zone:r.zone,workType:r.workType,responsible:r.responsible,responsibleProjectMembership:r.responsibleProjectMembership,actorMembership,publishedBy:a.userId,publishedAt,...(route.attempt?{routeAttemptId:route.attempt.id,routeConfigurationVersion:route.attempt.configVersion}:{})};

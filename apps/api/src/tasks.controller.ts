@@ -25,6 +25,10 @@ export class TasksController {
   type(@Req()r:ActorRequest,@Param('p')p:string,@Param('id')id:string,@Body()b:unknown,@Res()s:Response){return this.send(s,this.tasks.writeCatalog(actorOf(r),uuid(p).toLowerCase(),'work-types',b,uuid(id).toLowerCase()));}
   @Post('tasks')
   createTask(@Req()r:ActorRequest,@Param('p')p:string,@Body()b:unknown,@Res()s:Response){return this.send(s,this.tasks.writeTask(actorOf(r),uuid(p).toLowerCase(),b));}
+  @Post('crew-tasks')
+  createCrewTask(@Req()r:ActorRequest,@Param('p')p:string,@Body()b:unknown,@Res()s:Response){return this.send(s,this.tasks.writeCrewTask(actorOf(r),uuid(p).toLowerCase(),b));}
+  @Post('tasks/:id/crew-volume')
+  crewVolume(@Req()r:ActorRequest,@Param('p')p:string,@Param('id')id:string,@Body()b:unknown,@Res()s:Response){return this.send(s,this.tasks.writeCrewVolume(actorOf(r),uuid(p).toLowerCase(),uuid(id).toLowerCase(),b));}
   @Put('tasks/:id')
   task(@Req()r:ActorRequest,@Param('p')p:string,@Param('id')id:string,@Body()b:unknown,@Res()s:Response){return this.send(s,this.tasks.writeTask(actorOf(r),uuid(p).toLowerCase(),b,uuid(id).toLowerCase()));}
   @Get('front-template')

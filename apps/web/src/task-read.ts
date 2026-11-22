@@ -18,6 +18,13 @@ export type ServerTask = {
   plannedEnd: string | null;
   publicationSnapshotId: string | null;
   materialBatchId?: string | null;
+  crew?: {
+    id: string;
+    name: string;
+    organizationId: string;
+    members: { employeeId: string; fullName: string }[];
+    volume: string | null;
+  };
 };
 
 export type TaskArea = "plan" | "shift" | "quality" | "other";
