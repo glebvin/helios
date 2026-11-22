@@ -139,6 +139,12 @@ export class TasksService {
     if(!t.materialBatchId || !t.zoneId || !t.workTypeId)return false;
     return Boolean((await c.query(`SELECT 1 FROM material_controls mc JOIN material_control_steps s ON s.control_id=mc.id AND s.version=(SELECT max(version) FROM material_control_steps WHERE control_id=mc.id) WHERE mc.project_id=$1 AND mc.batch_id=$2 AND mc.zone_id=$3 AND mc.work_type_id=$4 AND s.verdict='accepted' AND (SELECT batch_version FROM material_control_steps WHERE control_id=mc.id AND action='prepare' ORDER BY version DESC LIMIT 1)=(SELECT max(version) FROM material_batch_revisions WHERE batch_id=mc.batch_id)`,[p,t.materialBatchId,t.zoneId,t.workTypeId])).rowCount);
   }
+  private async frontPreparer(c:PoolClient,a:Actor,p:string) {
+    const stored=(await c.query(`SELECT configuration FROM route_config_versions WHERE tenant_id=$1 AND project_id=$2 ORDER BY version DESC LIMIT 1`,[a.tenantId,p])).rows[0];
+    const route=stored?.configuration?.routes?.find((item:{documentType?:string})=>item.documentType==='front-readiness');
+    const userId=route?.preparers?.[0]?.userId;
+    return typeof userId==='string'?userId:null;
+  }
   private async latestFrontTemplate(c:PoolClient,a:Actor,p:string) {
     const row=(await c.query(`SELECT snapshot FROM front_template_versions WHERE tenant_id=$1 AND project_id=$2 ORDER BY version DESC LIMIT 1`,[a.tenantId,p])).rows[0];
     return row?.snapshot;
@@ -177,6 +183,8 @@ export class TasksService {
   writeFrontCheck(a:Actor,p:string,id:string,input:unknown) {
     const b:Row=frontCheckInput(input);
     return this.command(a,p,`POST /projects/${p}/tasks/${id}/front-checks`,b,201,false,c=>this.planLocks(c,a,p,b,id),async c=>{
+      const preparer=await this.frontPreparer(c,a,p);
+      if(preparer && preparer!==a.userId) throw httpError(403,'route_denied');
       const t=await this.taskRow(c,a,p,id);
       if(!['draft','pending_approval'].includes(t.status))throw httpError(409,'invalid_task_state');
       const template=await this.latestFrontTemplate(c,a,p);if(!template)throw httpError(422,'front_template_required');
