@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type { Actor } from './workforce.service.js';
 import { withTenant } from './db.js';
@@ -47,7 +47,7 @@ export class CustomerSubmissionsService {
   private async card(c: PoolClient, a: Actor, project: string, id: string, source?: Part) {
     const accepted = source ?? await this.part(c, a, project, id);
     const row = (await c.query(`SELECT attempt_number AS "attemptNumber", checklist_run_id AS "checklistRunId", created_at AS "recordedAt" FROM customer_submissions WHERE project_id=$1 AND accepted_part_id=$2`, [project, id])).rows[0] ?? null;
-    const remarks = row ? (await c.query(`SELECT id, body, responsible_employee_id AS "responsibleEmployeeId", due_on::text AS "dueOn", closed_at AS "closedAt" FROM customer_submission_remarks WHERE project_id=$1 AND accepted_part_id=$2 ORDER BY created_at, id`, [project, id])).rows : [];
+    const remarks = row ? await this.withPhotos(c, (await c.query(`SELECT id, body, responsible_employee_id AS "responsibleEmployeeId", due_on::text AS "dueOn", closed_at AS "closedAt" FROM customer_submission_remarks WHERE project_id=$1 AND accepted_part_id=$2 ORDER BY created_at, id`, [project, id])).rows) : [];
     return { recorded: !!row, attemptNumber: row?.attemptNumber ?? null, acceptedPartId: accepted.id, checklistRunId: row?.checklistRunId ?? null, recordedAt: row?.recordedAt ?? null, openRemarks: remarks.filter((item: { closedAt: string | null }) => item.closedAt === null).length, remarks };
   }
   read(a: Actor, project: string, id: string) {
@@ -99,7 +99,7 @@ export class CustomerSubmissionsService {
       if (!responsible) throw httpError(422, 'responsible_not_assigned');
       const remarkId = randomUUID();
       await c.query(`INSERT INTO customer_submission_remarks(tenant_id,id,accepted_part_id,project_id,body,responsible_employee_id,due_on,actor_user_id,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [a.tenantId, remarkId, id, project, b.body, b.responsibleEmployeeId, b.dueOn, a.userId, b.requestId]);
-      const saved = (await c.query(`SELECT id, body, responsible_employee_id AS "responsibleEmployeeId", due_on::text AS "dueOn", closed_at AS "closedAt" FROM customer_submission_remarks WHERE id=$1`, [remarkId])).rows[0];
+      const saved = (await this.withPhotos(c, (await c.query(`SELECT id, body, responsible_employee_id AS "responsibleEmployeeId", due_on::text AS "dueOn", closed_at AS "closedAt" FROM customer_submission_remarks WHERE id=$1`, [remarkId])).rows))[0];
       await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'quality.customer_remark','accepted_part',$3,'ok',$4)`, [a.tenantId, a.userId, id, JSON.stringify({ requestId: b.requestId, remarkId })]);
       return completeCommand(c, a, b.requestId, 201, saved);
     });
@@ -116,9 +116,51 @@ export class CustomerSubmissionsService {
       if (!row) throw httpError(404, 'not_found');
       if (row.closedAt) throw httpError(409, 'remark_closed');
       await c.query(`UPDATE customer_submission_remarks SET closed_at=now() WHERE id=$1`, [remark]);
-      const saved = (await c.query(`SELECT id, body, responsible_employee_id AS "responsibleEmployeeId", due_on::text AS "dueOn", closed_at AS "closedAt" FROM customer_submission_remarks WHERE id=$1`, [remark])).rows[0];
+      const saved = (await this.withPhotos(c, (await c.query(`SELECT id, body, responsible_employee_id AS "responsibleEmployeeId", due_on::text AS "dueOn", closed_at AS "closedAt" FROM customer_submission_remarks WHERE id=$1`, [remark])).rows))[0];
       await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'quality.customer_remark_close','accepted_part',$3,'ok',$4)`, [a.tenantId, a.userId, id, JSON.stringify({ requestId: b.requestId, remarkId: remark })]);
       return completeCommand(c, a, b.requestId, 200, saved);
     });
   }
+  photo(a: Actor, project: string, id: string, remark: string, value: unknown) {
+    const raw = object(value, ['requestId', 'filename', 'contentType', 'contentBase64']);
+    if (raw.contentType !== 'image/jpeg' && raw.contentType !== 'image/png') throw httpError(400, 'invalid_file');
+    if (typeof raw.contentBase64 !== 'string' || !raw.contentBase64.trim()) throw httpError(400, 'invalid_file');
+    const bytes = Buffer.from(raw.contentBase64, 'base64');
+    if (!bytes.length || bytes.toString('base64') !== raw.contentBase64.replace(/\s/g, '')) throw httpError(400, 'invalid_file');
+    if (bytes.length > 8388608) throw httpError(413, 'file_too_large');
+    if (!photoMatches(raw.contentType, bytes)) throw httpError(422, 'file_denied');
+    const body = { requestId: uuid(raw.requestId).toLowerCase(), filename: text(raw.filename, 120), contentType: raw.contentType, sha256: createHash('sha256').update(bytes).digest('hex'), sizeBytes: bytes.length };
+    if (a.role !== 'master') throw httpError(403, 'role_denied');
+    return withTenant(this.pool, a.tenantId, a.userId, async c => {
+      const receipt = await reserveCommand(c, a, `POST /projects/${project}/accepted-parts/${id}/customer-submission/remarks/${remark}/photos`, body);
+      if (!(await c.query(`SELECT id FROM projects WHERE id=$1 FOR NO KEY UPDATE`, [project])).rowCount) throw httpError(404, 'not_found');
+      await this.part(c, a, project, id);
+      if (!receipt.inserted) return replayCommand(c, a, body.requestId, receipt.hash);
+      if (!(await c.query(`SELECT 1 FROM customer_submission_remarks WHERE project_id=$1 AND accepted_part_id=$2 AND id=$3`, [project, id, remark])).rowCount) throw httpError(404, 'not_found');
+      const existing = (await c.query(`SELECT id AS "fileId", filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256 FROM customer_remark_photos WHERE remark_id=$1 AND sha256=$2`, [remark, body.sha256])).rows[0];
+      const fileId = existing?.fileId ?? randomUUID();
+      if (!existing) await c.query(`INSERT INTO customer_remark_photos(tenant_id,id,remark_id,project_id,filename,content_type,size_bytes,sha256,bytes,actor_user_id,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [a.tenantId, fileId, remark, project, body.filename, body.contentType, body.sizeBytes, body.sha256, bytes, a.userId, body.requestId]);
+      const saved = existing ?? { fileId, filename: body.filename, contentType: body.contentType, sizeBytes: body.sizeBytes, sha256: body.sha256 };
+      await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'quality.customer_remark_photo','accepted_part',$3,'ok',$4)`, [a.tenantId, a.userId, id, JSON.stringify({ requestId: body.requestId, remarkId: remark, fileId, sha256: body.sha256 })]);
+      return completeCommand(c, a, body.requestId, 201, saved);
+    });
+  }
+  async download(a: Actor, project: string, id: string, remark: string, photo: string) {
+    return withTenant(this.pool, a.tenantId, a.userId, async c => {
+      await this.part(c, a, project, id);
+      const file = (await c.query(`SELECT filename, content_type AS "contentType", bytes FROM customer_remark_photos WHERE project_id=$1 AND remark_id=$2 AND id=$3`, [project, remark, photo])).rows[0];
+      if (!file) throw httpError(404, 'not_found');
+      return { filename: file.filename as string, contentType: file.contentType as string, bytes: file.bytes as Buffer };
+    });
+  }
+  private async withPhotos<T extends { id: string }>(c: PoolClient, remarks: T[]) {
+    if (!remarks.length) return [];
+    const photos = (await c.query(`SELECT id AS "fileId", remark_id AS "remarkId", filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256 FROM customer_remark_photos WHERE remark_id = ANY($1::uuid[]) ORDER BY created_at, id`, [remarks.map((item) => item.id)])).rows as { remarkId: string }[];
+    return remarks.map((item) => ({ ...item, photos: photos.filter((photo) => photo.remarkId === item.id).map(({ remarkId, ...photo }) => photo) }));
+  }
+}
+
+function photoMatches(type: string, bytes: Buffer) {
+  if (type === 'image/jpeg') return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  return bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from('89504e470d0a1a0a', 'hex'));
 }

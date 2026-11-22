@@ -313,7 +313,7 @@ test('new table FORCE RLS/limited grants and composite tenant FKs; migration rer
 });
 test('all named people schemas and paged HTTP responses match public87-operation OpenAPI',async()=>{
   const spec=await (await fetch(`${base}/api/v1/openapi.json`)).json();
-  assert.equal(Object.values(spec.paths).reduce((n:number,p:any)=>n+Object.keys(p).length,0),132);
+  assert.equal(Object.values(spec.paths).reduce((n:number,p:any)=>n+Object.keys(p).length,0),134);
   function matches(value:any,schema:any,at:string):void {
     if(schema.$ref)return matches(value,spec.components.schemas[schema.$ref.split('/').pop()],at);
     if(value===null && schema.nullable)return;

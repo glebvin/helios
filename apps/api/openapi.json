@@ -11060,6 +11060,52 @@
         }
       }
     },
+    "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/remarks/{remark}/photos": {
+      "post": {
+        "operationId": "recordCustomerRemarkPhoto",
+        "summary": "Приложить фото к замечанию внешней заявки",
+        "description": "Project master only. JPEG or PNG, at most 8 MiB, and the bytes must match the declared type. The same bytes on the same remark stay one file. Same requestId returns the original result. The signed scan is not this photo.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "remark", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerRemarkPhotoInput"}}}},
+        "responses": {
+          "201": {"description": "Stored photo", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerRemarkPhoto"}}}},
+          "400": {"description": "Invalid file", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden remark", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "409": {"description": "idempotency_payload_mismatch", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "413": {"description": "file_too_large", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "422": {"description": "file_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/remarks/{remark}/photos/{photo}": {
+      "get": {
+        "operationId": "readCustomerRemarkPhoto",
+        "summary": "Прочитать байты фото замечания",
+        "description": "Master, director, PTO or worker who can see the part. The response is the image itself.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "remark", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "photo", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "responses": {
+          "200": {"description": "Image bytes", "content": {"image/jpeg": {"schema": {"type": "string", "format": "binary"}}, "image/png": {"schema": {"type": "string", "format": "binary"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden photo", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
     "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/remarks/{remark}/close": {
       "post": {
         "operationId": "closeCustomerRemark",
@@ -21039,13 +21085,37 @@
       "CustomerRemark": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "body", "responsibleEmployeeId", "dueOn", "closedAt"],
+        "required": ["id", "body", "responsibleEmployeeId", "dueOn", "closedAt", "photos"],
         "properties": {
           "id": {"type": "string", "format": "uuid"},
           "body": {"type": "string"},
           "responsibleEmployeeId": {"type": "string", "format": "uuid"},
           "dueOn": {"type": "string", "format": "date"},
-          "closedAt": {"type": "string", "format": "date-time", "nullable": true}
+          "closedAt": {"type": "string", "format": "date-time", "nullable": true},
+          "photos": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerRemarkPhoto"}}
+        }
+      },
+      "CustomerRemarkPhoto": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fileId", "filename", "contentType", "sizeBytes", "sha256"],
+        "properties": {
+          "fileId": {"type": "string", "format": "uuid"},
+          "filename": {"type": "string"},
+          "contentType": {"type": "string", "enum": ["image/jpeg", "image/png"]},
+          "sizeBytes": {"type": "integer", "minimum": 1},
+          "sha256": {"type": "string"}
+        }
+      },
+      "CustomerRemarkPhotoInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "filename", "contentType", "contentBase64"],
+        "properties": {
+          "requestId": {"type": "string", "format": "uuid"},
+          "filename": {"type": "string"},
+          "contentType": {"type": "string", "enum": ["image/jpeg", "image/png"]},
+          "contentBase64": {"type": "string"}
         }
       },
       "CustomerRemarkInput": {
