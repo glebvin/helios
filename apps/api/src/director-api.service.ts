@@ -26,7 +26,11 @@ export const taskJoin = `FROM daily_tasks t JOIN projects p ON p.tenant_id = t.t
   JOIN employees e ON e.tenant_id = t.tenant_id AND e.id = t.assignee_employee_id`;
 export const taskFields = `t.id,t.project_id AS "projectId",t.title,t.work_date::text AS "workDate",t.planned_quantity::text AS "plannedQuantity",t.unit,t.assignee_employee_id AS "assigneeEmployeeId",t.status,t.version,t.workflow_kind AS "workflowKind",t.plan_revision AS "planRevision",t.zone_id AS "zoneId",t.work_type_id AS "workTypeId",t.responsible_user_id AS "responsibleUserId",t.rd_reference AS "rdReference",t.planned_start AS "plannedStart",t.planned_end AS "plannedEnd",t.publication_snapshot_id AS "publicationSnapshotId",t.material_batch_id AS "materialBatchId"`;
 const projectFields = `p.id, p.name`;
-const employeeFields = `e.id, e.full_name AS "fullName", e.phone, e.organization_id AS "organizationId", e.user_id AS "userId", e.version, e.status`;
+const employeeFields = `e.id, e.full_name AS "fullName",
+  CASE WHEN $1 <> 'subcontractor' THEN e.phone ELSE NULL END AS phone,
+  e.organization_id AS "organizationId",
+  CASE WHEN $1 <> 'subcontractor' THEN e.user_id ELSE NULL END AS "userId",
+  e.version, e.status`;
 
 export class DirectorApiService {
   constructor(private readonly pool: Pool) {}
@@ -72,17 +76,24 @@ export class DirectorApiService {
   }
 
   employeeVisible() {
-    return `(($3::uuid IS NULL AND ($1 IN ('director','hr') OR e.user_id = $2)) OR EXISTS (
+    return `(CASE WHEN $1 = 'subcontractor' THEN EXISTS (
+      SELECT 1 FROM employees own
+      JOIN organizations employer ON employer.tenant_id=own.tenant_id AND employer.id=own.organization_id AND employer.kind='subcontractor'
+      JOIN employee_project_assignments a ON a.tenant_id=e.tenant_id AND a.employee_id=e.id AND a.status='active'
+      JOIN project_memberships pm ON pm.tenant_id=a.tenant_id AND pm.project_id=a.project_id AND pm.user_id=$2 AND pm.status='active'
+      WHERE own.tenant_id=e.tenant_id AND own.user_id=$2 AND own.status='active'
+        AND own.organization_id=e.organization_id AND ($3::uuid IS NULL OR pm.project_id=$3)
+    ) ELSE (($3::uuid IS NULL AND ($1 IN ('director','hr') OR e.user_id = $2)) OR EXISTS (
       SELECT 1 FROM employee_project_assignments a JOIN projects p ON p.tenant_id = a.tenant_id AND p.id = a.project_id
       WHERE a.tenant_id = e.tenant_id AND a.employee_id = e.id AND a.status = 'active'
         AND ($3::uuid IS NULL OR p.id = $3) AND ${projectVisible}
         AND ($1 <> 'worker' OR e.user_id = $2)
-    ))`;
+    )) END)`;
   }
 
   employees(actor: Actor, page: Page, projectId?: string) {
     return this.with(actor, async (client) => {
-      if (projectId) await this.projectExists(client, actor, projectId);
+      if (projectId && actor.role !== 'subcontractor') await this.projectExists(client, actor, projectId);
       const values = [actor.role, actor.userId, projectId ?? null];
       const where = this.employeeVisible();
       const count = await client.query(`SELECT count(*)::int AS total FROM employees e WHERE ${where}`, values);

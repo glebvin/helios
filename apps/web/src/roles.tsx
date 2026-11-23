@@ -1,7 +1,7 @@
 export type View =
   | "gd" | "ds" | "zds-sso" | "zds-soso" | "rp"
   | "master" | "pto" | "supply" | "safety" | "hr"
-  | "customer" | "admin" | "worker" | "engineer-pto";
+  | "customer" | "admin" | "worker" | "engineer-pto" | "subcontractor";
 
 export type Section = "overview" | "mine" | "people" | "tasks" | "quality" | "materials" | "documents" | "objects" | "settings" | "orders" | "templates" | "id-set";
 
@@ -319,6 +319,17 @@ const desk: Access[] = [
     sections: [{ id: "templates", label: "Шаблоны" }, { id: "id-set", label: "Комплект" }],
     shell: "desk",
     overviewTitle: "Шаблоны сдачи",
+  },
+  {
+    ...look,
+    id: "subcontractor",
+    label: "Субподрядчик",
+    hint: "Видит работников только своей организации.",
+    account: "director",
+    sections: [{ id: "people", label: "Люди" }],
+    peopleTabs: ["people"],
+    shell: "desk",
+    overviewTitle: "Свои работники",
   },
   {
     ...look,
