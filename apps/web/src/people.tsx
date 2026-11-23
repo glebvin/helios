@@ -18,6 +18,9 @@ import { PrimaryDay } from "./primary-day";
 import { Flash } from "./flash";
 import { DeskBadge, DeskCrumbs, DeskEmpty, DeskSelect, DeskTimeline, FluidTabs, SmoothButton, StatGrid } from "./kit";
 import { amount, clock, laneOf, laneTone, permitState, statusLabel, todayKey, type Admission } from "./model";
+import { personIntervalFacts } from "./person-intervals";
+import { useServerRead } from "./server-read";
+import { ApiError, v1 } from "./v1";
 import type { PeopleTab } from "./roles";
 
 export type PersonFile = { id: string; name: string; size: number; url: string };
@@ -84,6 +87,7 @@ export function People({
   if (personId) {
     return (
       <ServerProfile
+        day={primaryDay}
         projectId={projectId}
         loading={opened.loading}
         error={opened.error}
@@ -189,9 +193,26 @@ export function People({
 }
 
 
+function PersonIntervals({ session, projectId, employeeId, day }: { session: Session; projectId: string; employeeId: string; day: string }) {
+  const read = useServerRead(session, `${projectId}:${employeeId}:${day}`, "", () => v1<{ recorded: boolean; source: { totals: { breakMs: string; downtimeMs: string }; hasOpenIntervals: boolean } }>(session, `/projects/${projectId}/time/employees/${employeeId}/days/${day}`), (reason) => reason instanceof ApiError && reason.status === 404 ? "Этот день входу не виден." : reason instanceof ApiError && reason.status === 403 ? "Этому входу табель не разрешён." : "Интервалы дня прочитать не удалось.");
+  const facts = read.body ? personIntervalFacts(read.body) : null;
+  return <div aria-busy={read.loading}>
+    {read.loading ? <p className="quiet task-hold" role="status">Читаем интервалы…</p> : null}
+    {read.error ? <p role="alert">{read.error} <button className="ghost desk-action" type="button" onClick={read.retry}>Повторить чтение</button></p> : null}
+    {facts ? <>
+      <div className="day-facts">
+        <div><b>{facts.breakLabel}</b><span>Перерыв</span></div>
+        <div><b>{facts.downtimeLabel}</b><span>Простой</span></div>
+      </div>
+      <p className="quiet person-note">{facts.note}</p>
+    </> : null}
+  </div>;
+}
+
 function ServerProfile({
-  projectId, loading, error, employee, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, session, onReload,
+  day = "", projectId, loading, error, employee, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, session, onReload,
 }: {
+  day?: string;
   projectId: string;
   loading: boolean;
   error: string;
@@ -228,6 +249,7 @@ function ServerProfile({
       qualifications={<QualificationsPanel key={`${session.token}:${shown.id}`} session={session} employeeId={shown.id} archived={shown.status === "archived"} />}
       organization={data.organizations.find((item) => item.id === shown.organizationId)?.name}
       workStatus={shown.status}
+      intervals={["director", "master", "pto"].includes(session.role) && projectId && day ? <PersonIntervals session={session} projectId={projectId} employeeId={shown.id} day={day} /> : undefined}
       editor={canWriteStaff(session.role) ? <EmployeeForm session={session} organizations={data.organizations} employee={shown} toast={false} onSaved={(row) => { setWritten(row); onReload(); }} /> : null}
       data={data}
       until={until}
@@ -244,7 +266,7 @@ function ServerProfile({
 }
 
 function Profile({
-  person, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, editor = null, qualifications = null, admissionChecks = null, projectAccess = null, organization, workStatus,
+  person, data, until, card, backLabel, onBack, onOpenTask, admitStep, onAdmit, onCard, editor = null, qualifications = null, admissionChecks = null, projectAccess = null, organization, workStatus, intervals = null,
 }: {
   person: Desk["employees"][number];
   data: Desk;
@@ -262,6 +284,7 @@ function Profile({
   projectAccess?: ReactNode;
   organization?: string;
   workStatus?: "active" | "archived";
+  intervals?: ReactNode;
 }) {
   const reduce = useReducedMotion();
   const [tab, setTab] = useState<ProfileTab>("overview");
@@ -323,12 +346,14 @@ function Profile({
             <div className="person-column">
             <section className="panel">
               <h2>Сегодня</h2>
+              {intervals ?? <>
               <div className="day-facts">
                 <div><b>{todayShift ? clock(todayShift.started_at) || "—" : "—"}</b><span>Начало</span></div>
                 <div><b>—</b><span>Перерыв</span></div>
                 <div><b>—</b><span>Простой</span></div>
               </div>
-              <p className="quiet person-note">{todayShift?.clock_requires_review ? "Отметка ждёт проверки. Учтённое время подтверждается после неё." : "Перерыв и простой в смену ещё не пишутся. Учтённое время — это начало и окончание."}</p>
+              <p className="quiet person-note">{todayShift?.clock_requires_review ? "Отметка ждёт проверки. Учтённое время подтверждается после неё." : workStatus ? "Интервалы этого дня читаются во входе с табелем." : "Перерыв и простой в смену ещё не пишутся. Учтённое время — это начало и окончание."}</p>
+              </>}
               {todayTask ? (
                 <div className="person-job">
                   <div>
