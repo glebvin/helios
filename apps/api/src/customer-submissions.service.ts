@@ -58,7 +58,9 @@ export class CustomerSubmissionsService {
     const decisions = row ? (await c.query(`SELECT attempt_number AS "attemptNumber", quantity::text AS quantity, scan_id AS "scanId", customer_signer_name AS "customerSignerName", company_signer_name AS "companySignerName", created_at AS "recordedAt" FROM customer_external_decisions WHERE project_id=$1 AND accepted_part_id=$2 ORDER BY attempt_number`, [project, id])).rows : [];
     const quantity = row ? (await c.query(`SELECT quantity::text AS quantity FROM accepted_volume_parts WHERE id=$1`, [id])).rows[0]?.quantity ?? null : null;
     const decision = decisions.find((item: { attemptNumber: number }) => item.attemptNumber === row?.attemptNumber) ?? null;
-    return { recorded: !!row, attemptNumber: row?.attemptNumber ?? null, acceptedPartId: accepted.id, checklistRunId: row?.checklistRunId ?? null, recordedAt: row?.recordedAt ?? null, quantity, openRemarks: remarks.filter((item: { closedAt: string | null }) => item.closedAt === null).length, remarks, scans, decision, decisions };
+    const debt = (await c.query(`SELECT set_version AS version, titles FROM accepted_part_id_debts WHERE tenant_id=$1 AND accepted_part_id=$2`, [a.tenantId, id])).rows[0] ?? null;
+    const idDebt = debt ? { version: Number(debt.version), titles: debt.titles as string[] } : null;
+    return { recorded: !!row, attemptNumber: row?.attemptNumber ?? null, acceptedPartId: accepted.id, checklistRunId: row?.checklistRunId ?? null, recordedAt: row?.recordedAt ?? null, quantity, openRemarks: remarks.filter((item: { closedAt: string | null }) => item.closedAt === null).length, remarks, scans, decision, decisions, idDebt };
   }
   read(a: Actor, project: string, id: string) {
     return withTenant(this.pool, a.tenantId, a.userId, async c => {
@@ -200,6 +202,7 @@ export class CustomerSubmissionsService {
       const quantity = (await c.query(`SELECT quantity FROM accepted_volume_parts WHERE tenant_id=$1 AND id=$2`, [a.tenantId, id])).rows[0].quantity;
       try {
         await c.query(`INSERT INTO customer_external_decisions(tenant_id,accepted_part_id,attempt_number,project_id,quantity,scan_id,company_signer_employee_id,company_signer_name,customer_signer_name,actor_user_id,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [a.tenantId, id, current.attemptNumber, project, quantity, scan.fileId, signer.id, signer.fullName, b.customerSignerName, a.userId, b.requestId]);
+        await this.recordIdDebt(c, a, project, id, current.attemptNumber, b.requestId);
       } catch (error: unknown) {
         if ((error as { code?: string }).code === '23505') throw httpError(409, 'already_decided');
         throw error;
@@ -207,6 +210,14 @@ export class CustomerSubmissionsService {
       await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'quality.customer_external_decision','accepted_part',$3,'ok',$4)`, [a.tenantId, a.userId, id, JSON.stringify({ requestId: b.requestId, attemptNumber: current.attemptNumber, scanId: scan.fileId })]);
       return completeCommand(c, a, b.requestId, 201, await this.card(c, a, project, id, source));
     });
+  }
+  private async recordIdDebt(c: PoolClient, a: Actor, project: string, id: string, attempt: number, requestId: string) {
+    if ((await c.query(`SELECT 1 FROM accepted_part_id_debts WHERE tenant_id=$1 AND accepted_part_id=$2`, [a.tenantId, id])).rowCount) return;
+    const type = (await c.query(`SELECT t.work_type_id AS "workTypeId" FROM accepted_volume_parts p JOIN managed_execution_reports r ON r.tenant_id=p.tenant_id AND r.report_id=p.report_id JOIN daily_tasks t ON t.tenant_id=r.tenant_id AND t.project_id=r.project_id AND t.id=r.task_id WHERE p.tenant_id=$1 AND p.id=$2`, [a.tenantId, id])).rows[0];
+    const set = type?.workTypeId ? (await c.query(`SELECT version, titles FROM id_set_versions WHERE tenant_id=$1 AND project_id=$2 AND work_type_id=$3 ORDER BY version DESC LIMIT 1`, [a.tenantId, project, type.workTypeId])).rows[0] : null;
+    const titles = Array.isArray(set?.titles) ? set.titles as string[] : [];
+    if (!set || titles.length === 0) return;
+    await c.query(`INSERT INTO accepted_part_id_debts(tenant_id,accepted_part_id,project_id,work_type_id,set_version,attempt_number,titles,actor_user_id,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (tenant_id, accepted_part_id) DO NOTHING`, [a.tenantId, id, project, type.workTypeId, set.version, attempt, JSON.stringify(titles), a.userId, requestId]);
   }
   private async externalGate(c: PoolClient, project: string, taskId: string, id: string) {
     const selfControl = (await c.query(`SELECT id, passed, blocks_next AS "blocksNext" FROM checklist_runs WHERE project_id=$1 AND task_id=$2 ORDER BY version DESC LIMIT 1`, [project, taskId])).rows[0] ?? null;

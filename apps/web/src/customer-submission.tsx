@@ -10,7 +10,7 @@ import { customerLine } from "./customer-submission-text";
 type FileRow = { fileId: string; filename: string; contentType: string; attemptNumber?: number };
 type Remark = { id: string; body: string; attemptNumber: number; dueOn: string; closedAt: string | null; photos: FileRow[]; taskId: string };
 type Decision = { attemptNumber: number; quantity: string; scanId: string; customerSignerName: string; companySignerName: string };
-type Card = { recorded: boolean; attemptNumber: number | null; quantity: string | null; openRemarks: number; remarks: Remark[]; scans: FileRow[]; decision: Decision | null; decisions: Decision[] };
+type Card = { recorded: boolean; attemptNumber: number | null; quantity: string | null; openRemarks: number; remarks: Remark[]; scans: FileRow[]; decision: Decision | null; decisions: Decision[]; idDebt: { version: number; titles: string[] } | null };
 type Person = { id: string; fullName: string };
 const ease = [0.23, 1, 0.32, 1] as const;
 
@@ -107,6 +107,7 @@ export function CustomerSubmission({ session, projectId, partId }: { session: Se
       {card ? (
         <motion.div initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, ease }}>
           <p>{customerLine(card)}</p>
+          {card.idDebt ? <p>Долг ИД, версия {card.idDebt.version}: {card.idDebt.titles.join(", ")}. Черновик, подписи нет.</p> : null}
           {card.remarks.length === 0 && card.recorded ? <p className="quiet">Замечаний нет.</p> : null}
           {card.remarks.map((remark) => (
             <div key={remark.id}>
