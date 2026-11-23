@@ -3272,6 +3272,42 @@
         }
       }
     },
+    "/api/v1/projects/{p}/id-sets": {
+      "get": {
+        "operationId": "listIdSets",
+        "summary": "List the document set of each active work type.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/TenantId" }, { "name": "p", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Current set of each active work type. Version 0 means none was recorded.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IdSetList" } } } },
+          "400": { "description": "Malformed request.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing session.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role cannot read the set.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Project is not visible.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/work-types/{workType}/id-set": {
+      "post": {
+        "operationId": "writeIdSet",
+        "summary": "Record the next version of a work type document set.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "p", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "workType", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IdSetInput" } } } },
+        "responses": {
+          "201": { "description": "The new version.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IdSet" } } } },
+          "400": { "description": "Malformed command.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing session.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role or named engineer cannot record the set.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Project or work type is not visible.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Version conflict or the same request number carries a different body.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
     "/api/v1/projects/{p}/work-types": {
       "get": {
         "operationId": "listProjectWorkTypes",
@@ -12355,6 +12391,34 @@
               }
             }
           }
+        }
+      },
+      "IdSet": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["workTypeId", "name", "unit", "version", "titles"],
+        "properties": {
+          "workTypeId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "unit": { "type": "string" },
+          "version": { "type": "integer", "minimum": 0 },
+          "titles": { "type": "array", "maxItems": 30, "items": { "type": "string" } }
+        }
+      },
+      "IdSetList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["items"],
+        "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/IdSet" } } }
+      },
+      "IdSetInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "expectedVersion", "titles"],
+        "properties": {
+          "requestId": { "type": "string", "format": "uuid" },
+          "expectedVersion": { "type": "integer", "minimum": 0 },
+          "titles": { "type": "array", "maxItems": 30, "items": { "type": "string" } }
         }
       },
       "Error": {

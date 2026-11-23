@@ -173,7 +173,8 @@ export class TenantGuard implements CanActivate {
     const checklistProject = /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates(?:\/[0-9a-f-]{36}(?:\/(?:submit|decision))?)?\/?$/i.test(path);
     const checklistRead = ["GET", "HEAD"].includes(method) && (path === "/api/v1/checklist-templates" || /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates(?:\/[0-9a-f-]{36})?\/?$/i.test(path));
     const engineerChecklist = actor.role === "engineer-pto" && (checklistRead || (method === "POST" && checklistProject));
-    if (!isExistingRuntimeRole(actor.role) && !identityRoute && !priceRoute && !engineerChecklist) throw httpError(403, "role_denied");
+    const idSet = actor.role === "engineer-pto" && ((method === "GET" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/id-sets\/?$/i.test(path)) || (method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/work-types\/[0-9a-f-]{36}\/id-set\/?$/i.test(path)));
+    if (!isExistingRuntimeRole(actor.role) && !identityRoute && !priceRoute && !engineerChecklist && !idSet) throw httpError(403, "role_denied");
     const routeConfigurationWrite = actor.role === "admin" && method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/route-config\/?$/i.test(path);
     const responsibilityOrderWrite = actor.role === "hr" && method === "POST" && /^\/api\/v1\/responsibility-orders(?:\/[0-9a-f-]{36}(?:\/revoke)?)?$/i.test(path);
     const checklistDecision = ["safety", "zds-soso"].includes(actor.role) && method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates\/[0-9a-f-]{36}\/decision\/?$/i.test(path);

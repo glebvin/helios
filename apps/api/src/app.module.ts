@@ -38,6 +38,8 @@ import { PeopleController } from "./people.controller.js";
 
 import {TasksService} from "./tasks.service.js";
 import {TasksController} from "./tasks.controller.js";
+import { IdSetController } from "./id-set.controller.js";
+import { IdSetService } from "./id-set.service.js";
 import {ExecutionService} from "./execution.service.js";
 import {ExecutionController} from "./execution.controller.js";
 
@@ -176,7 +178,7 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [CustomerSubmissionZonesController, CustomerSubmissionsController, InternalInspectionPolicyController, InternalInspectionsController, VolumeReviewsController, MaterialBatchController, MaterialBatchProjectController, StaffImportController, ChecklistRunsController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [CustomerSubmissionZonesController, CustomerSubmissionsController, InternalInspectionPolicyController, InternalInspectionsController, VolumeReviewsController, MaterialBatchController, MaterialBatchProjectController, StaffImportController, ChecklistRunsController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, IdSetController, ExecutionController, EvidenceController, TimeController],
 
 
   providers: [
@@ -191,6 +193,7 @@ class WorkforceController {
     { provide: AuthService, useFactory: (pool: Pool) => new AuthService(pool), inject: [APP_POOL] },
     { provide: DirectorApiService, useFactory: (pool: Pool) => new DirectorApiService(pool), inject: [APP_POOL] },
     { provide: TasksService, useFactory: (pool:Pool,api:DirectorApiService,people:PeopleService) => new TasksService(pool,api,people), inject:[APP_POOL,DirectorApiService,PeopleService] },
+    { provide: IdSetService, useFactory: (pool: Pool) => new IdSetService(pool), inject: [APP_POOL] },
     { provide: PeopleService, useFactory: (pool: Pool, api: DirectorApiService) => new PeopleService(pool,api), inject: [APP_POOL,DirectorApiService] },
     { provide: ExecutionService, useFactory: (pool:Pool,people:PeopleService) => new ExecutionService(pool,people), inject: [APP_POOL,PeopleService] },
     {
