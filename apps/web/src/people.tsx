@@ -69,7 +69,7 @@ export function People({
   const [inviting, setInviting] = useState(false);
   const [invitingForeman, setInvitingForeman] = useState(false);
   const [creating, setCreating] = useState(false);
-  const serverList = hasV1ProjectScope(session.role) || session.role === "hr";
+  const serverList = hasV1ProjectScope(session.role) || session.role === "hr" || session.role === "subcontractor";
   const remote = useStaffList(session, serverList);
   const list = serverList ? remote : { ...remote, loading: false, error: "", offset: 0, limit: data.employees.length,
     total: data.employees.length, items: data.employees.map(item => ({ id: item.id, fullName: item.full_name,

@@ -72,7 +72,7 @@ export class DirectorApiService {
   }
 
   employeeVisible() {
-    return `(($3::uuid IS NULL AND ($1 IN ('director','hr') OR e.user_id = $2)) OR EXISTS (
+    return `(($3::uuid IS NULL AND ($1 IN ('director','hr') OR e.user_id = $2 OR ($1 = 'subcontractor' AND e.organization_id IN (SELECT self.organization_id FROM employees self WHERE self.tenant_id = e.tenant_id AND self.user_id = $2 AND self.status = 'active')))) OR EXISTS (
       SELECT 1 FROM employee_project_assignments a JOIN projects p ON p.tenant_id = a.tenant_id AND p.id = a.project_id
       WHERE a.tenant_id = e.tenant_id AND a.employee_id = e.id AND a.status = 'active'
         AND ($3::uuid IS NULL OR p.id = $3) AND ${projectVisible}

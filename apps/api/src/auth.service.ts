@@ -173,7 +173,8 @@ export class TenantGuard implements CanActivate {
     const checklistProject = /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates(?:\/[0-9a-f-]{36}(?:\/(?:submit|decision))?)?\/?$/i.test(path);
     const checklistRead = ["GET", "HEAD"].includes(method) && (path === "/api/v1/checklist-templates" || /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates(?:\/[0-9a-f-]{36})?\/?$/i.test(path));
     const engineerChecklist = actor.role === "engineer-pto" && (checklistRead || (method === "POST" && checklistProject));
-    if (!isExistingRuntimeRole(actor.role) && !identityRoute && !priceRoute && !engineerChecklist) throw httpError(403, "role_denied");
+    const subcontractorPeople = actor.role === "subcontractor" && ["GET", "HEAD"].includes(method) && (path === "/api/v1/overview" || path === "/api/v1/employees" || /^\/api\/v1\/employees\/[0-9a-f-]{36}\/?$/i.test(path));
+    if (!isExistingRuntimeRole(actor.role) && !identityRoute && !priceRoute && !engineerChecklist && !subcontractorPeople) throw httpError(403, "role_denied");
     const routeConfigurationWrite = actor.role === "admin" && method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/route-config\/?$/i.test(path);
     const responsibilityOrderWrite = actor.role === "hr" && method === "POST" && /^\/api\/v1\/responsibility-orders(?:\/[0-9a-f-]{36}(?:\/revoke)?)?$/i.test(path);
     const checklistDecision = ["safety", "zds-soso"].includes(actor.role) && method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates\/[0-9a-f-]{36}\/decision\/?$/i.test(path);

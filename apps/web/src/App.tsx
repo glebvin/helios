@@ -93,7 +93,8 @@ export function App() {
 
   async function refresh(next = session) {
     if (!next) return;
-    if (next.role === "engineer-pto") {
+    // /api/desk lists every organization and file. These roles open an empty shell; their pages read their own routes.
+    if (next.role === "engineer-pto" || next.role === "subcontractor") {
       if (activeSession.current?.token !== next.token || activeSession.current?.tenantId !== next.tenantId) return;
       setData({
         actor: { role: next.role, name: next.name },
@@ -138,7 +139,7 @@ export function App() {
   }, [session, joinCode]);
 
   useEffect(() => {
-    if (!session || joinCode || ["cost", "engineer-pto"].includes(session.role)) return;
+    if (!session || joinCode || ["cost", "engineer-pto", "subcontractor"].includes(session.role)) return;
 
     let live = true;
     void openDelivery(session).catch(() => { if (live) setError("Очередь на этом входе не открылась."); });
