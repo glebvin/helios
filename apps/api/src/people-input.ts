@@ -60,3 +60,4 @@ export function membershipInput(value:unknown,assignment=false) {
     ...(assignment && s==='active'?{admissionCheckId:uuid(b.admissionCheckId).toLowerCase()}: {})};
 }
 export function crewInput(value:unknown) {const b=object(value,['requestId','name']);return {requestId:uuid(b.requestId).toLowerCase(),name:text(b.name)};}
+export function safetyReviewInput(value:unknown) {const b=object(value,['requestId']);return {requestId:uuid(b.requestId).toLowerCase()};}

@@ -23,6 +23,42 @@ export function checkReason(reason: string, template: AdmissionTemplate) {
   if (code === "qualification_expired") return `Срок квалификации истёк: ${value}`;
   return `Причина сервера: ${reason}`;
 }
+export type SafetyReview = { recorded: boolean; required: boolean; recordedAt: string | null };
+export function reviewLine(review: SafetyReview | null, role: string) {
+  if (!review?.required) return "";
+  if (review.recorded) return "Охрана труда согласовала эту попытку.";
+  if (role === "safety") return "";
+  return "Охрана труда ещё не согласовала эту попытку.";
+}
+export function approvalLine(approval: SafetyReview | null, role: string) {
+  if (!approval?.required) return "";
+  if (approval.recorded) return "Руководитель утвердил эту попытку.";
+  if (role === "director") return "";
+  return "Руководитель ещё не утвердил эту попытку.";
+}
+export function approvalError(status: number | null, code = "") {
+  if (status === 401) return "Сессия закончилась. Войдите снова.";
+  if (status === 403 && code === "route_denied") return "Утверждение назначено другому руководителю.";
+  if (status === 403) return "Этой роли утверждение допуска недоступно.";
+  if (status === 404) return "Проверка недоступна этому входу.";
+  if (status === 409 && code === "already_approved") return "Эта попытка уже утверждена.";
+  if (status === 409) return "Номер команды относится к другому запросу. Повторите ту же команду.";
+  if (status === 422 && code === "check_not_passed") return "Непройденную проверку утвердить нельзя.";
+  if (status === 422 && code === "safety_review_required") return "Сначала нужно согласие охраны труда.";
+  if (status === 422) return "Руководитель в маршруте допуска не назначен.";
+  return "Нет подтверждения сервера. Повторите то же утверждение.";
+}
+export function reviewError(status: number | null, code = "") {
+  if (status === 401) return "Сессия закончилась. Войдите снова.";
+  if (status === 403 && code === "route_denied") return "Согласование назначено другому сотруднику охраны труда.";
+  if (status === 403) return "Этой роли согласование допуска недоступно.";
+  if (status === 404) return "Проверка недоступна этому входу.";
+  if (status === 409 && code === "already_reviewed") return "Эта попытка уже согласована.";
+  if (status === 409) return "Номер команды относится к другому запросу. Повторите ту же команду.";
+  if (status === 422 && code === "check_not_passed") return "Непройденную проверку согласовать нельзя.";
+  if (status === 422) return "Охрана труда в маршруте допуска не назначена.";
+  return "Нет подтверждения сервера. Повторите то же согласование.";
+}
 export function checkError(status: number | null, code = "") {
   if (status === 401) return "Сессия закончилась. Войдите снова.";
   if (status === 403) return "Этой роли запись проверки недоступна.";
