@@ -14649,9 +14649,22 @@
         "properties": {
           "taskId": { "type": "string", "format": "uuid" },
           "quantity": { "type": "string", "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$" },
-          "recordedAt": { "type": "string", "format": "date-time" }
+          "recordedAt": { "type": "string", "format": "date-time" },
+          "reportId": { "type": "string", "format": "uuid" },
+          "memberHours": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "employeeId": { "type": "string", "format": "uuid" },
+                "presenceMs": { "type": "string", "pattern": "^[0-9]+$" }
+              },
+              "required": ["employeeId", "presenceMs"],
+              "additionalProperties": false
+            }
+          }
         },
-        "required": ["taskId", "quantity", "recordedAt"],
+        "required": ["taskId", "quantity", "recordedAt", "reportId", "memberHours"],
         "additionalProperties": false
       },
       "CrewTaskView": {

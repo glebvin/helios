@@ -11,6 +11,7 @@ CREATE TABLE crew_volume_submissions (
   project_id uuid NOT NULL,
   task_id uuid NOT NULL,
   quantity numeric(14, 3) NOT NULL CHECK (quantity > 0),
+  member_hours jsonb NOT NULL,
   actor_user_id uuid NOT NULL,
   request_id uuid NOT NULL,
   recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),

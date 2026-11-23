@@ -59,12 +59,13 @@ test.after(async () => {
     const client = await admin.connect();
     try {
       await client.query('BEGIN');
+      const linked = (await client.query(`SELECT user_id FROM employees WHERE tenant_id=$1 AND user_id IS NOT NULL`, [tenant])).rows.map((row: { user_id: string }) => row.user_id);
       await client.query('SET CONSTRAINTS ALL DEFERRED');
-      for (const table of ['crew_volume_submissions', 'people_command_receipts', 'audit_log', 'daily_tasks', 'crew_members', 'crews', 'employee_project_assignments', 'project_work_zones', 'project_work_types', 'memberships', 'employees', 'organizations', 'projects']) {
+      for (const table of ['managed_execution_reports', 'managed_execution_events', 'managed_segments', 'managed_shifts', 'managed_execution_streams', 'crew_volume_submissions', 'task_publication_snapshots', 'task_front_checks', 'people_command_receipts', 'audit_log', 'daily_tasks', 'crew_members', 'crews', 'employee_project_assignments', 'employee_admission_checks', 'admission_template_versions', 'admission_templates', 'employee_qualifications', 'front_template_versions', 'front_templates', 'project_work_zones', 'project_work_types', 'employees', 'memberships', 'organizations', 'projects']) {
         await client.query(`DELETE FROM ${table} WHERE tenant_id=$1`, [tenant]);
       }
-      await client.query('DELETE FROM sessions WHERE user_id=$1', [director]);
-      await client.query('DELETE FROM users WHERE id=$1', [director]);
+      await client.query(`DELETE FROM sessions WHERE user_id=$1 OR user_id=ANY($2::uuid[])`, [director, linked]);
+      await client.query(`DELETE FROM users WHERE id=$1 OR id=ANY($2::uuid[])`, [director, linked]);
       await client.query('DELETE FROM tenants WHERE id=$1', [tenant]);
       await client.query('COMMIT');
     } finally { await client.query('ROLLBACK'); client.release(); await admin.end(); }
@@ -94,22 +95,13 @@ test('one crew task keeps one volume and one membership snapshot', async () => {
   assert.equal(read.body.crew.members.length, 2);
   assert.equal(read.body.crew.name, 'Mason crew');
 
-  const volumeId = id();
-  const volume = await call(`/projects/${project}/tasks/${created.body.id}/crew-volume`, { requestId: volumeId, expectedVersion: created.body.version, quantity: '17' });
-  assert.equal(volume.status, 201);
-  assert.equal(volume.body.quantity, '17.000');
-  const again = await call(`/projects/${project}/tasks/${created.body.id}/crew-volume`, { requestId: id(), expectedVersion: created.body.version, quantity: '17' });
-  assert.equal(again.status, 409);
-  assert.equal(again.body.error, 'already_submitted');
-  const same = await call(`/projects/${project}/tasks/${created.body.id}/crew-volume`, { requestId: volumeId, expectedVersion: created.body.version, quantity: '17' });
-  assert.equal(same.status, 201);
-  assert.deepEqual(same.body, volume.body);
-  assert.equal((await admin.query(`SELECT count(*)::int n FROM crew_volume_submissions WHERE tenant_id=$1`, [tenant])).rows[0].n, 1);
+  const draftVolume = await call(`/projects/${project}/tasks/${created.body.id}/crew-volume`, { requestId: id(), expectedVersion: created.body.version, quantity: '17' });
+  assert.equal(draftVolume.status, 409);
+  assert.equal(draftVolume.body.error, 'invalid_task_state');
   const stale = await call(`/projects/${project}/tasks/${created.body.id}/crew-volume`, { requestId: id(), expectedVersion: created.body.version + 1, quantity: '18' });
   assert.equal(stale.status, 409);
   assert.equal(stale.body.error, 'stale_version');
-  const seen = await call(`/projects/${project}/tasks/${created.body.id}`);
-  assert.equal(seen.body.crew.volume, '17.000');
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM crew_volume_submissions WHERE tenant_id=$1`, [tenant])).rows[0].n, 0);
 
   const mixedResult = await call(`/projects/${project}/crew-tasks`, { requestId: id(), ...plan(mixed) });
   assert.equal(mixedResult.status, 422);
@@ -127,4 +119,82 @@ test('one crew task keeps one volume and one membership snapshot', async () => {
   assert.equal(refused.status, 422);
   assert.equal(refused.body.error, 'not_crew_task');
   assert.equal((await call(`/projects/${project}/tasks`, { ...personalBody, requestId: id(), crewId: crew })).status, 400);
+});
+
+test('published crew records one acceptance fact and keeps each member hours', async () => {
+  await admin.query(`UPDATE crew_members SET status='active' WHERE tenant_id=$1 AND crew_id=$2 AND employee_id=$3`, [tenant, crew, second]);
+  const template = await call(`/projects/${project}/front-template`, { requestId: id(), code: 'front', title: 'Фронт', items: [{ id: 'ready', label: 'Готово', critical: true }] });
+  assert.equal(template.status, 201);
+  const created = await call(`/projects/${project}/crew-tasks`, { requestId: id(), ...plan(crew), workDate: '2027-03-04', plannedStart: '2027-03-04T08:00:00+03:00', plannedEnd: '2027-03-04T17:00:00+03:00' });
+  assert.equal(created.status, 201);
+  const assignee = created.body.assigneeEmployeeId as string;
+  const otherMember = created.body.crew.members.map((member: { employeeId: string }) => member.employeeId).find((employeeId: string) => employeeId !== assignee) as string;
+  const templateSnapshot = { code: 'admit', version: 1, requiredQualificationCodes: ['license'], items: [] };
+  await admin.query(`INSERT INTO admission_templates(tenant_id,project_id,code,version) VALUES($1,$2,'admit',1)`, [tenant, project]);
+  await admin.query(`INSERT INTO admission_template_versions(tenant_id,project_id,code,version,snapshot) VALUES($1,$2,'admit',1,$3)`, [tenant, project, JSON.stringify(templateSnapshot)]);
+  const qualification = id();
+  await admin.query(`INSERT INTO employee_qualifications(tenant_id,id,employee_id,code,title,valid_until) VALUES($1,$2,$3,'license','Допуск','2027-03-01')`, [tenant, qualification, otherMember]);
+  for (const employee of [assignee, otherMember]) {
+    const user = id();
+    await admin.query(`INSERT INTO users(id,email,name,password_hash) VALUES($1,$2,'Member',$3)`, [user, `${user}@crew.test`, hashPassword('crew-task-pass')]);
+    await admin.query(`INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,'master')`, [tenant, user]);
+    await admin.query(`UPDATE employees SET user_id=$3 WHERE tenant_id=$1 AND id=$2`, [tenant, employee, user]);
+    const check = id();
+    const evidence = employee === otherMember ? [{ id: qualification, code: 'license', version: 1, validUntil: '2027-03-01', status: 'active' }] : [];
+    const snapshot = { id: check, employeeId: employee, projectId: project, templateCode: 'admit', templateVersion: 1, sequence: 1, answers: [], templateSnapshot: { ...templateSnapshot, requiredQualificationCodes: employee === otherMember ? ['license'] : [] }, qualificationEvidence: evidence, passed: true, reasons: [], warnings: [] };
+    await admin.query(`INSERT INTO employee_admission_checks(tenant_id,id,employee_id,project_id,template_version,sequence,snapshot) VALUES($1,$2,$3,$4,1,1,$5)`, [tenant, check, employee, project, JSON.stringify(snapshot)]);
+    await admin.query(`UPDATE employee_project_assignments SET admission_check_id=$4 WHERE tenant_id=$1 AND project_id=$2 AND employee_id=$3`, [tenant, project, employee, check]);
+  }
+  const task = created.body.id as string;
+  const checked = await call(`/projects/${project}/tasks/${task}/front-checks`, { requestId: id(), expectedVersion: created.body.version, templateVersion: template.body.version, answers: [{ itemId: 'ready', value: true }] });
+  assert.equal(checked.status, 201);
+  const ready = await call(`/projects/${project}/tasks/${task}`);
+  const submitted = await call(`/projects/${project}/tasks/${task}/submit`, { requestId: id(), expectedVersion: ready.body.version });
+  assert.equal(submitted.status, 200);
+  const expired = await call(`/projects/${project}/tasks/${task}/publish`, { requestId: id(), expectedVersion: submitted.body.version });
+  assert.equal(expired.status, 422);
+  assert.equal(expired.body.error, 'admission_required');
+  await admin.query(`UPDATE employee_qualifications SET valid_until='2027-12-31' WHERE tenant_id=$1 AND id=$2`, [tenant, qualification]);
+  await admin.query(`UPDATE employee_admission_checks SET snapshot=jsonb_set(snapshot,'{qualificationEvidence,0,validUntil}','"2027-12-31"') WHERE tenant_id=$1 AND employee_id=$2`, [tenant, otherMember]);
+  const personal = await call(`/projects/${project}/tasks`, { requestId: id(), zoneId: zone, workTypeId: workType, title: 'Личное пересечение', workDate: '2027-03-04', plannedQuantity: '1', assigneeEmployeeId: otherMember, responsibleUserId: director, plannedStart: '2027-03-04T09:00:00+03:00', plannedEnd: '2027-03-04T10:00:00+03:00', rdReference: null });
+  assert.equal(personal.status, 201);
+  const personalChecked = await call(`/projects/${project}/tasks/${personal.body.id}/front-checks`, { requestId: id(), expectedVersion: personal.body.version, templateVersion: template.body.version, answers: [{ itemId: 'ready', value: true }] });
+  assert.equal(personalChecked.status, 201);
+  const personalCurrent = await call(`/projects/${project}/tasks/${personal.body.id}`);
+  const personalSubmitted = await call(`/projects/${project}/tasks/${personal.body.id}/submit`, { requestId: id(), expectedVersion: personalCurrent.body.version });
+  assert.equal(personalSubmitted.status, 200);
+  const personalPublished = await call(`/projects/${project}/tasks/${personal.body.id}/publish`, { requestId: id(), expectedVersion: personalSubmitted.body.version });
+  assert.equal(personalPublished.status, 200);
+  const crossed = await call(`/projects/${project}/tasks/${task}/publish`, { requestId: id(), expectedVersion: submitted.body.version });
+  assert.equal(crossed.status, 409);
+  assert.equal(crossed.body.error, 'assignment_overlap');
+  const cleared = await call(`/projects/${project}/tasks/${personal.body.id}/cancel`, { requestId: id(), expectedVersion: personalPublished.body.version, reason: 'Снять пересечение' });
+  assert.equal(cleared.status, 200);
+  const published = await call(`/projects/${project}/tasks/${task}/publish`, { requestId: id(), expectedVersion: submitted.body.version });
+  assert.equal(published.status, 200);
+  assert.equal(published.body.status, 'published');
+  const assigneeShift = id(), otherShift = id();
+  await admin.query(`INSERT INTO managed_execution_streams(tenant_id,employee_id) VALUES($1,$2),($1,$3) ON CONFLICT DO NOTHING`, [tenant, assignee, otherMember]);
+  await admin.query(`INSERT INTO managed_shifts(tenant_id,project_id,employee_id,id,started_at,ended_at) VALUES($1,$2,$3,$4,'2027-03-04T08:00:00+03:00','2027-03-04T10:00:00+03:00'),($1,$2,$5,$6,'2027-03-04T08:00:00+03:00','2027-03-04T09:00:00+03:00')`, [tenant, project, assignee, assigneeShift, otherMember, otherShift]);
+  await admin.query(`INSERT INTO managed_segments(tenant_id,project_id,employee_id,shift_id,id,mode,task_id,started_at,ended_at) VALUES($1,$2,$3,$4,$5,'work',$6,'2027-03-04T08:00:00+03:00','2027-03-04T10:00:00+03:00'),($1,$2,$7,$8,$9,'idle',NULL,'2027-03-04T08:00:00+03:00','2027-03-04T09:00:00+03:00')`, [tenant, project, assignee, assigneeShift, id(), task, otherMember, otherShift, id()]);
+  const volumeId = id();
+  const volume = await call(`/projects/${project}/tasks/${task}/crew-volume`, { requestId: volumeId, expectedVersion: published.body.version, quantity: '17' });
+  assert.equal(volume.status, 201);
+  assert.equal(volume.body.quantity, '17.000');
+  assert.equal(volume.body.memberHours.find((row: { employeeId: string }) => row.employeeId === assignee).presenceMs, '7200000');
+  assert.equal(volume.body.memberHours.find((row: { employeeId: string }) => row.employeeId === otherMember).presenceMs, '3600000');
+  const lost = await call(`/projects/${project}/tasks/${task}/crew-volume`, { requestId: volumeId, expectedVersion: published.body.version, quantity: '17' });
+  assert.equal(lost.status, 201);
+  assert.deepEqual(lost.body, volume.body);
+  const duplicate = await call(`/projects/${project}/tasks/${task}/crew-volume`, { requestId: id(), expectedVersion: published.body.version, quantity: '17' });
+  assert.equal(duplicate.status, 409);
+  assert.equal(duplicate.body.error, 'already_submitted');
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM managed_execution_reports WHERE tenant_id=$1 AND task_id=$2`, [tenant, task])).rows[0].n, 1);
+  const reviews = await call(`/projects/${project}/volume-reviews?day=2027-03-04&limit=20&offset=0`);
+  assert.equal(reviews.status, 200);
+  assert.equal(reviews.body.total, 1);
+  assert.equal(reviews.body.items.length, 1);
+  assert.equal(reviews.body.items[0].taskId, task);
+  assert.equal(reviews.body.items[0].submittedQuantity, '17.000');
+  assert.equal(reviews.body.items[0].reportId, volume.body.reportId);
 });
