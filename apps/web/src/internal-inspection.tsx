@@ -7,6 +7,7 @@ import {Flash} from './flash';
 import {NoteMark} from './note-mark';
 import {amount} from './model';
 import {clearInspectionCommand,keepInspectionCommand,readInspectionCommand,type InspectionAction} from './internal-inspection-command';
+import {CustomerSubmission} from './customer-submission';
 type Participant={userId:string;name:string;role:string};
 type Route={version:number;ready:boolean;preparer:Participant|null;responsible:Participant|null;approver:Participant|null};
 type Split={originalPartId:string;acceptedPartId:string;returnedPartId:string;acceptedQuantity:string;returnedQuantity:string;reason:string;role:'source'|'accepted'|'returned'};
@@ -32,7 +33,7 @@ export function InternalInspection({session,projectId,partId}:{session:Session;p
   finally{lock.current=false;if(active.current)setBusy(false);}
  }
  const row=read.body,pinned=row?.record?.snapshot;
- return <section className="panel" aria-label="Наш ПТО">
+ return <><section className="panel" aria-label="Наш ПТО">
   <div className="panel-head"><h3>Наш ПТО</h3><NoteMark label="О приёмке ПТО"><p>Мастер передаёт принятую часть, РП подтверждает ответственность, закреплённый ПТО принимает её целиком, возвращает с причиной или делит на принятую и возвращённую доли. Доли вместе равны этой части и не добавляют объём. Внешний СК — отдельный этап.</p>{pinned?<p>Маршрут версии {pinned.configurationVersion}: {pinned.preparer.name} → {pinned.responsible.name} → {pinned.approver.name}.</p>:null}</NoteMark></div>
   {saved?<Flash message={saved}/>:null}{error?<p role="alert">{error}</p>:null}
   {read.loading?<p role="status">Читаем приёмку ПТО…</p>:null}{read.error?<p role="alert">{read.error}</p>:null}
@@ -63,5 +64,7 @@ export function InternalInspection({session,projectId,partId}:{session:Session;p
    </form>:null}
    {row.history.length?<details><summary>История приёмки · {row.history.length}</summary><ol>{row.history.map(event=><li key={event.version}><p>{historyLabel[event.action]??states[event.toState]} · {event.actorName}</p>{event.reason?<p>{event.reason}</p>:null}<p className="quiet">{new Date(event.createdAt).toLocaleString('ru-RU')}</p></li>)}</ol></details>:null}
   </>:null}
- </section>;
+ </section>
+ <CustomerSubmission session={session} projectId={projectId} partId={partId}/>
+ </>
 }
