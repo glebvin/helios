@@ -1,11 +1,10 @@
 ALTER TABLE customer_submission_scans ADD COLUMN attempt_number integer;
-UPDATE customer_submission_scans s SET attempt_number = (
-  SELECT COALESCE(MAX(a.attempt_number) FILTER (WHERE a.created_at <= s.created_at), MIN(a.attempt_number))
-  FROM customer_submission_attempts a
-  WHERE a.tenant_id = s.tenant_id AND a.accepted_part_id = s.accepted_part_id
-);
+-- Previous uploads were not tied to an attempt. Keep their bytes and identity
+-- without treating an inferred date as provenance for a signed decision.
 ALTER TABLE customer_submission_scans
-  ALTER COLUMN attempt_number SET NOT NULL,
+  DROP CONSTRAINT customer_submission_scans_tenant_id_accepted_part_id_sha256_key,
+  ADD UNIQUE (tenant_id, accepted_part_id, attempt_number, sha256),
+  ADD UNIQUE (tenant_id, accepted_part_id, attempt_number, id),
   ADD FOREIGN KEY (tenant_id, accepted_part_id, attempt_number)
     REFERENCES customer_submission_attempts (tenant_id, accepted_part_id, attempt_number);
 
@@ -27,7 +26,8 @@ CREATE TABLE customer_external_decisions (
   UNIQUE (tenant_id, scan_id),
   FOREIGN KEY (tenant_id, accepted_part_id, attempt_number)
     REFERENCES customer_submission_attempts (tenant_id, accepted_part_id, attempt_number),
-  FOREIGN KEY (tenant_id, scan_id) REFERENCES customer_submission_scans (tenant_id, id),
+  FOREIGN KEY (tenant_id, accepted_part_id, attempt_number, scan_id)
+    REFERENCES customer_submission_scans (tenant_id, accepted_part_id, attempt_number, id),
   FOREIGN KEY (tenant_id, company_signer_employee_id) REFERENCES employees (tenant_id, id),
   FOREIGN KEY (tenant_id, actor_user_id, request_id)
     REFERENCES people_command_receipts (tenant_id, actor_user_id, request_id)

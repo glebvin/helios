@@ -176,6 +176,7 @@ export class VolumeReviewsService {
       if(current.correction.version!==body.expectedVersion)throw httpError(409,'stale_version');
       const previous=current.currentParts.find((p:any)=>p.id===body.previousPartId);
       if(!previous)throw httpError(409,'part_superseded');
+      if((await c.query(`SELECT 1 FROM customer_external_decisions WHERE accepted_part_id=$1`,[body.previousPartId])).rowCount)throw httpError(409,'external_decision_recorded');
       if(current.remainder?.presentation)throw httpError(409,'remainder_pending');
       if(!current.checklist?.passed||current.checklist.blocksNext)throw httpError(422,'self_control_required');
       if(current.checklist.id!==body.checklistRunId)throw httpError(409,'checklist_changed');

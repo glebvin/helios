@@ -26,8 +26,8 @@ function closeInput(value: unknown) {
   return { requestId: uuid(b.requestId).toLowerCase() };
 }
 function decisionInput(value: unknown) {
-  const b = object(value, ['requestId', 'expectedAttempt', 'customerSignerName', 'companySignerEmployeeId']);
-  return { requestId: uuid(b.requestId).toLowerCase(), expectedAttempt: integer(b.expectedAttempt, 1), customerSignerName: text(b.customerSignerName, 200), companySignerEmployeeId: uuid(b.companySignerEmployeeId).toLowerCase() };
+  const b = object(value, ['requestId', 'expectedAttempt', 'customerSignerName', 'companySignerEmployeeId', 'scanId']);
+  return { requestId: uuid(b.requestId).toLowerCase(), expectedAttempt: integer(b.expectedAttempt, 1), customerSignerName: text(b.customerSignerName, 200), companySignerEmployeeId: uuid(b.companySignerEmployeeId).toLowerCase(), scanId: b.scanId === undefined ? null : uuid(b.scanId).toLowerCase() };
 }
 export class CustomerSubmissionsService {
   constructor(private readonly pool: Pool) {}
@@ -77,6 +77,7 @@ export class CustomerSubmissionsService {
       if (source.replacedBy) throw httpError(409, 'part_superseded');
       const current = await this.card(c, a, project, id, source);
       if ((current.attemptNumber ?? 0) !== b.expectedVersion) throw httpError(409, 'stale_version');
+      await this.requireOpen(c, id);
       const selfControl = await this.externalGate(c, project, source.taskId, id);
       const nextAttempt = (current.attemptNumber ?? 0) + 1;
       if (current.recorded) {
@@ -101,6 +102,7 @@ export class CustomerSubmissionsService {
       if (!receipt.inserted) return replayCommand(c, a, b.requestId, receipt.hash);
       const submission = (await c.query(`SELECT attempt_number FROM customer_submissions WHERE project_id=$1 AND accepted_part_id=$2`, [project, id])).rows[0];
       if (!submission) throw httpError(422, 'submission_required');
+      await this.requireOpen(c, id);
       const responsible = (await c.query(`SELECT e.id FROM employees e JOIN employee_project_assignments a ON a.tenant_id=e.tenant_id AND a.employee_id=e.id WHERE e.tenant_id=$1 AND e.id=$2 AND e.status='active' AND a.project_id=$3 AND a.status='active'`, [a.tenantId, b.responsibleEmployeeId, project])).rowCount;
       if (!responsible) throw httpError(422, 'responsible_not_assigned');
       const remarkId = randomUUID();
@@ -170,7 +172,8 @@ export class CustomerSubmissionsService {
       if (!receipt.inserted) return replayCommand(c, a, body.requestId, receipt.hash);
       const submission = (await c.query(`SELECT attempt_number AS "attemptNumber" FROM customer_submissions WHERE project_id=$1 AND accepted_part_id=$2`, [project, id])).rows[0];
       if (!submission) throw httpError(422, 'submission_required');
-      const existing = (await c.query(`SELECT id AS "fileId", filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256, attempt_number AS "attemptNumber" FROM customer_submission_scans WHERE accepted_part_id=$1 AND sha256=$2`, [id, body.sha256])).rows[0];
+      await this.requireOpen(c, id);
+      const existing = (await c.query(`SELECT id AS "fileId", filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256, attempt_number AS "attemptNumber" FROM customer_submission_scans WHERE accepted_part_id=$1 AND sha256=$2 AND attempt_number=$3`, [id, body.sha256, submission.attemptNumber])).rows[0];
       const fileId = existing?.fileId ?? randomUUID();
       if (!existing) await c.query(`INSERT INTO customer_submission_scans(tenant_id,id,accepted_part_id,project_id,filename,content_type,size_bytes,sha256,bytes,actor_user_id,request_id,attempt_number) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [a.tenantId, fileId, id, project, body.filename, body.contentType, body.sizeBytes, body.sha256, bytes, a.userId, body.requestId, submission.attemptNumber]);
       const saved = existing ?? { fileId, filename: body.filename, contentType: body.contentType, sizeBytes: body.sizeBytes, sha256: body.sha256, attemptNumber: submission.attemptNumber };
@@ -186,15 +189,18 @@ export class CustomerSubmissionsService {
       if (!(await c.query(`SELECT id FROM projects WHERE id=$1 FOR NO KEY UPDATE`, [project])).rowCount) throw httpError(404, 'not_found');
       const source = await this.part(c, a, project, id);
       if (!receipt.inserted) return replayCommand(c, a, b.requestId, receipt.hash);
+      if (source.replacedBy) throw httpError(409, 'part_superseded');
       const current = await this.card(c, a, project, id, source);
       if (!current.recorded || current.attemptNumber !== b.expectedAttempt) throw httpError(409, 'stale_version');
+      await this.requireOpen(c, id);
       if (current.openRemarks > 0) throw httpError(422, 'remarks_open');
       await this.externalGate(c, project, source.taskId, id);
-      const scan = current.scans.find((item: { attemptNumber: number }) => item.attemptNumber === current.attemptNumber);
+      const scans = current.scans.filter((item: { attemptNumber: number | null }) => item.attemptNumber === current.attemptNumber);
+      const scan = b.scanId ? scans.find((item: { fileId: string }) => item.fileId === b.scanId) : scans.length === 1 ? scans[0] : null;
       if (!scan) throw httpError(422, 'scan_required');
-      const signer = (await c.query(`SELECT e.id, e.organization_id AS "organizationId", e.full_name AS "fullName" FROM employees e JOIN employee_project_assignments n ON n.tenant_id=e.tenant_id AND n.employee_id=e.id WHERE e.tenant_id=$1 AND e.id=$2 AND e.status='active' AND n.project_id=$3 AND n.status='active'`, [a.tenantId, b.companySignerEmployeeId, project])).rows[0];
+      const signer = (await c.query(`SELECT e.id, e.organization_id AS "organizationId", e.full_name AS "fullName" FROM employees e JOIN employee_project_assignments n ON n.tenant_id=e.tenant_id AND n.employee_id=e.id WHERE e.tenant_id=$1 AND e.id=$2 AND e.status='active' AND n.project_id=$3 AND n.status='active' FOR SHARE OF e,n`, [a.tenantId, b.companySignerEmployeeId, project])).rows[0];
       if (!signer) throw httpError(422, 'signer_not_authorized');
-      const orders = (await c.query(`SELECT id, employee_id AS "employeeId", organization_id AS "organizationId", project_id AS "projectId", document_types AS "documentTypes", valid_from::text AS "validFrom", valid_until::text AS "validUntil", status FROM responsibility_orders WHERE employee_id=$1`, [signer.id])).rows as ResponsibilityOrderFact[];
+      const orders = (await c.query(`SELECT id, employee_id AS "employeeId", organization_id AS "organizationId", project_id AS "projectId", document_types AS "documentTypes", valid_from::text AS "validFrom", valid_until::text AS "validUntil", status FROM responsibility_orders WHERE employee_id=$1 ORDER BY id FOR SHARE`, [signer.id])).rows as ResponsibilityOrderFact[];
       const today = (await c.query(`SELECT to_char(clock_timestamp() AT TIME ZONE timezone, 'YYYY-MM-DD') AS day FROM tenants WHERE id=$1`, [a.tenantId])).rows[0].day as string;
       if (!orderApplies(orders, { employeeId: signer.id, organizationId: signer.organizationId, projectId: project, documentType: 'external-inspection', on: today }).applicable) throw httpError(422, 'signer_not_authorized');
       const quantity = (await c.query(`SELECT quantity FROM accepted_volume_parts WHERE tenant_id=$1 AND id=$2`, [a.tenantId, id])).rows[0].quantity;
@@ -207,6 +213,9 @@ export class CustomerSubmissionsService {
       await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'quality.customer_external_decision','accepted_part',$3,'ok',$4)`, [a.tenantId, a.userId, id, JSON.stringify({ requestId: b.requestId, attemptNumber: current.attemptNumber, scanId: scan.fileId })]);
       return completeCommand(c, a, b.requestId, 201, await this.card(c, a, project, id, source));
     });
+  }
+  private async requireOpen(c: PoolClient, id: string) {
+    if ((await c.query(`SELECT 1 FROM customer_external_decisions WHERE accepted_part_id=$1`, [id])).rowCount) throw httpError(409, 'already_decided');
   }
   private async externalGate(c: PoolClient, project: string, taskId: string, id: string) {
     const selfControl = (await c.query(`SELECT id, passed, blocks_next AS "blocksNext" FROM checklist_runs WHERE project_id=$1 AND task_id=$2 ORDER BY version DESC LIMIT 1`, [project, taskId])).rows[0] ?? null;
@@ -269,6 +278,7 @@ export class CustomerSubmissionsService {
         FROM customer_remark_tasks t
         JOIN customer_submission_remarks r ON r.tenant_id=t.tenant_id AND r.id=t.remark_id
         JOIN employees e ON e.tenant_id=t.tenant_id AND e.id=t.assignee_employee_id AND e.user_id=$1 AND e.status='active'
+        JOIN employee_project_assignments a ON a.tenant_id=t.tenant_id AND a.project_id=t.project_id AND a.employee_id=e.id AND a.status='active'
         WHERE t.project_id=$2 ORDER BY t.due_on, t.id`, [a.userId, project])).rows;
       return { items };
     });

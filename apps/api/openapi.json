@@ -21392,7 +21392,7 @@
           "contentType": {"type": "string", "enum": ["application/pdf"]},
           "sizeBytes": {"type": "integer", "minimum": 1},
           "sha256": {"type": "string"},
-          "attemptNumber": {"type": "integer", "minimum": 1}
+          "attemptNumber": {"type": "integer", "minimum": 1, "nullable": true}
         }
       },
       "CustomerSubmissionScanInput": {
@@ -21481,7 +21481,8 @@
           "requestId": {"type": "string", "format": "uuid"},
           "expectedAttempt": {"type": "integer", "minimum": 1, "maximum": 2147483646},
           "customerSignerName": {"type": "string", "minLength": 1, "maxLength": 200},
-          "companySignerEmployeeId": {"type": "string", "format": "uuid"}
+          "companySignerEmployeeId": {"type": "string", "format": "uuid"},
+          "scanId": {"type": "string", "format": "uuid"}
         }
       },
       "CustomerSubmissionInput": {

@@ -42,5 +42,7 @@ test('два внешних замечания создают две задач�
   const foreign = await expect(f.call(`/projects/${f.project}/customer-remark-tasks`, undefined, 'otherWorker'));
   assert.deepEqual(foreign.items.map((item: { body: string }) => item.body), ['Чужая задача']);
   assert.deepEqual((await expect(f.call(`/projects/${f.project}/customer-remark-tasks`, undefined, 'director'))).items, []);
+  await admin.query(`UPDATE employee_project_assignments SET status='revoked' WHERE project_id=$1 AND employee_id=$2`, [f.project, f.employee]);
+  assert.deepEqual((await expect(f.call(`/projects/${f.project}/customer-remark-tasks`, undefined, 'worker'))).items, []);
   await expect(f.call(`/projects/${f.otherProject}/customer-remark-tasks`, undefined, 'worker'), 404);
 });

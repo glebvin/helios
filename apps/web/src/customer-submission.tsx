@@ -7,7 +7,7 @@ import { Flash } from "./flash";
 import { NoteMark } from "./note-mark";
 import { customerLine } from "./customer-submission-text";
 
-type FileRow = { fileId: string; filename: string; contentType: string; attemptNumber?: number };
+type FileRow = { fileId: string; filename: string; contentType: string; attemptNumber?: number | null };
 type Remark = { id: string; body: string; attemptNumber: number; dueOn: string; closedAt: string | null; photos: FileRow[]; taskId: string };
 type Decision = { attemptNumber: number; quantity: string; scanId: string; customerSignerName: string; companySignerName: string };
 type Card = { recorded: boolean; attemptNumber: number | null; quantity: string | null; openRemarks: number; remarks: Remark[]; scans: FileRow[]; decision: Decision | null; decisions: Decision[] };
@@ -93,7 +93,10 @@ export function CustomerSubmission({ session, projectId, partId }: { session: Se
     setPeople(page.items);
     setPerson(page.items[0]?.id ?? "");
   }
-  const decisionReady = Boolean(master && card?.recorded && !card.decision && card.openRemarks === 0 && card.scans.some((scan) => scan.attemptNumber === card.attemptNumber));
+  const scans = card?.scans.filter((scan) => scan.attemptNumber === card.attemptNumber) ?? [];
+  const [selectedScan, setSelectedScan] = useState("");
+  const scanId = scans.length === 1 ? scans[0].fileId : scans.find((scan) => scan.fileId === selectedScan)?.fileId;
+  const decisionReady = Boolean(master && card?.recorded && !card.decision && card.openRemarks === 0 && scans.length);
   useEffect(() => { if (decisionReady) void openPeople(); }, [decisionReady]);
 
   return (
@@ -117,19 +120,20 @@ export function CustomerSubmission({ session, projectId, partId }: { session: Se
               {master && !remark.closedAt ? <label className="field"><span>Фото JPEG или PNG</span><input aria-label={`Фото к замечанию ${remark.body}`} type="file" accept="image/jpeg,image/png" disabled={busy || held} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void fileBody(file).then((row) => send(`${path}/remarks/${remark.id}/photos`, row, "Фото записано сервером.")); }} /></label> : null}
             </div>
           ))}
-          {card.scans.map((scan) => <p key={scan.fileId} className="quiet">Скан попытки {scan.attemptNumber}: {scan.filename}</p>)}
+          {card.scans.map((scan) => <p key={scan.fileId} className="quiet">{scan.attemptNumber === null ? "Скан без привязки к попытке" : `Скан попытки ${scan.attemptNumber}`}: {scan.filename}</p>)}
           {card.decisions.filter((item) => item.attemptNumber !== card.attemptNumber).map((item) => <p key={item.attemptNumber} className="quiet">Попытка {item.attemptNumber}: принято внешним СК, количество {item.quantity}, подписант заказчика {item.customerSignerName}, подписант компании {item.companySignerName}.</p>)}
           {master && card.recorded && !card.decision && card.openRemarks === 0 && card.scans.some((scan) => scan.attemptNumber === card.attemptNumber) ? (
-            <form onSubmit={(event) => { event.preventDefault(); void send(`${path}/decision`, { expectedAttempt: card.attemptNumber, customerSignerName: customerSigner.trim(), companySignerEmployeeId: companySigner }, "Принятие внешним СК записано сервером."); }}>
+            <form onSubmit={(event) => { event.preventDefault(); void send(`${path}/decision`, { expectedAttempt: card.attemptNumber, customerSignerName: customerSigner.trim(), companySignerEmployeeId: companySigner, scanId }, "Принятие внешним СК записано сервером."); }}>
               <label className="field"><span>Подписант заказчика</span><input aria-label="Подписант заказчика" required maxLength={200} disabled={busy || held} value={customerSigner} onChange={(event) => setCustomerSigner(event.target.value)} onFocus={() => void openPeople()} /></label>
               <label className="field"><span>Подписант компании</span><select aria-label="Подписант компании" required disabled={busy || held} value={companySigner} onFocus={() => void openPeople()} onChange={(event) => setCompanySigner(event.target.value)}><option value="">Выберите подписанта</option>{(people ?? []).map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label>
-              <button className="fill desk-action" type="submit" disabled={busy || held || !customerSigner.trim() || !companySigner}>Записать принятие внешним СК</button>
+              {scans.length > 1 ? <label className="field"><span>Скан решения</span><select value={scanId ?? ""} required disabled={busy || held} onChange={(event) => setSelectedScan(event.target.value)}><option value="">Выберите PDF</option>{scans.map((scan) => <option key={scan.fileId} value={scan.fileId}>{scan.filename}</option>)}</select></label> : null}
+              <button className="fill desk-action" type="submit" disabled={busy || held || !customerSigner.trim() || !companySigner || !scanId}>Записать принятие внешним СК</button>
             </form>
           ) : null}
           {master && card.recorded && !card.decision && card.openRemarks === 0 && !card.scans.some((scan) => scan.attemptNumber === card.attemptNumber) ? <p className="quiet">Сначала приложите подписанный скан этой попытки. Сам файл решение не записывает.</p> : null}
           {master && !card.recorded ? <button className="fill desk-action" type="button" disabled={busy || held} onClick={() => void send(path, { expectedVersion: 0 }, "Внешняя заявка записана сервером.")}>Записать внешнюю заявку</button> : null}
-          {master && card.recorded && card.remarks.some((r) => r.attemptNumber === card.attemptNumber) && card.openRemarks === 0 ? <button className="fill desk-action" type="button" disabled={busy || held} onClick={() => void send(path, { expectedVersion: card.attemptNumber }, "Повтор заявки записан сервером.")}>Повторить заявку</button> : null}
-          {master && card.recorded ? (
+          {master && card.recorded && !card.decision && card.remarks.some((r) => r.attemptNumber === card.attemptNumber) && card.openRemarks === 0 ? <button className="fill desk-action" type="button" disabled={busy || held} onClick={() => void send(path, { expectedVersion: card.attemptNumber }, "Повтор заявки записан сервером.")}>Повторить заявку</button> : null}
+          {master && card.recorded && !card.decision ? (
             <form onSubmit={(event) => { event.preventDefault(); void send(`${path}/remarks`, { body: body.trim(), responsibleEmployeeId: person, dueOn }, "Замечание записано сервером."); }}>
               <label className="field"><span>Замечание</span><textarea aria-label="Замечание" required maxLength={500} disabled={busy || held} value={body} onChange={(event) => setBody(event.target.value)} onFocus={() => void openPeople()} /></label>
               <label className="field"><span>Ответственный</span><select aria-label="Ответственный" required disabled={busy || held || !people?.length} value={person} onFocus={() => void openPeople()} onChange={(event) => setPerson(event.target.value)}>{(people ?? []).map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label>
@@ -138,7 +142,7 @@ export function CustomerSubmission({ session, projectId, partId }: { session: Se
               <button className="fill desk-action" type="submit" disabled={busy || held || !body.trim() || !person || !dueOn}>Добавить замечание</button>
             </form>
           ) : null}
-          {master && card.recorded ? <label className="field"><span>Подписанный скан PDF</span><input aria-label="Подписанный скан" type="file" accept="application/pdf" disabled={busy || held} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void fileBody(file).then((row) => send(`${path}/scans`, row, "Скан записан сервером.")); }} /></label> : null}
+          {master && card.recorded && !card.decision ? <label className="field"><span>Подписанный скан PDF</span><input aria-label="Подписанный скан" type="file" accept="application/pdf" disabled={busy || held} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void fileBody(file).then((row) => send(`${path}/scans`, row, "Скан записан сервером.")); }} /></label> : null}
         </motion.div>
       ) : null}
     </section>

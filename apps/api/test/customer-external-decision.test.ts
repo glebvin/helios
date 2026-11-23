@@ -59,12 +59,8 @@ test('мастер записывает полное принятие текущ
   assert.equal(seen.decision.attemptNumber, 1);
   assert.equal(seen.decision.quantity, '17.000');
   assert.equal(seen.decision.scanId, scan.fileId);
-  const nextRemark = await expect(f.call(`${root()}/remarks`, f.command({ body: 'Замечание следующей попытки', responsibleEmployeeId: f.employee, dueOn: '2027-04-02' }), 'master'), 201);
-  await expect(f.call(`${root()}/remarks/${nextRemark.id}/close`, f.command({}), 'master'), 200);
-  const repeated = await expect(f.call(root(), f.command({ expectedVersion: 1 }), 'master'), 201);
-  assert.equal(repeated.attemptNumber, 2);
-  assert.equal(repeated.decision, null);
-  assert.equal(repeated.decisions.length, 1);
-  assert.equal(repeated.decisions[0].attemptNumber, 1);
-  assert.equal((await admin.query(`SELECT count(*)::int n FROM customer_submission_attempts WHERE accepted_part_id=$1`, [f.parts[1].partId])).rows[0].n, 2);
+  assert.equal((await expect(f.call(`${root()}/remarks`, f.command({ body: 'Новое замечание', responsibleEmployeeId: f.employee, dueOn: f.day }), 'master'), 409)).error, 'already_decided');
+  assert.equal((await expect(f.call(root(), f.command({ expectedVersion: 1 }), 'master'), 409)).error, 'already_decided');
+  assert.equal((await expect(f.call(`/projects/${f.project}/volume-reviews/${f.parts[1].reportId}/corrections`, f.command({ expectedVersion: 1, previousPartId: f.parts[1].partId, quantity: '16', checklistRunId: f.parts[1].checklistRunId, reason: 'Проверка закрытой части' }), 'master'), 409)).error, 'external_decision_recorded');
+  assert.deepEqual((await expect(f.call(root(), undefined, 'pto'))).decision, saved.decision);
 });

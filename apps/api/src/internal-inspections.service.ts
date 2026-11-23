@@ -141,6 +141,7 @@ export class InternalInspectionsService {
       await c.query(`SELECT id FROM daily_tasks WHERE project_id=$1 AND id=$2 FOR NO KEY UPDATE`,[project,source.taskId]);
       if(!receipt.inserted)return replayCommand(c,a,b.requestId,receipt.hash);
       if(source.replacedBy)throw httpError(409,'part_superseded');
+      if((await c.query(`SELECT 1 FROM customer_external_decisions WHERE accepted_part_id=$1`,[part])).rowCount)throw httpError(409,'external_decision_recorded');
       const current=await this.view(c,a,project,part,source);
       if(current.version!==b.expectedVersion)throw httpError(409,'stale_version');
       if(b.action==='submit' && !current.requirement.required)throw httpError(422,'inspection_not_required');
