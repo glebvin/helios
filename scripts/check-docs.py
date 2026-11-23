@@ -6,7 +6,7 @@ root = Path(__file__).resolve().parent.parent
 paths = [root / p for p in [
     'README.md','NEXT.md','AGENTS.md','CONTRIBUTING.md','SECURITY.md',
     'docs/ROADMAP.md','docs/GITHUB-FOR-OWNER.md','docs/ROLE-FLOW-MAP.md',
-    'docs/DEVELOPMENT.md','docs/DEFINITION-OF-DONE.md','docs/BRANCHES-AND-RELEASES.md',
+    'docs/AGENT-START.md','docs/DEVELOPMENT.md','docs/DEFINITION-OF-DONE.md','docs/BRANCHES-AND-RELEASES.md',
     'docs/roadmap/PILOT-19.2.md',
     '.github/pull_request_template.md','docs/PR-HANDOFF.md',
     'docs/qa/retrospective-handoff-2026-11-13.md','docs/test-cases/README.md',

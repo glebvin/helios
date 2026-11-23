@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import type { INestApplication } from '@nestjs/common';
 import { AppModule } from '../src/app.module.js';
 import { createPool, adminUrl } from '../src/db.js';
+import { assertVolumeReviewDatabase } from './volume-review-fixture.js';
 import { hashPassword } from '../src/password.js';
 import { AllExceptionsFilter } from '../src/http.js';
 import { checkHttpContract } from './contract-check.js';
@@ -28,10 +29,7 @@ async function call(user: string, path: string, body?: unknown, method = body ==
 }
 
 test.before(async () => {
-  const port = (await admin.query('SELECT inet_server_port() AS port')).rows[0].port;
-  const directory = (await admin.query('SHOW data_directory')).rows[0].data_directory as string;
-  assert.equal(String(port), process.env.CI ? '54339' : '54611');
-  if (!process.env.CI) assert.match(directory, /svoi-rabotniki\/\.data\/pg-54611$/);
+  await assertVolumeReviewDatabase(admin, true);
   await admin.query(`INSERT INTO tenants(id,name,timezone) VALUES($1,'Subcontractor fixture','Europe/Moscow')`, [tenant]);
   for (const [user, email] of [[director, 'director'], [sub, 'sub'], [empty, 'empty']] as const) {
     await admin.query(`INSERT INTO users(id,email,name,password_hash) VALUES($1,$2,'Fixture',$3)`, [user, `${email}@svoi.test`, hashPassword('svoi-pass')]);
