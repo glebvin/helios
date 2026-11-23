@@ -11224,6 +11224,29 @@
         }
       }
     },
+    "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/decision": {
+      "post": {
+        "operationId": "recordCustomerExternalDecision",
+        "summary": "Записать полное принятие внешним стройконтролем",
+        "description": "Project master only. Records that the customer construction control accepted the whole presented part for the current attempt. Requires a scan of that attempt, no open remark, the current attempt number, a passed self-control, internal PTO where it is still required, and a company signer with an active external-inspection order. The customer signer is a paper name and has no account. Uploading the PDF does not record this decision. Same requestId returns the original result. A second window does not create a second row.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerExternalDecisionInput"}}}},
+        "responses": {
+          "201": {"description": "Decision recorded on the current attempt", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerSubmission"}}}},
+          "400": {"description": "Invalid body", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden part", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "409": {"description": "stale_version, already_decided or idempotency_payload_mismatch", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "422": {"description": "remarks_open, scan_required, signer_not_authorized, self_control_required or internal_inspection_required", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
     "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/scans": {
       "post": {
         "operationId": "recordCustomerSubmissionScan",
@@ -21291,16 +21314,19 @@
       "CustomerSubmission": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["recorded", "attemptNumber", "acceptedPartId", "checklistRunId", "recordedAt", "openRemarks", "remarks", "scans"],
+        "required": ["recorded", "attemptNumber", "acceptedPartId", "checklistRunId", "recordedAt", "quantity", "openRemarks", "remarks", "scans", "decision", "decisions"],
         "properties": {
           "recorded": {"type": "boolean"},
           "attemptNumber": {"type": "integer", "minimum": 1, "nullable": true},
           "acceptedPartId": {"type": "string", "format": "uuid"},
           "checklistRunId": {"type": "string", "format": "uuid", "nullable": true},
           "recordedAt": {"type": "string", "format": "date-time", "nullable": true},
+          "quantity": {"type": "string", "nullable": true},
           "openRemarks": {"type": "integer", "minimum": 0},
           "remarks": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerRemark"}},
-          "scans": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerSubmissionScan"}}
+          "scans": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerSubmissionScan"}},
+          "decision": {"allOf": [{"$ref": "#/components/schemas/CustomerExternalDecision"}], "nullable": true},
+          "decisions": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerExternalDecision"}}
         }
       },
       "CustomerRemark": {
@@ -21344,13 +21370,14 @@
       "CustomerSubmissionScan": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["fileId", "filename", "contentType", "sizeBytes", "sha256"],
+        "required": ["fileId", "filename", "contentType", "sizeBytes", "sha256", "attemptNumber"],
         "properties": {
           "fileId": {"type": "string", "format": "uuid"},
           "filename": {"type": "string"},
           "contentType": {"type": "string", "enum": ["application/pdf"]},
           "sizeBytes": {"type": "integer", "minimum": 1},
-          "sha256": {"type": "string"}
+          "sha256": {"type": "string"},
+          "attemptNumber": {"type": "integer", "minimum": 1}
         }
       },
       "CustomerSubmissionScanInput": {
@@ -21398,6 +21425,30 @@
         "additionalProperties": false,
         "required": ["requestId"],
         "properties": {"requestId": {"type": "string", "format": "uuid"}}
+      },
+      "CustomerExternalDecision": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["attemptNumber", "quantity", "scanId", "customerSignerName", "companySignerName", "recordedAt"],
+        "properties": {
+          "attemptNumber": {"type": "integer", "minimum": 1},
+          "quantity": {"type": "string"},
+          "scanId": {"type": "string", "format": "uuid"},
+          "customerSignerName": {"type": "string"},
+          "companySignerName": {"type": "string"},
+          "recordedAt": {"type": "string", "format": "date-time"}
+        }
+      },
+      "CustomerExternalDecisionInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "expectedAttempt", "customerSignerName", "companySignerEmployeeId"],
+        "properties": {
+          "requestId": {"type": "string", "format": "uuid"},
+          "expectedAttempt": {"type": "integer", "minimum": 1, "maximum": 2147483646},
+          "customerSignerName": {"type": "string", "minLength": 1, "maxLength": 200},
+          "companySignerEmployeeId": {"type": "string", "format": "uuid"}
+        }
       },
       "CustomerSubmissionInput": {
         "type": "object",

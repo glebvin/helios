@@ -7,6 +7,7 @@ import { integer, object, text } from './people-input.js';
 import { httpError } from './errors.js';
 import { executionScope, executionJoin } from './execution-read.js';
 import { reserveCommand, replayCommand, completeCommand } from './durable-command.js';
+import { orderApplies, type ResponsibilityOrderFact } from './responsibility-orders.js';
 
 type Part = { id: string; taskId: string; replacedBy: { id: string } | null };
 const remarkRow = `SELECT r.id, r.body, r.attempt_number AS "attemptNumber", r.responsible_employee_id AS "responsibleEmployeeId", r.due_on::text AS "dueOn", r.closed_at AS "closedAt", t.id AS "taskId" FROM customer_submission_remarks r JOIN customer_remark_tasks t ON t.tenant_id=r.tenant_id AND t.remark_id=r.id`;
@@ -23,6 +24,10 @@ function remarkInput(value: unknown) {
 function closeInput(value: unknown) {
   const b = object(value, ['requestId']);
   return { requestId: uuid(b.requestId).toLowerCase() };
+}
+function decisionInput(value: unknown) {
+  const b = object(value, ['requestId', 'expectedAttempt', 'customerSignerName', 'companySignerEmployeeId']);
+  return { requestId: uuid(b.requestId).toLowerCase(), expectedAttempt: integer(b.expectedAttempt, 1), customerSignerName: text(b.customerSignerName, 200), companySignerEmployeeId: uuid(b.companySignerEmployeeId).toLowerCase() };
 }
 export class CustomerSubmissionsService {
   constructor(private readonly pool: Pool) {}
@@ -49,8 +54,11 @@ export class CustomerSubmissionsService {
     const accepted = source ?? await this.part(c, a, project, id);
     const row = (await c.query(`SELECT attempt_number AS "attemptNumber", checklist_run_id AS "checklistRunId", created_at AS "recordedAt" FROM customer_submissions WHERE project_id=$1 AND accepted_part_id=$2`, [project, id])).rows[0] ?? null;
     const remarks = row ? await this.withPhotos(c, (await c.query(`${remarkRow} WHERE r.project_id=$1 AND r.accepted_part_id=$2 ORDER BY r.created_at, r.id`, [project, id])).rows) : [];
-    const scans = row ? (await c.query(`SELECT id AS "fileId", filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256 FROM customer_submission_scans WHERE project_id=$1 AND accepted_part_id=$2 ORDER BY created_at, id`, [project, id])).rows : [];
-    return { recorded: !!row, attemptNumber: row?.attemptNumber ?? null, acceptedPartId: accepted.id, checklistRunId: row?.checklistRunId ?? null, recordedAt: row?.recordedAt ?? null, openRemarks: remarks.filter((item: { closedAt: string | null }) => item.closedAt === null).length, remarks, scans };
+    const scans = row ? (await c.query(`SELECT id AS "fileId", filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256, attempt_number AS "attemptNumber" FROM customer_submission_scans WHERE project_id=$1 AND accepted_part_id=$2 ORDER BY created_at, id`, [project, id])).rows : [];
+    const decisions = row ? (await c.query(`SELECT attempt_number AS "attemptNumber", quantity::text AS quantity, scan_id AS "scanId", customer_signer_name AS "customerSignerName", company_signer_name AS "companySignerName", created_at AS "recordedAt" FROM customer_external_decisions WHERE project_id=$1 AND accepted_part_id=$2 ORDER BY attempt_number`, [project, id])).rows : [];
+    const quantity = row ? (await c.query(`SELECT quantity::text AS quantity FROM accepted_volume_parts WHERE id=$1`, [id])).rows[0]?.quantity ?? null : null;
+    const decision = decisions.find((item: { attemptNumber: number }) => item.attemptNumber === row?.attemptNumber) ?? null;
+    return { recorded: !!row, attemptNumber: row?.attemptNumber ?? null, acceptedPartId: accepted.id, checklistRunId: row?.checklistRunId ?? null, recordedAt: row?.recordedAt ?? null, quantity, openRemarks: remarks.filter((item: { closedAt: string | null }) => item.closedAt === null).length, remarks, scans, decision, decisions };
   }
   read(a: Actor, project: string, id: string) {
     return withTenant(this.pool, a.tenantId, a.userId, async c => {
@@ -69,12 +77,7 @@ export class CustomerSubmissionsService {
       if (source.replacedBy) throw httpError(409, 'part_superseded');
       const current = await this.card(c, a, project, id, source);
       if ((current.attemptNumber ?? 0) !== b.expectedVersion) throw httpError(409, 'stale_version');
-      const selfControl = (await c.query(`SELECT id, passed, blocks_next AS "blocksNext" FROM checklist_runs WHERE project_id=$1 AND task_id=$2 ORDER BY version DESC LIMIT 1`, [project, source.taskId])).rows[0] ?? null;
-      if (!selfControl?.passed || selfControl.blocksNext) throw httpError(422, 'self_control_required');
-      if (await this.requirement(c, project, source.taskId)) {
-        const state = (await c.query(`SELECT to_state FROM internal_inspection_events WHERE accepted_part_id=$1 ORDER BY version DESC LIMIT 1`, [id])).rows[0]?.to_state ?? 'not_submitted';
-        if (state !== 'accepted') throw httpError(422, 'internal_inspection_required');
-      }
+      const selfControl = await this.externalGate(c, project, source.taskId, id);
       const nextAttempt = (current.attemptNumber ?? 0) + 1;
       if (current.recorded) {
         if (!current.remarks.some((r: { attemptNumber: number }) => r.attemptNumber === current.attemptNumber)) throw httpError(422, 'remarks_required');
@@ -165,14 +168,54 @@ export class CustomerSubmissionsService {
       if (!(await c.query(`SELECT id FROM projects WHERE id=$1 FOR NO KEY UPDATE`, [project])).rowCount) throw httpError(404, 'not_found');
       await this.part(c, a, project, id);
       if (!receipt.inserted) return replayCommand(c, a, body.requestId, receipt.hash);
-      if (!(await c.query(`SELECT 1 FROM customer_submissions WHERE project_id=$1 AND accepted_part_id=$2`, [project, id])).rowCount) throw httpError(422, 'submission_required');
-      const existing = (await c.query(`SELECT id AS "fileId", filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256 FROM customer_submission_scans WHERE accepted_part_id=$1 AND sha256=$2`, [id, body.sha256])).rows[0];
+      const submission = (await c.query(`SELECT attempt_number AS "attemptNumber" FROM customer_submissions WHERE project_id=$1 AND accepted_part_id=$2`, [project, id])).rows[0];
+      if (!submission) throw httpError(422, 'submission_required');
+      const existing = (await c.query(`SELECT id AS "fileId", filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256, attempt_number AS "attemptNumber" FROM customer_submission_scans WHERE accepted_part_id=$1 AND sha256=$2`, [id, body.sha256])).rows[0];
       const fileId = existing?.fileId ?? randomUUID();
-      if (!existing) await c.query(`INSERT INTO customer_submission_scans(tenant_id,id,accepted_part_id,project_id,filename,content_type,size_bytes,sha256,bytes,actor_user_id,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [a.tenantId, fileId, id, project, body.filename, body.contentType, body.sizeBytes, body.sha256, bytes, a.userId, body.requestId]);
-      const saved = existing ?? { fileId, filename: body.filename, contentType: body.contentType, sizeBytes: body.sizeBytes, sha256: body.sha256 };
+      if (!existing) await c.query(`INSERT INTO customer_submission_scans(tenant_id,id,accepted_part_id,project_id,filename,content_type,size_bytes,sha256,bytes,actor_user_id,request_id,attempt_number) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [a.tenantId, fileId, id, project, body.filename, body.contentType, body.sizeBytes, body.sha256, bytes, a.userId, body.requestId, submission.attemptNumber]);
+      const saved = existing ?? { fileId, filename: body.filename, contentType: body.contentType, sizeBytes: body.sizeBytes, sha256: body.sha256, attemptNumber: submission.attemptNumber };
       await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'quality.customer_submission_scan','accepted_part',$3,'ok',$4)`, [a.tenantId, a.userId, id, JSON.stringify({ requestId: body.requestId, fileId, sha256: body.sha256 })]);
       return completeCommand(c, a, body.requestId, 201, saved);
     });
+  }
+  decide(a: Actor, project: string, id: string, value: unknown) {
+    const b = decisionInput(value);
+    if (a.role !== 'master') throw httpError(403, 'role_denied');
+    return withTenant(this.pool, a.tenantId, a.userId, async c => {
+      const receipt = await reserveCommand(c, a, `POST /projects/${project}/accepted-parts/${id}/customer-submission/decision`, b);
+      if (!(await c.query(`SELECT id FROM projects WHERE id=$1 FOR NO KEY UPDATE`, [project])).rowCount) throw httpError(404, 'not_found');
+      const source = await this.part(c, a, project, id);
+      if (!receipt.inserted) return replayCommand(c, a, b.requestId, receipt.hash);
+      const current = await this.card(c, a, project, id, source);
+      if (!current.recorded || current.attemptNumber !== b.expectedAttempt) throw httpError(409, 'stale_version');
+      if (current.openRemarks > 0) throw httpError(422, 'remarks_open');
+      await this.externalGate(c, project, source.taskId, id);
+      const scan = current.scans.find((item: { attemptNumber: number }) => item.attemptNumber === current.attemptNumber);
+      if (!scan) throw httpError(422, 'scan_required');
+      const signer = (await c.query(`SELECT e.id, e.organization_id AS "organizationId", e.full_name AS "fullName" FROM employees e JOIN employee_project_assignments n ON n.tenant_id=e.tenant_id AND n.employee_id=e.id WHERE e.tenant_id=$1 AND e.id=$2 AND e.status='active' AND n.project_id=$3 AND n.status='active'`, [a.tenantId, b.companySignerEmployeeId, project])).rows[0];
+      if (!signer) throw httpError(422, 'signer_not_authorized');
+      const orders = (await c.query(`SELECT id, employee_id AS "employeeId", organization_id AS "organizationId", project_id AS "projectId", document_types AS "documentTypes", valid_from::text AS "validFrom", valid_until::text AS "validUntil", status FROM responsibility_orders WHERE employee_id=$1`, [signer.id])).rows as ResponsibilityOrderFact[];
+      const today = (await c.query(`SELECT to_char(clock_timestamp() AT TIME ZONE timezone, 'YYYY-MM-DD') AS day FROM tenants WHERE id=$1`, [a.tenantId])).rows[0].day as string;
+      if (!orderApplies(orders, { employeeId: signer.id, organizationId: signer.organizationId, projectId: project, documentType: 'external-inspection', on: today }).applicable) throw httpError(422, 'signer_not_authorized');
+      const quantity = (await c.query(`SELECT quantity FROM accepted_volume_parts WHERE tenant_id=$1 AND id=$2`, [a.tenantId, id])).rows[0].quantity;
+      try {
+        await c.query(`INSERT INTO customer_external_decisions(tenant_id,accepted_part_id,attempt_number,project_id,quantity,scan_id,company_signer_employee_id,company_signer_name,customer_signer_name,actor_user_id,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`, [a.tenantId, id, current.attemptNumber, project, quantity, scan.fileId, signer.id, signer.fullName, b.customerSignerName, a.userId, b.requestId]);
+      } catch (error: unknown) {
+        if ((error as { code?: string }).code === '23505') throw httpError(409, 'already_decided');
+        throw error;
+      }
+      await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'quality.customer_external_decision','accepted_part',$3,'ok',$4)`, [a.tenantId, a.userId, id, JSON.stringify({ requestId: b.requestId, attemptNumber: current.attemptNumber, scanId: scan.fileId })]);
+      return completeCommand(c, a, b.requestId, 201, await this.card(c, a, project, id, source));
+    });
+  }
+  private async externalGate(c: PoolClient, project: string, taskId: string, id: string) {
+    const selfControl = (await c.query(`SELECT id, passed, blocks_next AS "blocksNext" FROM checklist_runs WHERE project_id=$1 AND task_id=$2 ORDER BY version DESC LIMIT 1`, [project, taskId])).rows[0] ?? null;
+    if (!selfControl?.passed || selfControl.blocksNext) throw httpError(422, 'self_control_required');
+    if (await this.requirement(c, project, taskId)) {
+      const state = (await c.query(`SELECT to_state FROM internal_inspection_events WHERE accepted_part_id=$1 ORDER BY version DESC LIMIT 1`, [id])).rows[0]?.to_state ?? 'not_submitted';
+      if (state !== 'accepted') throw httpError(422, 'internal_inspection_required');
+    }
+    return selfControl as { id: string };
   }
   async downloadScan(a: Actor, project: string, id: string, scan: string) {
     return withTenant(this.pool, a.tenantId, a.userId, async c => {
