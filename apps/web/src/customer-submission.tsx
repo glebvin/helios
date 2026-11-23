@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import type { Session } from "./api";
 import { ApiError, v1, v1Collection } from "./v1";
@@ -7,9 +7,10 @@ import { Flash } from "./flash";
 import { NoteMark } from "./note-mark";
 import { customerLine } from "./customer-submission-text";
 
-type FileRow = { fileId: string; filename: string; contentType: string };
+type FileRow = { fileId: string; filename: string; contentType: string; attemptNumber?: number };
 type Remark = { id: string; body: string; attemptNumber: number; dueOn: string; closedAt: string | null; photos: FileRow[]; taskId: string };
-type Card = { recorded: boolean; attemptNumber: number | null; openRemarks: number; remarks: Remark[]; scans: FileRow[] };
+type Decision = { attemptNumber: number; quantity: string; scanId: string; customerSignerName: string; companySignerName: string };
+type Card = { recorded: boolean; attemptNumber: number | null; quantity: string | null; openRemarks: number; remarks: Remark[]; scans: FileRow[]; decision: Decision | null; decisions: Decision[] };
 type Person = { id: string; fullName: string };
 const ease = [0.23, 1, 0.32, 1] as const;
 
@@ -20,7 +21,10 @@ function explain(error: unknown) {
     internal_inspection_required: "Сначала нужна приёмка нашего ПТО.",
     submission_required: "Сначала запишите внешнюю заявку.",
     remarks_required: "Повтор доступен после замечания и его закрытия.",
-    remarks_open: "Пока замечание открыто, повтор не записывается.",
+    remarks_open: "Пока замечание открыто, принятие и повтор не записываются.",
+    scan_required: "Сначала приложите подписанный скан этой попытки.",
+    signer_not_authorized: "У подписанта компании нет действующего полномочия на сдачу внешнему СК.",
+    already_decided: "Решение по этой попытке уже записано.",
     remark_closed: "Замечание уже закрыто.",
     responsible_not_assigned: "Этот сотрудник не назначен на объект.",
     file_denied: "Файл не совпадает с заявленным типом.",
@@ -53,6 +57,7 @@ export function CustomerSubmission({ session, projectId, partId }: { session: Se
   const read = useServerRead(session, path, "", () => v1<Card>(session, path), explain);
   const [saved, setSaved] = useState(""), [error, setError] = useState(""), [busy, setBusy] = useState(false);
   const [body, setBody] = useState(""), [dueOn, setDueOn] = useState(""), [person, setPerson] = useState(""), [people, setPeople] = useState<Person[] | null>(null);
+  const [customerSigner, setCustomerSigner] = useState(""), [companySigner, setCompanySigner] = useState("");
   const pending = useRef<{ path: string; body: Record<string, unknown> } | null>(stored(key));
   const reduce = useReducedMotion();
   const master = session.role === "master";
@@ -88,10 +93,12 @@ export function CustomerSubmission({ session, projectId, partId }: { session: Se
     setPeople(page.items);
     setPerson(page.items[0]?.id ?? "");
   }
+  const decisionReady = Boolean(master && card?.recorded && !card.decision && card.openRemarks === 0 && card.scans.some((scan) => scan.attemptNumber === card.attemptNumber));
+  useEffect(() => { if (decisionReady) void openPeople(); }, [decisionReady]);
 
   return (
     <section className="panel" aria-label="Внешняя заявка">
-      <div className="panel-head"><h3>Внешняя заявка</h3><NoteMark label="О внешней заявке"><p>Мастер записывает результат заказчика. Пока замечание открыто, следующая попытка не пишется. Фото относится к замечанию, скан — к заявке.</p></NoteMark></div>
+      <div className="panel-head"><h3>Внешняя заявка</h3><NoteMark label="О внешней заявке"><p>Мастер записывает результат заказчика. Заказчик подписывает бумагу и в систему не входит. Загрузка скана решение не меняет. Пока замечание открыто, принятие и следующая попытка не пишутся.</p></NoteMark></div>
       {saved ? <Flash message={saved} /> : null}
       {error ? <p role="alert">{error}</p> : null}
       {pending.current ? <p role="status">Исходная команда ждёт подтверждения. <button className="fill desk-action" type="button" disabled={busy} onClick={() => { const command = pending.current; if (command) void post(command, "Команда подтверждена сервером."); }}>Повторить команду</button></p> : null}
@@ -110,7 +117,16 @@ export function CustomerSubmission({ session, projectId, partId }: { session: Se
               {master && !remark.closedAt ? <label className="field"><span>Фото JPEG или PNG</span><input aria-label={`Фото к замечанию ${remark.body}`} type="file" accept="image/jpeg,image/png" disabled={busy || held} onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void fileBody(file).then((row) => send(`${path}/remarks/${remark.id}/photos`, row, "Фото записано сервером.")); }} /></label> : null}
             </div>
           ))}
-          {card.scans.map((scan) => <p key={scan.fileId} className="quiet">Скан: {scan.filename}</p>)}
+          {card.scans.map((scan) => <p key={scan.fileId} className="quiet">Скан попытки {scan.attemptNumber}: {scan.filename}</p>)}
+          {card.decisions.filter((item) => item.attemptNumber !== card.attemptNumber).map((item) => <p key={item.attemptNumber} className="quiet">Попытка {item.attemptNumber}: принято внешним СК, количество {item.quantity}, подписант заказчика {item.customerSignerName}, подписант компании {item.companySignerName}.</p>)}
+          {master && card.recorded && !card.decision && card.openRemarks === 0 && card.scans.some((scan) => scan.attemptNumber === card.attemptNumber) ? (
+            <form onSubmit={(event) => { event.preventDefault(); void send(`${path}/decision`, { expectedAttempt: card.attemptNumber, customerSignerName: customerSigner.trim(), companySignerEmployeeId: companySigner }, "Принятие внешним СК записано сервером."); }}>
+              <label className="field"><span>Подписант заказчика</span><input aria-label="Подписант заказчика" required maxLength={200} disabled={busy || held} value={customerSigner} onChange={(event) => setCustomerSigner(event.target.value)} onFocus={() => void openPeople()} /></label>
+              <label className="field"><span>Подписант компании</span><select aria-label="Подписант компании" required disabled={busy || held} value={companySigner} onFocus={() => void openPeople()} onChange={(event) => setCompanySigner(event.target.value)}><option value="">Выберите подписанта</option>{(people ?? []).map((item) => <option key={item.id} value={item.id}>{item.fullName}</option>)}</select></label>
+              <button className="fill desk-action" type="submit" disabled={busy || held || !customerSigner.trim() || !companySigner}>Записать принятие внешним СК</button>
+            </form>
+          ) : null}
+          {master && card.recorded && !card.decision && card.openRemarks === 0 && !card.scans.some((scan) => scan.attemptNumber === card.attemptNumber) ? <p className="quiet">Сначала приложите подписанный скан этой попытки. Сам файл решение не записывает.</p> : null}
           {master && !card.recorded ? <button className="fill desk-action" type="button" disabled={busy || held} onClick={() => void send(path, { expectedVersion: 0 }, "Внешняя заявка записана сервером.")}>Записать внешнюю заявку</button> : null}
           {master && card.recorded && card.remarks.some((r) => r.attemptNumber === card.attemptNumber) && card.openRemarks === 0 ? <button className="fill desk-action" type="button" disabled={busy || held} onClick={() => void send(path, { expectedVersion: card.attemptNumber }, "Повтор заявки записан сервером.")}>Повторить заявку</button> : null}
           {master && card.recorded ? (

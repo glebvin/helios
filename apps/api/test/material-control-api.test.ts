@@ -100,8 +100,8 @@ test('the server accepts a batch only after the checklist and the route', async 
     ["document_types=ARRAY['internal-inspection']", 'type'],
     ["project_id='"+other+"'", 'object'],
     ["organization_id='"+foreignOrg+"'", 'company'],
-    ["valid_from=current_date-10,valid_until=current_date-1", 'expired'],
-    ["valid_from=current_date+1,valid_until='2099-12-31'", 'not_started'],
+    ["valid_from=(clock_timestamp() AT TIME ZONE 'Europe/Moscow')::date-10,valid_until=(clock_timestamp() AT TIME ZONE 'Europe/Moscow')::date-1", 'expired'],
+    ["valid_from=(clock_timestamp() AT TIME ZONE 'Europe/Moscow')::date+1,valid_until='2099-12-31'", 'not_started'],
   ]) {
     await admin.query(`UPDATE responsibility_orders SET ${update} WHERE id=$1`, [order]);
     try {

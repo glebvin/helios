@@ -47,6 +47,12 @@ export class CustomerSubmissionsController {
     response.statusCode = 200;
     response.end(file.bytes);
   }
+  @Post('decision')
+  async decide(@Req() r: ActorRequest, @Param('project') p: string, @Param('part') part: string, @Body() b: unknown, @Query() q: Record<string, unknown>, @Res() res: { status(n: number): { json(body: unknown): void } }) {
+    queryInput(q, []);
+    const saved = await this.submissions.decide(actorOf(r), uuid(p).toLowerCase(), uuid(part).toLowerCase(), b);
+    res.status(saved.status).json(saved.body);
+  }
   @Post('scans')
   async scan(@Req() r: ActorRequest, @Param('project') p: string, @Param('part') part: string, @Body() b: unknown, @Query() q: Record<string, unknown>, @Res() res: { status(n: number): { json(body: unknown): void } }) {
     queryInput(q, []);
