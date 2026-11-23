@@ -11268,6 +11268,21 @@
         }
       }
     },
+    "/api/v1/projects/{project}/customer-remark-tasks": {
+      "get": {
+        "operationId": "readMyCustomerRemarkTasks",
+        "summary": "Задачи ответственного по внешним замечаниям",
+        "description": "Master, director, PTO or worker who can see the project. Returns only tasks assigned to the caller's active employee. A closed remark stays, with closedAt. Another person's task is omitted. An empty list is not the same as a hidden project.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [{"$ref": "#/components/parameters/TenantId"}, {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+        "responses": {
+          "200": {"description": "Remark tasks for the caller", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerRemarkTaskList"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden project", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
     "/api/v1/projects/{project}/customer-submission-zones": {
       "get": {
         "operationId": "readCustomerSubmissionZones",
@@ -21375,6 +21390,25 @@
           "openRemarks": {"type": "integer", "minimum": 0},
           "hasScan": {"type": "boolean"}
         }
+      },
+      "CustomerRemarkTask": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "remarkId", "acceptedPartId", "body", "dueOn", "closedAt"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "remarkId": {"type": "string", "format": "uuid"},
+          "acceptedPartId": {"type": "string", "format": "uuid"},
+          "body": {"type": "string"},
+          "dueOn": {"type": "string", "format": "date"},
+          "closedAt": {"type": "string", "format": "date-time", "nullable": true}
+        }
+      },
+      "CustomerRemarkTaskList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["items"],
+        "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerRemarkTask"}}}
       },
       "CustomerSubmissionZones": {
         "type": "object",

@@ -13,6 +13,7 @@ import { VolumeDesk } from "./volume-panel";
 import { canWriteVolume } from "./volume";
 import { deliveryNote, retryDelivery, watchDelivery } from "./delivery";
 import { readShiftSnapshot, saveShiftSnapshot, snapshotAge } from "./shift-snapshot";
+import { MyRemarkTasks } from "./remark-tasks";
 import { clockLabel, dayReadError, dayReadPath, durationLabel, employeeListPath, ownEmployee, shiftListPath, shiftReading, visibleWorkerTasks, type DayEmployee, type DayReading, type DayShift, type ShiftReading } from "./worker-day";
 
 type Page<T> = { items: T[]; total: number };
@@ -155,6 +156,7 @@ export function WorkerDayPanel({ session, projectId, projectName, day, notice, o
         {fresh && !gap && taskError ? <p role="alert">{taskError} {retry}</p> : null}
         {fresh && tasks && tasks.length === 0 ? <p className="quiet">На сегодня опубликованных заданий нет. Их ставит прораб.</p> : null}
         {fresh && tasksTruncated ? <p className="quiet">Сервер отдал не все задания этого дня.</p> : null}
+        {fresh ? <MyRemarkTasks session={session} projectId={projectId} notice={notice} /> : null}
         {fresh && tasks ? tasks.map((item) => (
           <article className="job" key={item.id}>
             <div className="rowline">

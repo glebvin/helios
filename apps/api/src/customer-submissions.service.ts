@@ -216,6 +216,20 @@ export class CustomerSubmissionsService {
       return { zones };
     });
   }
+  myRemarkTasks(a: Actor, project: string) {
+    if (!['master', 'director', 'pto', 'worker'].includes(a.role)) throw httpError(403, 'role_denied');
+    return withTenant(this.pool, a.tenantId, a.userId, async c => {
+      if (!(await c.query(`SELECT p.id FROM projects p WHERE p.tenant_id=$1 AND p.id=$3 AND EXISTS (
+        SELECT 1 FROM memberships m WHERE m.tenant_id=p.tenant_id AND m.user_id=$2 AND m.status='active' AND m.role=$4
+        AND (m.role='director' OR EXISTS (SELECT 1 FROM project_memberships pm WHERE pm.tenant_id=p.tenant_id AND pm.project_id=p.id AND pm.user_id=m.user_id AND pm.status='active')))`, [a.tenantId, a.userId, project, a.role])).rowCount) throw httpError(404, 'not_found');
+      const items = (await c.query(`SELECT t.id, r.id AS "remarkId", r.accepted_part_id AS "acceptedPartId", r.body, t.due_on::text AS "dueOn", r.closed_at AS "closedAt"
+        FROM customer_remark_tasks t
+        JOIN customer_submission_remarks r ON r.tenant_id=t.tenant_id AND r.id=t.remark_id
+        JOIN employees e ON e.tenant_id=t.tenant_id AND e.id=t.assignee_employee_id AND e.user_id=$1 AND e.status='active'
+        WHERE t.project_id=$2 ORDER BY t.due_on, t.id`, [a.userId, project])).rows;
+      return { items };
+    });
+  }
   private async withPhotos<T extends { id: string }>(c: PoolClient, remarks: T[]) {
     if (!remarks.length) return [];
     const photos = (await c.query(`SELECT id AS "fileId", remark_id AS "remarkId", filename, content_type AS "contentType", size_bytes AS "sizeBytes", sha256 FROM customer_remark_photos WHERE remark_id = ANY($1::uuid[]) ORDER BY created_at, id`, [remarks.map((item) => item.id)])).rows as { remarkId: string }[];

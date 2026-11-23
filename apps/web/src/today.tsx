@@ -6,6 +6,7 @@ import { NoteMark } from "./note-mark";
 import { civilLabel } from "./scope";
 import { taskListPath, taskStatusText, type ServerTask } from "./task-read";
 import { timeStatusText, type TimeStatus } from "./time-sheet";
+import { type RemarkTask } from "./remark-tasks";
 import { ApiError, v1, v1Collection } from "./v1";
 import { durationLabel } from "./worker-day";
 import { useServerRead } from "./server-read";
@@ -194,7 +195,9 @@ export function LiveInbox({
   onOpenSheet: () => void;
 }) {
   const [slice, setSlice] = useState("today");
+  const [remarkId, setRemarkId] = useState<string | null>(null);
   const dayRead = useServerDay(session, projectId, day, notice);
+  const remarkRead = useServerRead(session, `${projectId}:remark-tasks`, notice || (!projectId ? "Объект не подтверждён." : ""), () => v1<{ items: RemarkTask[] }>(session, `/projects/${projectId}/customer-remark-tasks`), readError);
   const extraRead = useServerRead(session, projectId, notice || (!projectId ? "Объект не подтверждён." : ""), async () => {
     const [pending, drafts] = await Promise.all([
       v1Collection<ServerTask>(session, `/projects/${projectId}/tasks?status=pending_approval`),
@@ -217,6 +220,17 @@ export function LiveInbox({
       action: "К заданию",
       open: () => onOpenTasks(task.id),
     })),
+    ...(remarkRead.body?.items ?? []).map((item) => ({
+      id: item.id,
+      title: item.body,
+      who: session.name,
+      date: item.dueOn,
+      status: item.closedAt ? "Закрыто" : "Открыто",
+      tone: item.closedAt ? "neutral" as const : item.dueOn < day ? "warn" as const : "accent" as const,
+      note: "Замечание внешней заявки. Закрытие не удаляет задачу.",
+      action: "К замечанию",
+      open: () => setRemarkId(item.id),
+    })),
     ...(dayRead.body?.days.items ?? []).filter((row) => row.status !== "current").map((row) => ({
       id: `${row.employeeId}:${row.day}`,
       title: row.employeeName,
@@ -230,6 +244,7 @@ export function LiveInbox({
     })),
   ];
   const visible = items.filter((item) => slice === "all" || (slice === "today" ? item.date === day : item.date < day));
+  const opened = remarkRead.body?.items.find((item) => item.id === remarkId) ?? null;
   const overdue = items.filter((item) => item.date < day).length;
   const dueToday = items.filter((item) => item.date === day).length;
   return (
@@ -240,19 +255,30 @@ export function LiveInbox({
       </div>
       <div className="inbox-toolbar">
         <FluidTabs name="inbox-tabs" label="Срез дел" value={slice} onChange={setSlice} tabs={slices} />
-        <div className="inbox-stat is-warn"><b>{extra === null ? "—" : overdue}</b><span>день задания раньше</span></div>
-        <div className="inbox-stat is-accent"><b>{dayRead.body && extra ? dueToday : "—"}</b><span>на этот день</span></div>
+        <div className="inbox-stat is-warn"><b>{extra === null || !remarkRead.body ? "—" : overdue}</b><span>день задания раньше</span></div>
+        <div className="inbox-stat is-accent"><b>{dayRead.body && extra && remarkRead.body ? dueToday : "—"}</b><span>на этот день</span></div>
       </div>
       {notice ? <DeskEmpty title="День не подтверждён" description={notice} /> : null}
-      {!notice && (dayRead.loading || extra === null) && !dayRead.error && !extraError ? <Hold text="Читаем дела…" /> : null}
-      {!notice && (dayRead.error || extraError) ? <p role="alert">{dayRead.error || extraError} <button className="ghost desk-action" type="button" onClick={() => { dayRead.retry(); extraRead.retry(); }}>Повторить чтение</button></p> : null}
-      {!notice && dayRead.body && extra ? (
+      {!notice && (dayRead.loading || extra === null || remarkRead.loading) && !dayRead.error && !extraError && !remarkRead.error ? <Hold text="Читаем дела…" /> : null}
+      {!notice && (dayRead.error || extraError || remarkRead.error) ? <p role="alert">{dayRead.error || extraError || remarkRead.error} <button className="ghost desk-action" type="button" onClick={() => { dayRead.retry(); extraRead.retry(); remarkRead.retry(); }}>Повторить чтение</button></p> : null}
+      {!notice && dayRead.body && extra && remarkRead.body ? (
         <Appear>
           <div className="inbox">
             <div>
               <div className="inbox-list">
-                {visible.length === 0 ? <div className="inbox-empty"><p>{slice === "overdue" ? "Заданий с более ранним днём нет." : slice === "today" ? "На этот день открытых дел нет." : "Открытых дел нет."}</p><button className="ghost desk-action" type="button" onClick={() => onOpenTasks()}>К заданиям</button></div> : null}
-                {visible.map((item) => (
+                {opened ? (
+                  <article className="inbox-row">
+                    <span />
+                    <div>
+                      <b>{opened.body}</b>
+                      <div className="quiet">Срок {opened.dueOn}. {opened.closedAt ? "Закрыто." : "Открыто."} Закрытие не удаляет задачу.</div>
+                      <DeskBadge tone={opened.closedAt ? "neutral" : "warn"}>{opened.closedAt ? "Закрыто" : "Открыто"}</DeskBadge>
+                    </div>
+                    <button className="ghost desk-action" type="button" onClick={() => setRemarkId(null)}>К делам</button>
+                  </article>
+                ) : null}
+                {!opened && visible.length === 0 ? <div className="inbox-empty"><p>{slice === "overdue" ? "Заданий с более ранним днём нет." : slice === "today" ? "На этот день открытых дел нет." : "Открытых дел нет."}</p><button className="ghost desk-action" type="button" onClick={() => onOpenTasks()}>К заданиям</button></div> : null}
+                {!opened && visible.map((item) => (
                   <article className={item.tone === "neutral" ? "inbox-row" : `inbox-row is-${item.tone}`} key={item.id}>
                     <span />
                     <div>

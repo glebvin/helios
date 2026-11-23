@@ -75,3 +75,14 @@ export class CustomerSubmissionZonesController {
     return this.submissions.zones(actorOf(r), uuid(p).toLowerCase());
   }
 }
+
+@Controller('api/v1/projects/:project/customer-remark-tasks')
+@UseGuards(TenantGuard)
+export class CustomerRemarkTasksController {
+  constructor(@Inject(CustomerSubmissionsService) private readonly submissions: CustomerSubmissionsService) {}
+  @Get()
+  tasks(@Req() r: ActorRequest, @Param('project') p: string, @Query() q: Record<string, unknown>) {
+    queryInput(q, []);
+    return this.submissions.myRemarkTasks(actorOf(r), uuid(p).toLowerCase());
+  }
+}

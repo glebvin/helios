@@ -33,4 +33,14 @@ test('два внешних замечания создают две задач�
   assert.equal((await admin.query(`SELECT count(*)::int n FROM customer_remark_tasks WHERE project_id=$1`, [f.project])).rows[0].n, 2);
   await expect(f.call(`${root()}/remarks/${first.id}/close`, f.command({}), 'master'), 200);
   assert.equal((await admin.query(`SELECT count(*)::int n FROM customer_remark_tasks WHERE id=$1`, [first.taskId])).rows[0].n, 1);
+  const other = (await admin.query(`SELECT id FROM employees WHERE user_id=$1`, [f.actors.otherWorker.id])).rows[0].id;
+  await expect(f.call(`${root()}/remarks`, f.command({ body: 'Чужая задача', responsibleEmployeeId: other, dueOn: f.day }), 'master'), 201);
+  const own = await expect(f.call(`/projects/${f.project}/customer-remark-tasks`, undefined, 'worker'));
+  assert.deepEqual(own.items.map((item: { body: string }) => item.body).sort(), ['Нет защитного слоя', 'Шов не закрыт']);
+  assert.equal(own.items.find((item: { body: string }) => item.body === 'Нет защитного слоя').closedAt, null);
+  assert.ok(own.items.find((item: { body: string }) => item.body === 'Шов не закрыт').closedAt);
+  const foreign = await expect(f.call(`/projects/${f.project}/customer-remark-tasks`, undefined, 'otherWorker'));
+  assert.deepEqual(foreign.items.map((item: { body: string }) => item.body), ['Чужая задача']);
+  assert.deepEqual((await expect(f.call(`/projects/${f.project}/customer-remark-tasks`, undefined, 'director'))).items, []);
+  await expect(f.call(`/projects/${f.otherProject}/customer-remark-tasks`, undefined, 'worker'), 404);
 });
