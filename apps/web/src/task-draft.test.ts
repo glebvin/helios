@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canWriteTaskDraft, taskDraftBody, taskDraftError, taskDraftValidation, taskQuantity, zonedInstant, type TaskDraft } from "./task-draft.ts";
+import { canWriteTaskDraft, crewTaskBody, taskDraftBody, taskDraftError, taskDraftValidation, taskQuantity, zonedInstant, type TaskDraft } from "./task-draft.ts";
 
 const draft: TaskDraft = {
   zoneId: "zone",
@@ -50,4 +50,11 @@ test("field and schedule problems stay distinct from a lost server answer", () =
   assert.match(taskDraftError(422, "rd_required"), /документация/);
   assert.match(taskDraftError(403, "role_denied"), /роли/);
   assert.match(taskDraftError(null), /Нет подтверждения/);
+  assert.match(taskDraftError(422, "mixed_employer"), /разных работодателей/);
+  assert.match(taskDraftError(409, "already_submitted"), /Вторая сдача/);
+  assert.equal(taskDraftValidation({ ...draft, assigneeEmployeeId: "" }, false, false, true), "");
+  const crew = crewTaskBody(draft, "crew-1", "req-3", "Europe/Moscow");
+  assert.equal(crew.crewId, "crew-1");
+  assert.equal("assigneeEmployeeId" in crew, false);
+  assert.equal(crew.plannedQuantity, "2.5");
 });

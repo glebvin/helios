@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "motion/react";
 import type { Session } from "./api";
 import { Flash } from "./flash";
@@ -8,7 +8,7 @@ import { FrontCheckPanel } from "./front-check-panel";
 import { ShiftPanel } from "./shift-panel";
 import { TaskActionPanel } from "./task-action-panel";
 import { TaskDraftDialog } from "./task-draft-form";
-import { canWriteTaskDraft } from "./task-draft";
+import { canWriteTaskDraft, taskDraftError, taskQuantity } from "./task-draft";
 import { ApiError, v1, v1Items, v1Collection } from "./v1";
 import { ChecklistRunPanel } from "./checklist-run-panel";
 import { listChecklistCards, openDelivery, type ChecklistCard } from "./delivery";
@@ -237,7 +237,7 @@ function TaskDetail({ compact, session, projectId, taskId, names, canEdit, onEdi
     return () => { live = false; };
   }, [session.token, session.tenantId, projectId, taskId, pass]);
   const status = task ? shownTaskStatus(task) : "";
-  const person = task ? names[task.assigneeEmployeeId] ?? "" : "";
+  const person = task?.crew?.name || (task ? names[task.assigneeEmployeeId] ?? "" : "");
   const place = task ? [task.zoneId ? names[task.zoneId] : "", task.workTypeId ? names[task.workTypeId] : ""].filter(Boolean).join(" · ") : "";
   return <>
     <div className="documents-heading">
@@ -248,8 +248,9 @@ function TaskDetail({ compact, session, projectId, taskId, names, canEdit, onEdi
     {error ? <ChecklistRunPanel key={taskId} session={session} projectId={projectId} taskId={taskId} title="" day="" /> : null}
     {task && compact ? <article className="job">
       <div className="rowline"><h2>{task.title}</h2><DeskBadge tone={status === "published" ? "accent" : status === "cancelled" || status === "needs_fix" ? "warn" : "neutral"}>{taskStatusText(status)}</DeskBadge></div>
-      <p className="quiet">{columns.find((item) => item.id === boardColumn(status))?.title} · {names[task.assigneeEmployeeId] ?? "исполнитель не прочитан"}</p>
+      <p className="quiet">{columns.find((item) => item.id === boardColumn(status))?.title} · {task.crew?.name ?? names[task.assigneeEmployeeId] ?? "исполнитель не прочитан"}</p>
       <p>{task.plannedQuantity} {task.unit}</p>
+      {task.crew ? <p>Состав: {task.crew.members.map((member) => member.fullName).join(", ") || "не прочитан"}. Один объём: {task.crew.volume ?? "ещё не сдан"}.</p> : null}
       {place ? <p className="quiet">{place}</p> : null}
       <p className="quiet">Смена и объём остаются на вкладке «Смена».</p>
     </article> : null}
@@ -281,7 +282,7 @@ function TaskDetail({ compact, session, projectId, taskId, names, canEdit, onEdi
           </dl>
         </section>
         <div className="person-column">
-          {task.workflowKind === "managed02b" ? <>
+          {task.crew ? <CrewVolumeCard session={session} projectId={projectId} task={task} onDone={() => { setPass((value) => value + 1); onChanged(); }} /> : task.workflowKind === "managed02b" ? <>
           <ShiftPanel session={session} projectId={projectId} employeeId={task.assigneeEmployeeId} day={task.workDate} onChanged={() => { setPass((value) => value + 1); onChanged(); }} />
           <VolumeDesk refreshToken={pass} session={session} projectId={projectId} employeeId={task.assigneeEmployeeId} day={task.workDate} tasks={[{ id: task.id, title: task.title, unit: task.unit, status: task.status, workflowKind: task.workflowKind }]} writable={canWriteVolume(session.role)} onDone={(message) => { onNoted(message); setPass((value) => value + 1); onChanged(); }} />
           </> : <section className="panel" aria-label="Исполнение"><h2>Исполнение</h2><p className="quiet">Смена и отчёты для этого задания здесь недоступны.</p></section>}
@@ -292,6 +293,36 @@ function TaskDetail({ compact, session, projectId, taskId, names, canEdit, onEdi
       {task.workflowKind === "managed02b" ? <FrontCheckPanel session={session} projectId={projectId} taskId={task.id} taskVersion={task.version} status={status} onRecorded={() => setPass((value) => value + 1)} /> : null}
     </motion.div> : null}
   </>;
+}
+
+function CrewVolumeCard({ session, projectId, task, onDone }: { session: Session; projectId: string; task: ServerTask; onDone: () => void }) {
+  const crew = task.crew!;
+  const [quantity, setQuantity] = useState(task.plannedQuantity);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const request = useRef("");
+  async function submit() {
+    const text = taskQuantity(quantity);
+    if (!text || busy || crew.volume) return;
+    if (!request.current) request.current = crypto.randomUUID();
+    setBusy(true); setError("");
+    try {
+      await v1(session, `/projects/${projectId}/tasks/${task.id}/crew-volume`, { requestId: request.current, expectedVersion: task.version, quantity: text });
+      onDone();
+    } catch (reason) {
+      setError(taskDraftError(reason instanceof ApiError ? reason.status : null, reason instanceof ApiError ? reason.message : ""));
+    } finally { setBusy(false); }
+  }
+  return <section className="panel" aria-label="Объём бригады">
+    <h2>{crew.name}</h2>
+    <p>{crew.members.map((member) => member.fullName).join(", ") || "Состав снимка пуст."}</p>
+    <p>Один объём: {crew.volume ?? "ещё не сдан"}{crew.volume ? ` ${task.unit}` : ""}.</p>
+    {crew.volume || !canWriteTaskDraft(session.role) ? null : <form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+      <label className="field"><span>Сдать объём</span><input inputMode="decimal" value={quantity} onChange={(event) => { request.current = ""; setQuantity(event.target.value); }} /></label>
+      {error ? <p role="alert">{error}</p> : null}
+      <button className="fill desk-action" type="submit" disabled={busy || !taskQuantity(quantity)}>{busy ? "Записываем…" : "Сдать один объём"}</button>
+    </form>}
+  </section>;
 }
 
 async function readNames(session: Session, path: string, field: "name" | "fullName") {

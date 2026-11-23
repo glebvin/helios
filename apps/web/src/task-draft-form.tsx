@@ -7,7 +7,7 @@ import { staffRequest } from "./staff-form";
 import type { ServerEmployee } from "./staff-list";
 import { ApiError, v1, v1Items } from "./v1";
 import {
-  taskDraftBody, taskDraftError, taskDraftFrom, taskDraftValidation,
+  crewTaskBody, taskDraftBody, taskDraftError, taskDraftFrom, taskDraftValidation,
   type TaskDraft,
 } from "./task-draft";
 import type { ServerTask } from "./task-read";
@@ -36,6 +36,9 @@ export function TaskDraftDialog({ session, projectId, day, task, onClose, onSave
   const [pass, setPass] = useState(0);
   const [error, setError] = useState("");
   const [batches, setBatches] = useState<{ id: string; materialName: string; batchCode: string }[]>([]);
+  const [crews, setCrews] = useState<{ id: string; name: string }[]>([]);
+  const [kind, setKind] = useState<"employee" | "crew">("employee");
+  const [crewId, setCrewId] = useState("");
   const [busy, setBusy] = useState(false);
   const [stored, setStored] = useState(true);
   const lock = useRef(false);
@@ -43,17 +46,19 @@ export function TaskDraftDialog({ session, projectId, day, task, onClose, onSave
   const alertRef = useRef<HTMLParagraphElement>(null);
   const pendingKey = `helios.task-draft:${session.tenantId}:${session.userId}:${projectId}:${source?.id ?? "new"}`;
   const workType = types.find((item) => item.id === draft.workTypeId) ?? null;
-  const problem = ready ? taskDraftValidation(draft, !!workType?.requiresRd, !!workType?.requiresMaterialControl) : "";
+  const crewMode = kind === "crew" && !source;
+  const problem = ready ? (crewMode && !crewId ? "Выберите бригаду." : taskDraftValidation(draft, !!workType?.requiresRd, !!workType?.requiresMaterialControl, crewMode)) : "";
   useEffect(() => {
     let live = true;
     setReady(false); setLoadError("");
     void (async () => {
       try {
-        const [zoneItems, typeItems, peopleItems, clock] = await Promise.all([
+        const [zoneItems, typeItems, peopleItems, clock, crewPage] = await Promise.all([
           v1Items<Zone>(session, `/projects/${projectId}/zones`),
           v1Items<WorkType>(session, `/projects/${projectId}/work-types`),
           v1Items<ServerEmployee>(session, `/employees?projectId=${projectId}`),
           v1<{ timezone: string }>(session, "/overview"),
+          v1<{ items: { id: string; name: string }[] }>(session, `/projects/${projectId}/crews`).catch(() => ({ items: [] })),
         ]);
         const memberships = session.role === "director"
           ? await v1Items<Member>(session, `/projects/${projectId}/memberships`)
@@ -62,6 +67,7 @@ export function TaskDraftDialog({ session, projectId, day, task, onClose, onSave
         setZones(activeForNewTask(zoneItems));
         setTypes(activeForNewTask(typeItems));
         setPeople(peopleItems.filter((item) => item.status === "active"));
+        setCrews(crewPage.items);
         setMembers(memberships.filter((item) => item.status === "active" && (item.role === "director" || item.role === "master")));
         setTimezone(clock.timezone);
         setDraft(taskDraftFrom(task, day, session.userId, clock.timezone));
@@ -87,7 +93,7 @@ export function TaskDraftDialog({ session, projectId, day, task, onClose, onSave
   }
   async function submit() {
     if (lock.current || problem || !timezone) return;
-    const fields = taskDraftBody(draft, "", timezone, source?.version);
+    const fields = crewMode ? crewTaskBody(draft, crewId, "", timezone) : taskDraftBody(draft, "", timezone, source?.version);
     const { requestId: _ignored, ...identity } = fields;
     const key = JSON.stringify(identity);
     if (!request.current.id) {
@@ -100,8 +106,9 @@ export function TaskDraftDialog({ session, projectId, day, task, onClose, onSave
     try { sessionStorage.setItem(pendingKey, JSON.stringify(request.current)); setStored(true); } catch { setStored(false); }
     lock.current = true; setBusy(true); setError("");
     try {
-      const path = source ? `/projects/${projectId}/tasks/${source.id}` : `/projects/${projectId}/tasks`;
-      const row = await v1<ServerTask>(session, path, taskDraftBody(draft, request.current.id, timezone, source?.version), source ? "PUT" : "POST");
+      const path = crewMode ? `/projects/${projectId}/crew-tasks` : source ? `/projects/${projectId}/tasks/${source.id}` : `/projects/${projectId}/tasks`;
+      const body = crewMode ? crewTaskBody(draft, crewId, request.current.id, timezone) : taskDraftBody(draft, request.current.id, timezone, source?.version);
+      const row = await v1<ServerTask>(session, path, body, source && !crewMode ? "PUT" : "POST");
       try { sessionStorage.removeItem(pendingKey); } catch { /* The server answer is enough. */ }
       onSaved(row);
     } catch (reason) { setError(describe(reason)); }
@@ -131,7 +138,11 @@ export function TaskDraftDialog({ session, projectId, day, task, onClose, onSave
         <label className="field"><span>Объём</span><input required inputMode="decimal" value={draft.plannedQuantity} onChange={(event) => setDraft({ ...draft, plannedQuantity: event.target.value })} /></label>
         <label className="field"><span>Начало</span><input type="time" required value={draft.start} onChange={(event) => setDraft({ ...draft, start: event.target.value })} /></label>
         <label className="field"><span>Конец</span><input type="time" required value={draft.end} onChange={(event) => setDraft({ ...draft, end: event.target.value })} /></label>
-        <DeskSelect label="Исполнитель" value={draft.assigneeEmployeeId} options={selectOptions(people.map((item) => ({ value: item.id, label: item.fullName })), "Выберите исполнителя")} onChange={(assigneeEmployeeId) => setDraft({ ...draft, assigneeEmployeeId })} />
+        {!source ? <div className="rowline" role="group" aria-label="Кто выполняет">
+          <button className={`${kind === "employee" ? "fill" : "ghost"} desk-action`} type="button" aria-pressed={kind === "employee"} onClick={() => setKind("employee")}>Работник</button>
+          <button className={`${kind === "crew" ? "fill" : "ghost"} desk-action`} type="button" aria-pressed={kind === "crew"} onClick={() => setKind("crew")}>Бригада</button>
+        </div> : null}
+        {crewMode ? <DeskSelect label="Бригада" value={crewId} options={selectOptions(crews.map((item) => ({ value: item.id, label: item.name })), crews.length ? "Выберите бригаду" : "Бригад нет")} onChange={setCrewId} /> : <DeskSelect label="Исполнитель" value={draft.assigneeEmployeeId} options={selectOptions(people.map((item) => ({ value: item.id, label: item.fullName })), "Выберите исполнителя")} onChange={(assigneeEmployeeId) => setDraft({ ...draft, assigneeEmployeeId })} />}
         {responsibles.length > 1 ? <DeskSelect label="Ответственный" value={draft.responsibleUserId} options={responsibles} onChange={(responsibleUserId) => setDraft({ ...draft, responsibleUserId })} /> : <p className="quiet">Ответственный: {session.name}.{session.role === "master" ? " Список других ответственных прорабу не отдан." : ""}</p>}
         <label className="field"><span>Рабочая документация</span><input maxLength={500} value={draft.rdReference} onChange={(event) => setDraft({ ...draft, rdReference: event.target.value })} /></label>
       </fieldset> : null}

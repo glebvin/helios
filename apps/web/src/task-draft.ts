@@ -27,13 +27,13 @@ export function taskQuantity(value: string) {
   return text;
 }
 
-export function taskDraftValidation(draft: TaskDraft, requiresRd: boolean, requiresMaterial = false) {
+export function taskDraftValidation(draft: TaskDraft, requiresRd: boolean, requiresMaterial = false, crew = false) {
   if (!draft.zoneId) return "Выберите зону.";
   if (!draft.workTypeId) return "Выберите вид работ.";
   if (!draft.title.trim() || draft.title.trim().length > 200) return "Напишите название до 200 символов.";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.workDate)) return "Укажите день.";
   if (!taskQuantity(draft.plannedQuantity)) return "Укажите объём числом, до трёх знаков после запятой.";
-  if (!draft.assigneeEmployeeId) return "Выберите исполнителя.";
+  if (!crew && !draft.assigneeEmployeeId) return "Выберите исполнителя.";
   if (!draft.responsibleUserId) return "Выберите ответственного.";
   if (!clockPattern.test(draft.start) || !clockPattern.test(draft.end) || draft.start >= draft.end) return "Конец интервала должен быть позже начала в этот же день.";
   if (requiresRd && !draft.rdReference.trim()) return "Для этого вида нужна рабочая документация.";
@@ -60,6 +60,12 @@ export function taskDraftBody(draft: TaskDraft, requestId: string, timezone: str
   return expectedVersion === undefined ? body : { ...body, expectedVersion };
 }
 
+export function crewTaskBody(draft: TaskDraft, crewId: string, requestId: string, timezone: string) {
+  const { assigneeEmployeeId, ...body } = taskDraftBody(draft, requestId, timezone);
+  void assigneeEmployeeId;
+  return { ...body, crewId };
+}
+
 export function taskDraftFrom(task: ServerTask | null, day: string, responsibleUserId: string, timezone: string): TaskDraft {
   return {
     zoneId: task?.zoneId ?? "",
@@ -79,7 +85,10 @@ export function taskDraftFrom(task: ServerTask | null, day: string, responsibleU
 export function taskDraftError(status: number | null, code = "") {
   if (status === 401) return "Сессия закончилась. Войдите снова.";
   if (status === 403) return "Этой роли черновик задания недоступен.";
-  if (status === 404) return "Зона, вид работ, исполнитель или ответственный не найдены.";
+  if (status === 404) return "Зона, вид работ, исполнитель, бригада или ответственный не найдены.";
+  if (status === 422 && code === "mixed_employer") return "В бригаде работники разных работодателей. Одно задание им не записывается.";
+  if (status === 422 && code === "crew_empty") return "В бригаде нет действующих участников.";
+  if (status === 409 && code === "already_submitted") return "Объём бригады уже сдан. Вторая сдача не записывается.";
   if (status === 409 && code === "stale_version") return "Черновик уже изменён в другом окне. Прочитайте актуальную версию перед повтором.";
   if (status === 409 && code === "material_not_accepted") return "Эта партия не принята для выбранных зоны и вида работ.";
   if (status === 409 && code === "idempotency_payload_mismatch") return "Номер попытки относится к другому черновику. Прочитайте актуальную версию.";

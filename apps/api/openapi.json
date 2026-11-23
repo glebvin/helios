@@ -667,6 +667,49 @@
         }
       }
     },
+    "/api/v1/projects/{id}/crew-tasks": {
+      "post": {
+        "operationId": "createCrewTask",
+        "summary": "One draft task for a crew, one planned quantity, and a membership snapshot",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateCrewTaskInput" } } } },
+        "responses": {
+          "201": { "description": "One crew task", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Task" } } } },
+          "400": { "description": "invalid_body", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "role_denied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Missing project, crew or catalog", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "idempotency_payload_mismatch or conflict", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "crew_empty, mixed_employer or the same plan refusals as a personal task", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/projects/{id}/tasks/{task}/crew-volume": {
+      "post": {
+        "operationId": "submitCrewVolume",
+        "summary": "Record the one shared crew quantity; a second new request does not add a row",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "task", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CrewVolumeInput" } } } },
+        "responses": {
+          "201": { "description": "The one recorded quantity", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CrewVolume" } } } },
+          "400": { "description": "invalid_body", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "role_denied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Missing task", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "already_submitted, stale_version or idempotency_payload_mismatch", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "not_crew_task", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
     "/api/v1/employees": {
       "get": {
         "operationId": "listEmployees",
@@ -12875,6 +12918,9 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "crew": {
+            "$ref": "#/components/schemas/CrewTaskView"
           }
         },
         "required": [
@@ -14567,6 +14613,81 @@
           "plannedEnd",
           "rdReference"
         ],
+        "additionalProperties": false
+      },
+      "CreateCrewTaskInput": {
+        "type": "object",
+        "properties": {
+          "requestId": { "type": "string", "format": "uuid" },
+          "zoneId": { "type": "string", "format": "uuid" },
+          "workTypeId": { "type": "string", "format": "uuid" },
+          "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "workDate": { "type": "string", "format": "date", "pattern": "^(?!0000)[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+          "plannedQuantity": { "type": "string", "pattern": "^(?!0+(?:\\.0+)?$)[0-9]{1,11}(?:\\.[0-9]{1,3})?$" },
+          "crewId": { "type": "string", "format": "uuid" },
+          "responsibleUserId": { "type": "string", "format": "uuid" },
+          "plannedStart": { "type": "string", "format": "date-time" },
+          "plannedEnd": { "type": "string", "format": "date-time" },
+          "rdReference": { "type": "string", "minLength": 1, "maxLength": 500, "nullable": true },
+          "materialBatchId": { "type": "string", "format": "uuid", "nullable": true }
+        },
+        "required": ["requestId", "zoneId", "workTypeId", "title", "workDate", "plannedQuantity", "crewId", "responsibleUserId", "plannedStart", "plannedEnd", "rdReference"],
+        "additionalProperties": false
+      },
+      "CrewVolumeInput": {
+        "type": "object",
+        "properties": {
+          "requestId": { "type": "string", "format": "uuid" },
+          "expectedVersion": { "type": "integer", "minimum": 1, "maximum": 2147483646 },
+          "quantity": { "type": "string", "pattern": "^(?!0+(?:\\.0+)?$)[0-9]{1,11}(?:\\.[0-9]{1,3})?$" }
+        },
+        "required": ["requestId", "expectedVersion", "quantity"],
+        "additionalProperties": false
+      },
+      "CrewVolume": {
+        "type": "object",
+        "properties": {
+          "taskId": { "type": "string", "format": "uuid" },
+          "quantity": { "type": "string", "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$" },
+          "recordedAt": { "type": "string", "format": "date-time" },
+          "reportId": { "type": "string", "format": "uuid" },
+          "memberHours": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "employeeId": { "type": "string", "format": "uuid" },
+                "presenceMs": { "type": "string", "pattern": "^[0-9]+$" }
+              },
+              "required": ["employeeId", "presenceMs"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["taskId", "quantity", "recordedAt", "reportId", "memberHours"],
+        "additionalProperties": false
+      },
+      "CrewTaskView": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "organizationId": { "type": "string", "format": "uuid" },
+          "members": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "employeeId": { "type": "string", "format": "uuid" },
+                "fullName": { "type": "string" }
+              },
+              "required": ["employeeId", "fullName"],
+              "additionalProperties": false
+            }
+          },
+          "volume": { "type": "string", "pattern": "^-?[0-9]+(?:\\.[0-9]+)?$", "nullable": true }
+        },
+        "required": ["id", "name", "organizationId", "members", "volume"],
         "additionalProperties": false
       },
       "UpdateTaskInput": {

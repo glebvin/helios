@@ -25,6 +25,9 @@ export const taskVisible = `${projectVisible} AND ($1 <> 'worker' OR ((t.workflo
 export const taskJoin = `FROM daily_tasks t JOIN projects p ON p.tenant_id = t.tenant_id AND p.id = t.project_id
   JOIN employees e ON e.tenant_id = t.tenant_id AND e.id = t.assignee_employee_id`;
 export const taskFields = `t.id,t.project_id AS "projectId",t.title,t.work_date::text AS "workDate",t.planned_quantity::text AS "plannedQuantity",t.unit,t.assignee_employee_id AS "assigneeEmployeeId",t.status,t.version,t.workflow_kind AS "workflowKind",t.plan_revision AS "planRevision",t.zone_id AS "zoneId",t.work_type_id AS "workTypeId",t.responsible_user_id AS "responsibleUserId",t.rd_reference AS "rdReference",t.planned_start AS "plannedStart",t.planned_end AS "plannedEnd",t.publication_snapshot_id AS "publicationSnapshotId",t.material_batch_id AS "materialBatchId"`;
+export function crewView(snapshot:{crewId:string;name:string;organizationId:string;members:{employeeId:string;fullName:string}[]},volume:string|null) {
+  return {id:snapshot.crewId,name:snapshot.name,organizationId:snapshot.organizationId,members:snapshot.members,volume};
+}
 const projectFields = `p.id, p.name`;
 const employeeFields = `e.id, e.full_name AS "fullName",
   CASE WHEN $1 <> 'subcontractor' THEN e.phone ELSE NULL END AS phone,
@@ -70,7 +73,13 @@ export class DirectorApiService {
       const items = await client.query(`SELECT ${taskFields}
         ${taskJoin} WHERE ${where} ORDER BY t.work_date DESC, t.title, t.id LIMIT $7 OFFSET $8`,
       [...values, page.limit, page.offset]);
-      if(id){if(!items.rows[0])throw httpError(404,'not_found');return items.rows[0];}
+      if(id){
+        const row=items.rows[0];if(!row)throw httpError(404,'not_found');
+        const snapshot=(await client.query(`SELECT crew_snapshot AS snapshot FROM daily_tasks WHERE tenant_id=$1 AND id=$2`,[actor.tenantId,row.id])).rows[0]?.snapshot;
+        if(!snapshot)return row;
+        const volume=(await client.query(`SELECT quantity::text AS quantity FROM crew_volume_submissions WHERE tenant_id=$1 AND task_id=$2`,[actor.tenantId,row.id])).rows[0]?.quantity??null;
+        return {...row,crew:crewView(snapshot,volume)};
+      }
       return { items: items.rows, total: count.rows[0].total, ...page };
     });
   }
