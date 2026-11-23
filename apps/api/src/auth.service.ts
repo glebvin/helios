@@ -173,15 +173,18 @@ export class TenantGuard implements CanActivate {
     const checklistProject = /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates(?:\/[0-9a-f-]{36}(?:\/(?:submit|decision))?)?\/?$/i.test(path);
     const checklistRead = ["GET", "HEAD"].includes(method) && (path === "/api/v1/checklist-templates" || /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates(?:\/[0-9a-f-]{36})?\/?$/i.test(path));
     const engineerChecklist = actor.role === "engineer-pto" && (checklistRead || (method === "POST" && checklistProject));
-    if (!isExistingRuntimeRole(actor.role) && !identityRoute && !priceRoute && !engineerChecklist) throw httpError(403, "role_denied");
+    const idSet = actor.role === "engineer-pto" && ((method === "GET" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/id-sets\/?$/i.test(path)) || (method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/work-types\/[0-9a-f-]{36}\/id-set\/?$/i.test(path)));
+    const subcontractorPeople = actor.role === "subcontractor" && ["GET", "HEAD"].includes(method) && (path === "/api/v1/employees" || /^\/api\/v1\/employees\/[0-9a-f-]{36}\/?$/i.test(path));
+    if (!isExistingRuntimeRole(actor.role) && !identityRoute && !priceRoute && !engineerChecklist && !idSet && !subcontractorPeople) throw httpError(403, "role_denied");
     const routeConfigurationWrite = actor.role === "admin" && method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/route-config\/?$/i.test(path);
     const responsibilityOrderWrite = actor.role === "hr" && method === "POST" && /^\/api\/v1\/responsibility-orders(?:\/[0-9a-f-]{36}(?:\/revoke)?)?$/i.test(path);
     const checklistDecision = ["safety", "zds-soso"].includes(actor.role) && method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/checklist-templates\/[0-9a-f-]{36}\/decision\/?$/i.test(path);
     const primaryDayWrite = actor.role === "hr" && method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/time\/consolidated\/\d{4}-\d{2}-\d{2}\/revisions\/?$/i.test(path);
     const staffImportWrite = actor.role === "hr" && method === "POST" && ["/api/v1/staff-imports", "/api/v1/staff-imports/checks"].includes(path);
     const materialWrite = actor.role === "supply" && ((method === "POST" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/material-batches(?:\/[0-9a-f-]{36}(?:\/control)?)?\/?$/i.test(path)) || (method === "PUT" && /^\/api\/v1\/projects\/[0-9a-f-]{36}\/material-batches\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}\/content\/?$/i.test(path)));
+    const admissionSafetyWrite = actor.role === "safety" && method === "POST" && /^\/api\/v1\/employees\/[0-9a-f-]{36}\/admission-checks\/[0-9a-f-]{36}\/safety-review\/?$/i.test(path);
     // Each module service reloads current role and project scope before writing/replaying.
-    if (readOnlyCabinetRoles.has(actor.role) && !routeConfigurationWrite && !responsibilityOrderWrite && !checklistDecision && !primaryDayWrite && !staffImportWrite && !materialWrite && !["GET", "HEAD"].includes(method) && path !== "/api/v1/auth/logout") throw httpError(403, "role_denied");
+    if (readOnlyCabinetRoles.has(actor.role) && !routeConfigurationWrite && !responsibilityOrderWrite && !checklistDecision && !primaryDayWrite && !staffImportWrite && !materialWrite && !admissionSafetyWrite && !["GET", "HEAD"].includes(method) && path !== "/api/v1/auth/logout") throw httpError(403, "role_denied");
     request.actor = actor;
     request.sessionToken = token;
     return true;

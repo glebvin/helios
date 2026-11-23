@@ -24,6 +24,6 @@ export function accessError(status: number | null, code = "") {
 }
 export function admissionReason(reason: string) {
   const [code, ...tail] = reason.split(":"), detail = tail.join(":");
-  const labels: Record<string, string> = { no_check: "Нет привязанной проверки допуска", check_failed: "Проверка допуска не пройдена", not_latest_check: "Есть более новая попытка проверки", template_changed: "Шаблон допуска изменён", employee_archived: "Сотрудник в архиве", qualification_missing: "Нет действующей квалификации", qualification_revoked: "Квалификация отозвана", qualification_expired: "Срок квалификации истёк", qualification_changed: "Квалификация изменилась после проверки" };
+  const labels: Record<string, string> = { no_check: "Нет привязанной проверки допуска", check_failed: "Проверка допуска не пройдена", not_latest_check: "Есть более новая попытка проверки", template_changed: "Шаблон допуска изменён", employee_archived: "Сотрудник в архиве", qualification_missing: "Нет действующей квалификации", qualification_revoked: "Квалификация отозвана", qualification_expired: "Срок квалификации истёк", qualification_changed: "Квалификация изменилась после проверки", safety_review_required: "Охрана труда ещё не согласовала проверку", approval_required: "Руководитель ещё не утвердил проверку" };
   return `${labels[code] ?? code}${detail ? `: ${detail}` : ""}`;
 }

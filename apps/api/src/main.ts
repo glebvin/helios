@@ -3,11 +3,12 @@ import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module.js";
 import { AllExceptionsFilter } from "./http.js";
+import { configureJsonBody } from "./json-body.js";
 
 import {authProtection, bindAuthProtection} from "./auth-protection.js";
 
 const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
-app.useBodyParser("json", { limit: "2mb" });
+configureJsonBody(app);
 const protection = authProtection();
 bindAuthProtection(protection);
 app.use(protection);

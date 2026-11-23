@@ -2,13 +2,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   blankFrontAnswers, canWriteFrontCheck, canWriteFrontTemplate, frontAnswersComplete, frontCheckBody, frontDraft,
-  frontReason, frontTemplateBody, frontTemplateCurrent, frontTemplateValidation, type FrontTemplate,
+  frontError, frontReason, frontTemplateBody, frontTemplateCurrent, frontTemplateValidation, type FrontTemplate,
 } from "./front-check.ts";
 
 const template: FrontTemplate = {
   projectId: "p", code: "front", title: "Фронт", version: 2,
   items: [{ id: "a", label: "Ограждение", critical: true }, { id: "b", label: "Освещение", critical: false }],
 };
+
+test("a named master is the only one told apart from a role refusal", () => {
+  assert.equal(frontError(403, "route_denied"), "Проверку фронта записывает назначенный мастер.");
+  assert.equal(frontError(403, "role_denied"), "Этой роли проверка фронта недоступна.");
+});
 
 test("only a director edits the checklist, and a worker cannot record a check", () => {
   assert.equal(canWriteFrontTemplate("director"), true);

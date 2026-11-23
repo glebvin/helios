@@ -2121,6 +2121,88 @@
         }
       }
     },
+    "/api/v1/employees/{id}/admission-checks/{check}/safety-review": {
+      "get": {
+        "operationId": "getAdmissionSafetyReview",
+        "summary": "getAdmissionSafetyReview",
+        "description": "Whether the assigned safety reviewer has agreed to this check. Required is false until that person is named in the route. Director, master, PTO and the project's safety membership can read it.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "check", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Current agreement", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SafetyReview" } } } },
+          "400": { "description": "Invalid UUID", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role denied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Hidden check", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "operationId": "agreeAdmissionSafetyReview",
+        "summary": "agreeAdmissionSafetyReview",
+        "description": "The safety user named in the employee-admission route agrees to one passed check. Another person, including the master and the project director, cannot record this agreement. Same requestId replays the stored body.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "check", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["requestId"], "properties": { "requestId": { "type": "string", "format": "uuid" } } } } } },
+        "responses": {
+          "201": { "description": "Agreement stored", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SafetyReview" } } } },
+          "400": { "description": "Invalid body", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role or assigned reviewer denied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Hidden check", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Already agreed or idempotency mismatch", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Check did not pass or reviewer is not assigned", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/employees/{id}/admission-checks/{check}/approval": {
+      "get": {
+        "operationId": "getAdmissionApproval",
+        "summary": "getAdmissionApproval",
+        "description": "Whether the director named in the employee-admission route has approved this check. Required is false until that person is named.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "check", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "responses": {
+          "200": { "description": "Current approval", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SafetyReview" } } } },
+          "400": { "description": "Invalid UUID", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role denied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Hidden check", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "operationId": "approveAdmissionCheck",
+        "summary": "approveAdmissionCheck",
+        "description": "The director named in the employee-admission route approves one passed check. Safety agreement is required first when a safety reviewer is named. Same requestId replays the stored body.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "check", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["requestId"], "properties": { "requestId": { "type": "string", "format": "uuid" } } } } } },
+        "responses": {
+          "201": { "description": "Approval stored", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SafetyReview" } } } },
+          "400": { "description": "Invalid body", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role or assigned approver denied", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Hidden check", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Already approved or idempotency mismatch", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Check did not pass, safety has not agreed, or approver is not assigned", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
     "/api/v1/projects/{p}/memberships": {
       "get": {
         "operationId": "listProjectMemberships",
@@ -3230,6 +3312,42 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/id-sets": {
+      "get": {
+        "operationId": "listIdSets",
+        "summary": "List the document set of each active work type.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/TenantId" }, { "name": "p", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "Current set of each active work type. Version 0 means none was recorded.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IdSetList" } } } },
+          "400": { "description": "Malformed request.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing session.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role cannot read the set.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Project is not visible.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/api/v1/projects/{p}/work-types/{workType}/id-set": {
+      "post": {
+        "operationId": "writeIdSet",
+        "summary": "Record the next version of a work type document set.",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/TenantId" },
+          { "name": "p", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+          { "name": "workType", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+        ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IdSetInput" } } } },
+        "responses": {
+          "201": { "description": "The new version.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IdSet" } } } },
+          "400": { "description": "Malformed command.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Missing session.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "403": { "description": "Role or named engineer cannot record the set.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "Project or work type is not visible.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "409": { "description": "Version conflict or the same request number carries a different body.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
@@ -11039,6 +11157,202 @@
         }
       }
     },
+    "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission": {
+      "get": {
+        "operationId": "readCustomerSubmission",
+        "summary": "Прочитать внешнюю заявку части",
+        "description": "Master, director, PTO or worker of the project. recorded is false until the master records attempt 1. No remarks or scan in this read.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "responses": {
+          "200": {"description": "Current external application", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerSubmission"}}}},
+          "400": {"description": "Invalid query", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden part", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      },
+      "post": {
+        "operationId": "recordCustomerSubmission",
+        "summary": "Записать первую внешнюю заявку части",
+        "description": "Project master only. Refuses without a passed latest self-control. Refuses hidden work, subcontract or an object that still requires internal PTO until that inspection is accepted. Same requestId returns the original result. A second request writes nothing.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerSubmissionInput"}}}},
+        "responses": {
+          "201": {"description": "Recorded attempt 1", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerSubmission"}}}},
+          "400": {"description": "Invalid body", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden part", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "409": {"description": "stale_version, part_superseded or idempotency_payload_mismatch", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "422": {"description": "self_control_required, internal_inspection_required, remarks_required or remarks_open", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/remarks": {
+      "post": {
+        "operationId": "recordCustomerRemark",
+        "summary": "Записать замечание внешней заявки",
+        "description": "Project master only, after attempt 1 exists. Responsible employee must be assigned to the object. Photo is not stored here. Same requestId returns the original remark.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerRemarkInput"}}}},
+        "responses": {
+          "201": {"description": "Recorded remark", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerRemark"}}}},
+          "400": {"description": "Invalid body", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden part", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "409": {"description": "idempotency_payload_mismatch", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "422": {"description": "submission_required or responsible_not_assigned", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/remarks/{remark}/photos": {
+      "post": {
+        "operationId": "recordCustomerRemarkPhoto",
+        "summary": "Приложить фото к замечанию внешней заявки",
+        "description": "Project master only. JPEG or PNG, at most 8 MiB, and the bytes must match the declared type. The same bytes on the same remark stay one file. Same requestId returns the original result. The signed scan is not this photo.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "remark", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerRemarkPhotoInput"}}}},
+        "responses": {
+          "201": {"description": "Stored photo", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerRemarkPhoto"}}}},
+          "400": {"description": "Invalid file", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden remark", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "409": {"description": "idempotency_payload_mismatch", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "413": {"description": "file_too_large", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "422": {"description": "file_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/remarks/{remark}/photos/{photo}": {
+      "get": {
+        "operationId": "readCustomerRemarkPhoto",
+        "summary": "Прочитать байты фото замечания",
+        "description": "Master, director, PTO or worker who can see the part. The response is the image itself.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "remark", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "photo", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "responses": {
+          "200": {"description": "Image bytes", "content": {"image/jpeg": {"schema": {"type": "string", "format": "binary"}}, "image/png": {"schema": {"type": "string", "format": "binary"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden photo", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/scans": {
+      "post": {
+        "operationId": "recordCustomerSubmissionScan",
+        "summary": "Приложить подписанный скан внешней заявки",
+        "description": "Project master only. One PDF up to 8 MiB; the bytes must start with the PDF marker. The same file stays one scan. Same requestId returns the original result. This is not a remark photo.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerSubmissionScanInput"}}}},
+        "responses": {
+          "201": {"description": "Stored scan", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerSubmissionScan"}}}},
+          "400": {"description": "Invalid file", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden part", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "409": {"description": "idempotency_payload_mismatch", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "413": {"description": "file_too_large", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "422": {"description": "file_denied or submission_required", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/scans/{scan}": {
+      "get": {
+        "operationId": "readCustomerSubmissionScan",
+        "summary": "Прочитать байты подписанного скана",
+        "description": "Master, director, PTO or worker who can see the part. The response is the PDF itself.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "scan", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "responses": {
+          "200": {"description": "PDF bytes", "content": {"application/pdf": {"schema": {"type": "string", "format": "binary"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden scan", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/api/v1/projects/{project}/customer-submission-zones": {
+      "get": {
+        "operationId": "readCustomerSubmissionZones",
+        "summary": "Показатели внешней приёмки по зоне",
+        "description": "Master, director, PTO or worker who can see the project. Only zones that already have a recorded submission. A part without a zone is omitted. Counts are recorded attempts and open remarks; hasScan is whether a PDF is stored.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "responses": {
+          "200": {"description": "Zones with recorded submissions", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerSubmissionZones"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden project", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/api/v1/projects/{project}/accepted-parts/{part}/customer-submission/remarks/{remark}/close": {
+      "post": {
+        "operationId": "closeCustomerRemark",
+        "summary": "Закрыть замечание внешней заявки",
+        "description": "Project master only. A new request for an already closed remark writes nothing. Same requestId returns the original close.",
+        "security": [{"bearerAuth": []}],
+        "parameters": [
+          {"$ref": "#/components/parameters/TenantId"},
+          {"name": "project", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "part", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}},
+          {"name": "remark", "in": "path", "required": true, "schema": {"type": "string", "format": "uuid"}}
+        ],
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerRemarkCloseInput"}}}},
+        "responses": {
+          "200": {"description": "Closed remark", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CustomerRemark"}}}},
+          "400": {"description": "Invalid body", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "401": {"description": "Missing session", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "403": {"description": "role_denied", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"description": "Hidden remark", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "409": {"description": "remark_closed or idempotency_payload_mismatch", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "422": {"description": "Rejected without a business write", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
     "/api/v1/projects/{project}/internal-inspection-policy": {
       "get": {
         "operationId": "readInternalInspectionPolicy",
@@ -12120,6 +12434,34 @@
               }
             }
           }
+        }
+      },
+      "IdSet": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["workTypeId", "name", "unit", "version", "titles"],
+        "properties": {
+          "workTypeId": { "type": "string", "format": "uuid" },
+          "name": { "type": "string" },
+          "unit": { "type": "string" },
+          "version": { "type": "integer", "minimum": 0 },
+          "titles": { "type": "array", "maxItems": 30, "items": { "type": "string" } }
+        }
+      },
+      "IdSetList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["items"],
+        "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/IdSet" } } }
+      },
+      "IdSetInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "expectedVersion", "titles"],
+        "properties": {
+          "requestId": { "type": "string", "format": "uuid" },
+          "expectedVersion": { "type": "integer", "minimum": 0 },
+          "titles": { "type": "array", "maxItems": 30, "items": { "type": "string" } }
         }
       },
       "Error": {
@@ -13805,6 +14147,16 @@
           "offset"
         ],
         "additionalProperties": false
+      },
+      "SafetyReview": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["recorded", "required", "recordedAt"],
+        "properties": {
+          "recorded": { "type": "boolean" },
+          "required": { "type": "boolean" },
+          "recordedAt": { "type": "string", "format": "date-time", "nullable": true }
+        }
       },
       "CheckList": {
         "type": "object",
@@ -19717,7 +20069,9 @@
               "deadlineState": {
                 "type": "string",
                 "enum": [
-                  "not-configured"
+                  "not-configured",
+                  "scheduled",
+                  "overdue"
                 ]
               },
               "nextStep": {
@@ -21040,6 +21394,126 @@
           "hiddenWork": {"type": "boolean"},
           "subcontract": {"type": "boolean"},
           "reason": {"type": "string", "enum": ["hidden", "subcontract", "project", "none"]}
+        }
+      },
+      "CustomerSubmission": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["recorded", "attemptNumber", "acceptedPartId", "checklistRunId", "recordedAt", "openRemarks", "remarks", "scans"],
+        "properties": {
+          "recorded": {"type": "boolean"},
+          "attemptNumber": {"type": "integer", "minimum": 1, "nullable": true},
+          "acceptedPartId": {"type": "string", "format": "uuid"},
+          "checklistRunId": {"type": "string", "format": "uuid", "nullable": true},
+          "recordedAt": {"type": "string", "format": "date-time", "nullable": true},
+          "openRemarks": {"type": "integer", "minimum": 0},
+          "remarks": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerRemark"}},
+          "scans": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerSubmissionScan"}}
+        }
+      },
+      "CustomerRemark": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "body", "attemptNumber", "responsibleEmployeeId", "dueOn", "closedAt", "photos", "taskId"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "body": {"type": "string"},
+          "attemptNumber": {"type": "integer", "minimum": 1},
+          "responsibleEmployeeId": {"type": "string", "format": "uuid"},
+          "dueOn": {"type": "string", "format": "date"},
+          "closedAt": {"type": "string", "format": "date-time", "nullable": true},
+          "photos": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerRemarkPhoto"}},
+          "taskId": {"type": "string", "format": "uuid"}
+        }
+      },
+      "CustomerRemarkPhoto": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fileId", "filename", "contentType", "sizeBytes", "sha256"],
+        "properties": {
+          "fileId": {"type": "string", "format": "uuid"},
+          "filename": {"type": "string"},
+          "contentType": {"type": "string", "enum": ["image/jpeg", "image/png"]},
+          "sizeBytes": {"type": "integer", "minimum": 1},
+          "sha256": {"type": "string"}
+        }
+      },
+      "CustomerRemarkPhotoInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "filename", "contentType", "contentBase64"],
+        "properties": {
+          "requestId": {"type": "string", "format": "uuid"},
+          "filename": {"type": "string"},
+          "contentType": {"type": "string", "enum": ["image/jpeg", "image/png"]},
+          "contentBase64": {"type": "string"}
+        }
+      },
+      "CustomerSubmissionScan": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fileId", "filename", "contentType", "sizeBytes", "sha256"],
+        "properties": {
+          "fileId": {"type": "string", "format": "uuid"},
+          "filename": {"type": "string"},
+          "contentType": {"type": "string", "enum": ["application/pdf"]},
+          "sizeBytes": {"type": "integer", "minimum": 1},
+          "sha256": {"type": "string"}
+        }
+      },
+      "CustomerSubmissionScanInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "filename", "contentType", "contentBase64"],
+        "properties": {
+          "requestId": {"type": "string", "format": "uuid"},
+          "filename": {"type": "string"},
+          "contentType": {"type": "string", "enum": ["application/pdf"]},
+          "contentBase64": {"type": "string"}
+        }
+      },
+      "CustomerSubmissionZone": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["zoneId", "name", "attemptCount", "openRemarks", "hasScan"],
+        "properties": {
+          "zoneId": {"type": "string", "format": "uuid"},
+          "name": {"type": "string"},
+          "attemptCount": {"type": "integer", "minimum": 1},
+          "openRemarks": {"type": "integer", "minimum": 0},
+          "hasScan": {"type": "boolean"}
+        }
+      },
+      "CustomerSubmissionZones": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["zones"],
+        "properties": {"zones": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerSubmissionZone"}}}
+      },
+      "CustomerRemarkInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "body", "responsibleEmployeeId", "dueOn"],
+        "properties": {
+          "requestId": {"type": "string", "format": "uuid"},
+          "body": {"type": "string", "minLength": 1, "maxLength": 500},
+          "responsibleEmployeeId": {"type": "string", "format": "uuid"},
+          "dueOn": {"type": "string", "format": "date"}
+        }
+      },
+      "CustomerRemarkCloseInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId"],
+        "properties": {"requestId": {"type": "string", "format": "uuid"}}
+      },
+      "CustomerSubmissionInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestId", "expectedVersion"],
+        "properties": {
+          "requestId": {"type": "string", "format": "uuid"},
+          "expectedVersion": {"type": "integer", "minimum": 0, "maximum": 2147483646}
         }
       },
       "InternalInspectionPolicy": {

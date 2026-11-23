@@ -10,6 +10,7 @@ import { AllExceptionsFilter } from '../src/http.js';
 import { adminUrl, createPool } from '../src/db.js';
 import { hashPassword } from '../src/password.js';
 import { checkHttpContract } from './contract-check.js';
+import { defaultRouteConfiguration } from '../src/route-config.js';
 
 const qaPort = Number(process.env.HELIOS_PRIMARY_QA_DB_PORT ?? 54583);
 assert.ok([54583,54597].includes(qaPort));
@@ -91,7 +92,7 @@ after(async () => {
     try {
       await client.query('BEGIN');
       await client.query('SET CONSTRAINTS ALL DEFERRED');
-      for (const table of ['consolidated_time_heads', 'consolidated_time_revisions', 'time_corrections', 'primary_day_closes', 'time_approval_heads', 'time_approval_revisions', 'managed_execution_events', 'managed_segments', 'managed_shifts', 'managed_execution_streams', 'daily_tasks', 'employee_project_assignments', 'project_memberships', 'people_command_receipts', 'employees', 'memberships', 'projects', 'organizations', 'audit_log']) {
+      for (const table of ['consolidated_time_heads', 'consolidated_time_revisions', 'time_corrections', 'primary_day_closes', 'time_approval_heads', 'time_approval_revisions', 'managed_execution_events', 'managed_segments', 'managed_shifts', 'managed_execution_streams', 'daily_tasks', 'employee_project_assignments', 'route_config_versions', 'project_memberships', 'people_command_receipts', 'employees', 'memberships', 'projects', 'organizations', 'audit_log']) {
         if ((await client.query(`SELECT to_regclass($1) name`, [table])).rows[0].name) await client.query(`DELETE FROM ${table} WHERE tenant_id = ANY($1::uuid[])`, [[tenant, foreign]]);
       }
       await client.query(`DELETE FROM tenants WHERE id = ANY($1::uuid[])`, [[tenant, foreign]]);
@@ -260,6 +261,34 @@ test('master reads only their employer in a consolidated revision and commands s
   finally {await admin.query("UPDATE project_memberships SET status='active' WHERE tenant_id=$1 AND project_id=$2 AND user_id=$3",[tenant,project,hr]);}
 });
 
+
+test('назначенный мастер закрывает день, другой мастер нет', async () => {
+  const other = id();
+  await admin.query(`INSERT INTO users(id,email,name,password_hash) VALUES($1,$2,'Другой мастер',$3)`, [other, `${other}@primary.test`, hashPassword('primary-password')]);
+  await admin.query(`INSERT INTO memberships(tenant_id,user_id,role) VALUES($1,$2,'master')`, [tenant, other]);
+  await admin.query(`INSERT INTO project_memberships(tenant_id,project_id,user_id) VALUES($1,$2,$3)`, [tenant, project, other]);
+  await admin.query(`INSERT INTO employees(tenant_id,id,organization_id,user_id,full_name) VALUES($1,$2,$3,$4,'Другой мастер')`, [tenant, id(), org, other]);
+  const login = await fetch(`${base}/api/v1/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: `${other}@primary.test`, password: 'primary-password' }) });
+  assert.equal(login.status, 201);
+  tokens.set(other, (await login.json()).token);
+  for (const civil of ['2026-11-05', '2026-11-06']) await lifecycle(civil);
+  const open = await req(primary('2026-11-05'), undefined, other);
+  assert.equal((await req(`/projects/${project}/time/primary-days/2026-11-05/close`, { requestId: id(), expectedCloseVersion: 0, organizationId: org, sourceHash: open.body.liveHash }, other)).status, 201);
+  const configuration = defaultRouteConfiguration();
+  configuration.routes.find((route) => route.documentType === 'day-close')!.preparers[0]!.userId = master;
+  await admin.query(`INSERT INTO route_config_versions(tenant_id,project_id,version,schema_version,configuration,created_by) VALUES($1,$2,1,1,$3,$4)`, [tenant, project, JSON.stringify(configuration), director]);
+  const seen = await req(primary('2026-11-06'), undefined, other);
+  const deniedBody = { requestId: id(), expectedCloseVersion: 0, organizationId: org, sourceHash: seen.body.liveHash };
+  const denied = await req(`/projects/${project}/time/primary-days/2026-11-06/close`, deniedBody, other);
+  assert.equal(denied.status, 403);
+  assert.equal(denied.body.error, 'route_denied');
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM people_command_receipts WHERE tenant_id=$1 AND request_id=$2`, [tenant, deniedBody.requestId])).rows[0].n, 0);
+  const acceptBody = { requestId: id(), expectedCloseVersion: 0, organizationId: org, sourceHash: seen.body.liveHash };
+  const closed = await req(`/projects/${project}/time/primary-days/2026-11-06/close`, acceptBody);
+  assert.equal(closed.status, 201, JSON.stringify(closed.body));
+  assert.equal((await req(`/projects/${project}/time/primary-days/2026-11-06/close`, acceptBody)).status, 201);
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM primary_day_closes WHERE tenant_id=$1 AND day='2026-11-06'`, [tenant])).rows[0].n, 1);
+});
 
 test('invalid civil dates fail before a receipt or day is written',async()=>{
   for(const civil of ['not-a-day','2026-02-31','2026-13-01']) {

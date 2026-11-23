@@ -55,9 +55,15 @@ test.after(async()=>{
 test('all20 role identities survive storage/login and keep the actual role on me',async()=>{
  for(const user of users){const r=await call(user.id,'/api/v1/me');assert.equal(r.status,200,user.role);assert.equal(r.body.role,user.role);}
 });
-test('new reserved roles cannot enter legacy or v1 business handlers even with forged role hints',async()=>{
+test('new reserved roles cannot enter ungranted business handlers even with forged role hints',async()=>{
  for(const user of users.filter(u=>roleCatalog.find(r=>r.code===u.role)!.runtime==='reserved')){
   for(const [method,path]of [['GET','/api/desk'],['GET','/api/v1/employees'],['GET','/api/v1/projects'],['POST',`/api/projects/${project}/place`],['POST','/api/v1/execution/events'],['POST','/api/v1/invitations']]){
+   if(user.role==='subcontractor' && path==='/api/v1/employees'){
+    const list=await call(user.id,path);
+    assert.equal(list.status,200);
+    assert.equal(list.body.total,0);
+    continue;
+   }
    const r=await call(user.id,path!,method!,method==='POST'?{role:'director'}:undefined);assert.equal(r.status,403,`${user.role} ${method} ${path}`);assert.equal(r.body.error,'role_denied');
   }
  }

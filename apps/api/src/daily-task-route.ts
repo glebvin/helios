@@ -65,6 +65,12 @@ export async function dailyRouteReplayScope(c:PoolClient,a:Actor,p:string,id:str
  // Old successful receipts remain historical results; a routed receipt must retain its live scope.
  if(event&&await actorRole(c,a,p)!==event.actor_role)throw httpError(403,'role_denied');
 }
+async function routeDeadline(c:PoolClient,plannedEnd:string|Date|null){
+ if(!plannedEnd)return {dueAt:null,deadlineState:'not-configured'};
+ const dueAt=new Date(plannedEnd).toISOString();
+ const overdue=(await c.query(`SELECT $1::timestamptz < now() AS overdue`,[plannedEnd])).rows[0].overdue===true;
+ return {dueAt,deadlineState:overdue?'overdue':'scheduled'};
+}
 export async function dailyRouteRead(c:PoolClient,a:Actor,p:string,t:Row){
  const h=await dailyRouteHint(c,a,p,t.id);
  if(!h.configured)return {configured:false,taskVersion:t.version,route:null,allowedActions:null};
@@ -72,5 +78,6 @@ export async function dailyRouteRead(c:PoolClient,a:Actor,p:string,t:Row){
  const events=(await c.query(`SELECT id,attempt_id AS "attemptId",task_version AS "taskVersion",action,from_status AS "fromStatus",to_status AS "toStatus",actor_user_id AS "actorUserId",actor_name AS "actorName",reason,created_at AS "createdAt" FROM daily_task_route_events WHERE tenant_id=$1 AND project_id=$2 AND task_id=$3 ORDER BY task_version`,[a.tenantId,p,t.id])).rows;
  const holderId=t.status==='pending_approval'?h.attempt?.approverUserId:t.status==='draft'?h.daily?.preparers[0]?.userId:null;
  const holder=holderId?(await c.query('SELECT id AS "userId",name FROM users WHERE id=$1',[holderId])).rows[0]??null:null;
- return {configured:true,taskVersion:t.version,allowedActions:actions,route:{attempt:h.attempt?{id:h.attempt.id,number:h.attempt.attempt,configurationVersion:h.attempt.configVersion,planRevision:h.attempt.planRevision,snapshot:h.attempt.snapshot}:null,currentConfigurationVersion:h.config?.version??null,holder,dueAt:null,deadlineState:'not-configured',nextStep:t.status==='pending_approval'?(h.attempt?'approve-or-return':'reopen-and-submit'):t.status==='draft'?'prepare-and-submit':t.status==='published'?'execute':'none',history:events}};
+ const deadline=await routeDeadline(c,t.plannedEnd??null);
+ return {configured:true,taskVersion:t.version,allowedActions:actions,route:{attempt:h.attempt?{id:h.attempt.id,number:h.attempt.attempt,configurationVersion:h.attempt.configVersion,planRevision:h.attempt.planRevision,snapshot:h.attempt.snapshot}:null,currentConfigurationVersion:h.config?.version??null,holder,...deadline,nextStep:t.status==='pending_approval'?(h.attempt?'approve-or-return':'reopen-and-submit'):t.status==='draft'?'prepare-and-submit':t.status==='published'?'execute':'none',history:events}};
 }

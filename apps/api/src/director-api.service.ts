@@ -8,7 +8,7 @@ import type { Page } from "./api-input.js";
 // $1 = trusted actor role, $2 = trusted actor user ID. All callers use withTenant.
 // Project membership alone is insufficient for workers: their employee must be assigned.
 const projectVisible = `($1 = 'director' OR (
-  $1 IN ('master', 'pto', 'worker') AND EXISTS (
+  $1 IN ('master', 'pto', 'worker', 'safety') AND EXISTS (
     SELECT 1 FROM project_memberships pm WHERE pm.tenant_id = p.tenant_id
       AND pm.project_id = p.id AND pm.user_id = $2 AND pm.status = 'active'
   ) AND ($1 <> 'worker' OR EXISTS (
@@ -29,7 +29,11 @@ export function crewView(snapshot:{crewId:string;name:string;organizationId:stri
   return {id:snapshot.crewId,name:snapshot.name,organizationId:snapshot.organizationId,members:snapshot.members,volume};
 }
 const projectFields = `p.id, p.name`;
-const employeeFields = `e.id, e.full_name AS "fullName", e.phone, e.organization_id AS "organizationId", e.user_id AS "userId", e.version, e.status`;
+const employeeFields = `e.id, e.full_name AS "fullName",
+  CASE WHEN $1 <> 'subcontractor' THEN e.phone ELSE NULL END AS phone,
+  e.organization_id AS "organizationId",
+  CASE WHEN $1 <> 'subcontractor' THEN e.user_id ELSE NULL END AS "userId",
+  e.version, e.status`;
 
 export class DirectorApiService {
   constructor(private readonly pool: Pool) {}
@@ -81,17 +85,24 @@ export class DirectorApiService {
   }
 
   employeeVisible() {
-    return `(($3::uuid IS NULL AND ($1 IN ('director','hr') OR e.user_id = $2)) OR EXISTS (
+    return `(CASE WHEN $1 = 'subcontractor' THEN EXISTS (
+      SELECT 1 FROM employees own
+      JOIN organizations employer ON employer.tenant_id=own.tenant_id AND employer.id=own.organization_id AND employer.kind='subcontractor'
+      JOIN employee_project_assignments a ON a.tenant_id=e.tenant_id AND a.employee_id=e.id AND a.status='active'
+      JOIN project_memberships pm ON pm.tenant_id=a.tenant_id AND pm.project_id=a.project_id AND pm.user_id=$2 AND pm.status='active'
+      WHERE own.tenant_id=e.tenant_id AND own.user_id=$2 AND own.status='active'
+        AND own.organization_id=e.organization_id AND ($3::uuid IS NULL OR pm.project_id=$3)
+    ) ELSE (($3::uuid IS NULL AND ($1 IN ('director','hr') OR e.user_id = $2)) OR EXISTS (
       SELECT 1 FROM employee_project_assignments a JOIN projects p ON p.tenant_id = a.tenant_id AND p.id = a.project_id
       WHERE a.tenant_id = e.tenant_id AND a.employee_id = e.id AND a.status = 'active'
         AND ($3::uuid IS NULL OR p.id = $3) AND ${projectVisible}
         AND ($1 <> 'worker' OR e.user_id = $2)
-    ))`;
+    )) END)`;
   }
 
   employees(actor: Actor, page: Page, projectId?: string) {
     return this.with(actor, async (client) => {
-      if (projectId) await this.projectExists(client, actor, projectId);
+      if (projectId && actor.role !== 'subcontractor') await this.projectExists(client, actor, projectId);
       const values = [actor.role, actor.userId, projectId ?? null];
       const where = this.employeeVisible();
       const count = await client.query(`SELECT count(*)::int AS total FROM employees e WHERE ${where}`, values);

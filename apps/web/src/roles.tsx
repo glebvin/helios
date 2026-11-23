@@ -1,9 +1,9 @@
 export type View =
   | "gd" | "ds" | "zds-sso" | "zds-soso" | "rp"
   | "master" | "pto" | "supply" | "safety" | "hr"
-  | "customer" | "admin" | "worker" | "engineer-pto";
+  | "customer" | "admin" | "worker" | "engineer-pto" | "subcontractor";
 
-export type Section = "overview" | "mine" | "people" | "tasks" | "quality" | "materials" | "documents" | "objects" | "settings" | "orders" | "templates";
+export type Section = "overview" | "mine" | "people" | "tasks" | "quality" | "materials" | "documents" | "objects" | "settings" | "orders" | "templates" | "id-set";
 
 export type PeopleTab = "people" | "foremen" | "crews" | "sheet" | "contractors";
 export type QualityTab = "queue" | "check" | "remarks" | "history";
@@ -228,6 +228,7 @@ const desk: Access[] = [
     sections: [
       { id: "quality", label: "Приёмка" },
       { id: "tasks", label: "Задания" },
+      { id: "id-set", label: "Комплект" },
       { id: "documents", label: "Акты" },
       { id: "materials", label: "Материалы" },
       { id: "templates", label: "Шаблоны" },
@@ -255,7 +256,7 @@ const desk: Access[] = [
     ...look,
     id: "safety",
     label: "Охрана труда",
-    hint: "Охрана труда и пожарная безопасность. Согласует допуск. Сервер этого шага текущему входу не отдаёт.",
+    hint: "Охрана труда и пожарная безопасность. Согласует пройденную проверку допуска, когда маршрут называет этого сотрудника.",
     account: "director",
     sections: [{ id: "people", label: "Люди" }, { id: "templates", label: "Шаблоны" }],
     peopleTabs: ["people"],
@@ -313,11 +314,22 @@ const desk: Access[] = [
     ...look,
     id: "engineer-pto",
     label: "Инженер ПТО",
-    hint: "Готовит шаблон сдачи и следующую редакцию. Не заменяет руководителя ПТО.",
+    hint: "Готовит шаблон сдачи и комплект документов вида работ. Не заменяет руководителя ПТО.",
     account: "director",
-    sections: [{ id: "templates", label: "Шаблоны" }],
+    sections: [{ id: "templates", label: "Шаблоны" }, { id: "id-set", label: "Комплект" }],
     shell: "desk",
     overviewTitle: "Шаблоны сдачи",
+  },
+  {
+    ...look,
+    id: "subcontractor",
+    label: "Субподрядчик",
+    hint: "Видит работников только своей организации.",
+    account: "director",
+    sections: [{ id: "people", label: "Люди" }],
+    peopleTabs: ["people"],
+    shell: "desk",
+    overviewTitle: "Свои работники",
   },
   {
     ...look,

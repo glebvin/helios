@@ -161,6 +161,7 @@ function message(code: string) {
   if (code === "primary_close_required") return "Нет закрытого первичного дня.";
   if (code === "employer_denied") return "Этот работодатель вне области входа.";
   if (code === "role_denied") return "Этому входу это действие не разрешено.";
+  if (code === "route_denied") return "По маршруту это действие назначено другому сотруднику.";
   if (code === "open_intervals") return "Есть незакрытый интервал. День пока не закрывается.";
   if (code === "future_day") return "Этот день ещё не наступил.";
   if (code === "recorded_time_required") return "Записанного времени нет.";

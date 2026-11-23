@@ -1,3 +1,5 @@
+import { CustomerSubmissionsService } from "./customer-submissions.service.js";
+import { CustomerSubmissionZonesController, CustomerSubmissionsController } from "./customer-submissions.controller.js";
 import { InternalInspectionsService } from "./internal-inspections.service.js";
 import { InternalInspectionPolicyController, InternalInspectionsController } from "./internal-inspections.controller.js";
 import { VolumeReviewsService } from "./volume-reviews.service.js";
@@ -36,6 +38,8 @@ import { PeopleController } from "./people.controller.js";
 
 import {TasksService} from "./tasks.service.js";
 import {TasksController} from "./tasks.controller.js";
+import { IdSetController } from "./id-set.controller.js";
+import { IdSetService } from "./id-set.service.js";
 import {ExecutionService} from "./execution.service.js";
 import {ExecutionController} from "./execution.controller.js";
 
@@ -174,10 +178,11 @@ class WorkforceController {
 }
 
 @Module({
-  controllers: [InternalInspectionPolicyController, InternalInspectionsController, VolumeReviewsController, MaterialBatchController, MaterialBatchProjectController, StaffImportController, ChecklistRunsController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, ExecutionController, EvidenceController, TimeController],
+  controllers: [CustomerSubmissionZonesController, CustomerSubmissionsController, InternalInspectionPolicyController, InternalInspectionsController, VolumeReviewsController, MaterialBatchController, MaterialBatchProjectController, StaffImportController, ChecklistRunsController, PrimaryDayController, ChecklistTemplatesController, ContractPriceProjectController, ContractPriceController, ResponsibilityOrdersController, RouteConfigController, InvitationsController, AuthController, ReadyController, WorkforceController, DirectorApiController, VersionedAuthController, ApiSpecController, PeopleController, TasksController, IdSetController, ExecutionController, EvidenceController, TimeController],
 
 
   providers: [
+    {provide: CustomerSubmissionsService, useFactory: (pool: Pool) => new CustomerSubmissionsService(pool), inject: [APP_POOL]},
     {provide: InternalInspectionsService, useFactory: (pool: Pool) => new InternalInspectionsService(pool), inject: [APP_POOL]},
     {provide: VolumeReviewsService, useFactory: (pool: Pool) => new VolumeReviewsService(pool), inject: [APP_POOL]},
     { provide: MaterialBatchService, useFactory: (pool: Pool, storage: EvidenceBlobStore) => new MaterialBatchService(pool, storage), inject: [APP_POOL, EvidenceStorage] },
@@ -188,6 +193,7 @@ class WorkforceController {
     { provide: AuthService, useFactory: (pool: Pool) => new AuthService(pool), inject: [APP_POOL] },
     { provide: DirectorApiService, useFactory: (pool: Pool) => new DirectorApiService(pool), inject: [APP_POOL] },
     { provide: TasksService, useFactory: (pool:Pool,api:DirectorApiService,people:PeopleService) => new TasksService(pool,api,people), inject:[APP_POOL,DirectorApiService,PeopleService] },
+    { provide: IdSetService, useFactory: (pool: Pool) => new IdSetService(pool), inject: [APP_POOL] },
     { provide: PeopleService, useFactory: (pool: Pool, api: DirectorApiService) => new PeopleService(pool,api), inject: [APP_POOL,DirectorApiService] },
     { provide: ExecutionService, useFactory: (pool:Pool,people:PeopleService) => new ExecutionService(pool,people), inject: [APP_POOL,PeopleService] },
     {

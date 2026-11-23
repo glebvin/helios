@@ -79,15 +79,21 @@ test('cost maintains contract prices only inside an assigned project',()=>{
   assert.equal(allow('cost','prices.maintain',{...resource,tenantId:other}),false);
   for(const role of roleCatalog)if(role.code!=='cost')assert.equal(allow(role.code,'prices.maintain'),false);
 });
-test('reserved roles authenticate identity/logout but cannot fall through any business handler',async()=>{
+test('reserved roles authenticate identity/logout and deny business routes except explicit scoped contracts',async()=>{
   for(const role of roleCatalog.filter(r=>!isExistingRuntimeRole(r.code))){
     assert.equal(await guard(role.code,'GET','/api/v1/me'),true);
     assert.equal(await guard(role.code,'POST','/api/v1/auth/logout'),true);
     for(const [method,path]of [['GET','/api/desk'],['GET','/api/v1/employees'],['POST','/api/tasks'],['POST','/api/projects/x/place'],['POST','/api/v1/execution/events'],['POST','/api/v1/me']]){
+      if(role.code==='subcontractor' && path==='/api/v1/employees'){
+        assert.equal(await guard(role.code,method!,path),true);
+        continue;
+      }
       await assert.rejects(guard(role.code,method!,path!),{message:'role_denied'});
     }
   }
   await assert.rejects(guard('constructor','GET','/api/v1/me'),{message:'role_denied'});
+  await assert.rejects(guard('subcontractor','GET','/api/v1/overview'),{message:'role_denied'});
+  await assert.rejects(guard('subcontractor','POST','/api/v1/employees'),{message:'role_denied'});
   assert.equal(await guard('cost','GET','/api/v1/contract-prices/projects'),true);
   assert.equal(await guard('cost','POST',`/api/v1/projects/${project}/contract-prices`),true);
   assert.equal(await guard('cost','POST',`/api/v1/projects/${project}/contract-prices/checks`),true);

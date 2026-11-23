@@ -214,3 +214,38 @@ test('PDF не подменяет фотографию, а необязател�
   await admin.query(`INSERT INTO checklist_template_editions(tenant_id,project_id,template_id,edition,title,items,status,version,created_by) VALUES($1,$2,$3,2,'Фото необязательно',$4,'approved',1,$5)`,[tenant,project,key,JSON.stringify([{...photo,required:false,critical:false}]),master]);
   const optional=await step(master,target,{...body,answers:[]});assert.equal(optional.status,201,JSON.stringify(optional.body));assert.equal(optional.body.control.edition,2);assert.equal(optional.body.control.verdict,'awaiting');
 });
+
+test('просроченные данные ОМТС не обходят отказ партии', async () => {
+  const late = id(), refused = id();
+  for (const target of [late, refused]) {
+    await admin.query(`INSERT INTO material_batches(tenant_id,project_id,id,organization_id) VALUES($1,$2,$3,$4)`, [tenant, project, target, org]);
+    await admin.query(`INSERT INTO material_batch_revisions(tenant_id,project_id,batch_id,version,material_name,unit,batch_code,supplier_name,delivery_document,delivered_on,delivered_quantity,created_by) VALUES($1,$2,$3,1,'Кирпич','шт',$4,'Завод','УПД','2026-11-16','1.000',$5)`, [tenant, project, target, target.slice(0, 8), master]);
+  }
+  assert.equal((await step(master, late, { expectedVersion: 0, action: 'prepare', zoneId: zone, workTypeId: work, templateId: template, answers: [{ itemId: 'seal', value: 'yes' }] })).status, 201);
+  const requestId = id();
+  const markBody = { requestId, expectedVersion: 1, action: 'data', dataMark: 'overdue' };
+  const path = `/api/v1/projects/${project}/material-batches/${late}/control`;
+  const mark = await call(supply, path, markBody);
+  assert.equal(mark.status, 201, JSON.stringify(mark.body));
+  assert.equal(mark.body.control.steps.at(-1).dataMark, 'overdue');
+  assert.equal(mark.body.control.verdict, 'awaiting');
+  const replay = await call(supply, path, markBody);
+  assert.equal(replay.status, 201);
+  assert.equal(replay.body.control.steps.filter((row: { action: string }) => row.action === 'data').length, 1);
+  assert.deepEqual(replay.body.control.steps.find((row: { action: string }) => row.action === 'prepare').answers, [{ itemId: 'seal', value: 'yes' }]);
+  assert.equal((await step(director, late, { expectedVersion: 2, action: 'responsible' })).status, 201);
+  const agreed = await step(pto, late, { expectedVersion: 3, action: 'review', decision: 'agree' });
+  assert.equal(agreed.status, 201, JSON.stringify(agreed.body));
+  assert.equal(agreed.body.control.verdict, 'accepted');
+  const bad = await step(master, refused, { expectedVersion: 0, action: 'prepare', zoneId: zone, workTypeId: work, templateId: template, answers: [{ itemId: 'seal', value: 'no' }] });
+  assert.equal(bad.body.control.verdict, 'rejected');
+  const blocked = await step(supply, refused, { expectedVersion: 1, action: 'data', dataMark: 'overdue' });
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.body.error, 'control_refused');
+  assert.equal((await admin.query(`SELECT count(*)::int n FROM material_control_steps WHERE control_id=$1`, [bad.body.control.id])).rows[0].n, 1);
+  const task = { zoneId: zone, workTypeId: work, title: 'Кладка', workDate: '2026-11-16', plannedQuantity: '1', assigneeEmployeeId: employee, responsibleUserId: director, plannedStart: '2026-11-16T06:00:00.000Z', plannedEnd: '2026-11-16T14:00:00.000Z', rdReference: null };
+  assert.equal((await call(director, `/api/v1/projects/${project}/tasks`, { requestId: id(), ...task, materialBatchId: refused })).status, 409);
+  const usable = await call(director, `/api/v1/projects/${project}/material-batches?usable=1&zoneId=${zone}&workTypeId=${work}`);
+  assert.equal(usable.body.items.some((item: { id: string }) => item.id === refused), false);
+  assert.equal(usable.body.items.some((item: { id: string }) => item.id === late), true);
+});

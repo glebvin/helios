@@ -23,6 +23,7 @@ import { LiveInbox, LiveToday } from "./today";
 import { PtoFacts, PtoFiles } from "./facts";
 import { ChecklistTemplates } from "./checklist-templates-panel";
 import { ResponsibilityOrders } from "./responsibility-orders-panel";
+import { IdSetPanel } from "./id-set-panel";
 
 
 const icons: Record<Section, string> = {
@@ -34,6 +35,7 @@ const icons: Record<Section, string> = {
   quality: paths.shield,
   materials: paths.box,
   documents: paths.file,
+  "id-set": paths.file,
   templates: paths.list,
   objects: paths.pin,
   settings: paths.gear,
@@ -288,6 +290,7 @@ export function DirectorDesk({
             />
           )) : null}
           {page === "templates" ? <ChecklistTemplates session={session} projectId={templateProjectId} /> : null}
+          {page === "id-set" ? <IdSetPanel session={session} projectId={templateProjectId} /> : null}
           {page === "documents" ? (livePto ? (
             <PtoFiles session={session} projectId={templateProjectId} projectName={project} day={taskDay} notice={scope.notice} />
           ) : <Documents data={data} canConfirm={false} canDraft={canDraftAct} checklistNote={access.checklistNote} />) : null}
