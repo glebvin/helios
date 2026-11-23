@@ -86,6 +86,8 @@ export class PrimaryDayService {
     const command = revisionCommand(input);
     return this.command(actor, projectId, `POST /projects/${projectId}/time/consolidated/${day}/revisions`, command, async (client) => {
       if ((await this.role(client, actor, projectId)) !== "hr") throw httpError(403, "role_denied");
+      const approver = await this.sheetApprover(client, actor, projectId);
+      if (approver && approver !== actor.userId) throw httpError(403, "route_denied");
       await client.query(`SELECT revision FROM consolidated_time_heads WHERE tenant_id=$1 AND project_id=$2 AND day=$3 FOR NO KEY UPDATE`, [actor.tenantId, projectId, day]);
       const head = await this.latestRevision(client, actor, projectId, day);
       const current = head ? Number(head.revision) : 0;
@@ -156,6 +158,13 @@ export class PrimaryDayService {
     const stored = (await client.query(`SELECT configuration FROM route_config_versions WHERE tenant_id=$1 AND project_id=$2 ORDER BY version DESC LIMIT 1`, [actor.tenantId, projectId])).rows[0];
     const route = stored?.configuration?.routes?.find((item: { documentType?: string }) => item.documentType === "day-close");
     const userId = route?.preparers?.[0]?.userId;
+    return typeof userId === "string" ? userId : null;
+  }
+
+  private async sheetApprover(client: PoolClient, actor: Actor, projectId: string) {
+    const stored = (await client.query(`SELECT configuration FROM route_config_versions WHERE tenant_id=$1 AND project_id=$2 ORDER BY version DESC LIMIT 1`, [actor.tenantId, projectId])).rows[0];
+    const route = stored?.configuration?.routes?.find((item: { documentType?: string }) => item.documentType === "consolidated-timesheet");
+    const userId = route?.approvers?.[0]?.userId;
     return typeof userId === "string" ? userId : null;
   }
 
