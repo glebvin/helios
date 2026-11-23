@@ -39,6 +39,8 @@ export class PrimaryDayService {
     const command = closeCommand(input);
     return this.command(actor, projectId, `POST /projects/${projectId}/time/primary-days/${day}/close`, command, async (client) => {
       if ((await this.role(client, actor, projectId)) !== "master") throw httpError(403, "role_denied");
+      const preparer = await this.dayPreparer(client, actor, projectId);
+      if (preparer && preparer !== actor.userId) throw httpError(403, "route_denied");
       const organization = await this.organization(client, actor, projectId, "master", command.organizationId);
       const current = await this.closeRow(client, actor, projectId, organization, day);
       if ((current ? 1 : 0) !== command.expectedCloseVersion) throw httpError(409, "stale_version");
@@ -148,6 +150,13 @@ export class PrimaryDayService {
     const assigned = await client.query(`SELECT 1 FROM employees e JOIN employee_project_assignments a ON a.tenant_id=e.tenant_id AND a.employee_id=e.id WHERE e.tenant_id=$1 AND e.organization_id=$2 AND a.project_id=$3 AND a.status='active' AND e.status='active' UNION ALL SELECT 1 FROM primary_day_closes WHERE tenant_id=$1 AND organization_id=$2 AND project_id=$3 LIMIT 1`, [actor.tenantId, requested, projectId]);
     if (!assigned.rowCount) throw httpError(403, "employer_denied");
     return requested;
+  }
+
+  private async dayPreparer(client: PoolClient, actor: Actor, projectId: string) {
+    const stored = (await client.query(`SELECT configuration FROM route_config_versions WHERE tenant_id=$1 AND project_id=$2 ORDER BY version DESC LIMIT 1`, [actor.tenantId, projectId])).rows[0];
+    const route = stored?.configuration?.routes?.find((item: { documentType?: string }) => item.documentType === "day-close");
+    const userId = route?.preparers?.[0]?.userId;
+    return typeof userId === "string" ? userId : null;
   }
 
   private async closeRow(client: PoolClient, actor: Actor, projectId: string, organization: string, day: string) {
