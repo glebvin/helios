@@ -21306,10 +21306,11 @@
       "CustomerRemark": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "body", "responsibleEmployeeId", "dueOn", "closedAt", "photos", "taskId"],
+        "required": ["id", "body", "attemptNumber", "responsibleEmployeeId", "dueOn", "closedAt", "photos", "taskId"],
         "properties": {
           "id": {"type": "string", "format": "uuid"},
           "body": {"type": "string"},
+          "attemptNumber": {"type": "integer", "minimum": 1},
           "responsibleEmployeeId": {"type": "string", "format": "uuid"},
           "dueOn": {"type": "string", "format": "date"},
           "closedAt": {"type": "string", "format": "date-time", "nullable": true},

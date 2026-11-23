@@ -8,7 +8,7 @@ import { NoteMark } from "./note-mark";
 import { customerLine } from "./customer-submission-text";
 
 type FileRow = { fileId: string; filename: string; contentType: string };
-type Remark = { id: string; body: string; dueOn: string; closedAt: string | null; photos: FileRow[]; taskId: string };
+type Remark = { id: string; body: string; attemptNumber: number; dueOn: string; closedAt: string | null; photos: FileRow[]; taskId: string };
 type Card = { recorded: boolean; attemptNumber: number | null; openRemarks: number; remarks: Remark[]; scans: FileRow[] };
 type Person = { id: string; fullName: string };
 const ease = [0.23, 1, 0.32, 1] as const;
@@ -112,7 +112,7 @@ export function CustomerSubmission({ session, projectId, partId }: { session: Se
           ))}
           {card.scans.map((scan) => <p key={scan.fileId} className="quiet">Скан: {scan.filename}</p>)}
           {master && !card.recorded ? <button className="fill desk-action" type="button" disabled={busy || held} onClick={() => void send(path, { expectedVersion: 0 }, "Внешняя заявка записана сервером.")}>Записать внешнюю заявку</button> : null}
-          {master && card.recorded && card.remarks.length > 0 && card.openRemarks === 0 ? <button className="fill desk-action" type="button" disabled={busy || held} onClick={() => void send(path, { expectedVersion: card.attemptNumber }, "Повтор заявки записан сервером.")}>Повторить заявку</button> : null}
+          {master && card.recorded && card.remarks.some((r) => r.attemptNumber === card.attemptNumber) && card.openRemarks === 0 ? <button className="fill desk-action" type="button" disabled={busy || held} onClick={() => void send(path, { expectedVersion: card.attemptNumber }, "Повтор заявки записан сервером.")}>Повторить заявку</button> : null}
           {master && card.recorded ? (
             <form onSubmit={(event) => { event.preventDefault(); void send(`${path}/remarks`, { body: body.trim(), responsibleEmployeeId: person, dueOn }, "Замечание записано сервером."); }}>
               <label className="field"><span>Замечание</span><textarea aria-label="Замечание" required maxLength={500} disabled={busy || held} value={body} onChange={(event) => setBody(event.target.value)} onFocus={() => void openPeople()} /></label>

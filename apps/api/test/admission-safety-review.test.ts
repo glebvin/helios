@@ -120,6 +120,12 @@ test('named safety reviewer agrees a passed check; anyone else cannot', async ()
   const again = await req(review, command(), safety);
   assert.equal(again.status, 409);
   assert.equal(again.body.error, 'already_reviewed');
+  configuration.routes.find(route => route.documentType === 'employee-admission')!.reviewers.push({ role: 'safety', userId: otherSafety });
+  await admin.query(`INSERT INTO route_config_versions(tenant_id,project_id,version,schema_version,configuration,created_by) VALUES($1,$2,2,1,$3,$4)`, [tenant, project, JSON.stringify(configuration), director]);
+  assert.equal((await req(review)).body.recorded, false);
+  assert.equal((await req(`/projects/${project}/assignments/${employee}`, command({ expectedVersion: 2, status: 'active', admissionCheckId: passed.body.id }), director, 'PUT')).status, 422);
+  assert.equal((await req(review, command(), otherSafety)).status, 201);
+  assert.equal((await req(review)).body.recorded, true);
   const accepted = await req(`/projects/${project}/assignments/${employee}`, command({ expectedVersion: 2, status: 'active', admissionCheckId: passed.body.id }), director, 'PUT');
   assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
   assert.equal(accepted.body.currentAdmission.eligible, true);

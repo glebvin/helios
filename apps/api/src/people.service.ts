@@ -217,9 +217,9 @@ export class PeopleService {
   safetyReview(a:Actor,e:string,check:string) {
     return this.with(a,async c=>{
       const row=await this.visibleCheck(c,a,e,check);
-      const required=await this.safetyReviewer(c,row.projectId);
-      const recorded=(await c.query(`SELECT recorded_at::text AS "recordedAt" FROM admission_safety_reviews WHERE check_id=$1`,[check])).rows[0];
-      return {recorded:!!recorded,required:typeof required==='string',recordedAt:recorded?.recordedAt??null};
+      const reviewers=await this.safetyReviewers(c,row.projectId);
+      const required=a.role==='safety' ? reviewers.filter(userId=>userId===a.userId) : reviewers;
+      return this.safetyReviewStatus(c,check,required);
     });
   }
   async writeSafetyReview(a:Actor,e:string,check:string,input:unknown) {
@@ -227,16 +227,15 @@ export class PeopleService {
     const b=safetyReviewInput(input);
     const operation=`POST /employees/${e}/admission-checks/${check}/safety-review`;
     try { return await this.with(a,async c=>{
-      await this.safety(c,a);
-      const row=await this.visibleCheck(c,a,e,check);
       const {inserted,hash}=await reserveCommand(c,a,operation,b);
+      const row=await this.visibleCheck(c,a,e,check,true);
       await this.safety(c,a);
       if(!inserted) return replayCommand(c,a,b.requestId,hash);
       if(!row.snapshot.passed) throw httpError(422,'check_not_passed');
-      const reviewer=await this.safetyReviewer(c,row.projectId);
-      if(typeof reviewer!=='string') throw httpError(422,'reviewer_not_assigned');
-      if(reviewer!==a.userId) throw httpError(403,'route_denied');
-      if((await c.query(`SELECT 1 FROM admission_safety_reviews WHERE check_id=$1`,[check])).rowCount) throw httpError(409,'already_reviewed');
+      const reviewers=await this.safetyReviewers(c,row.projectId);
+      if(reviewers.length===0) throw httpError(422,'reviewer_not_assigned');
+      if(!reviewers.includes(a.userId)) throw httpError(403,'route_denied');
+      if((await this.safetyReviewStatus(c,check,[a.userId])).recorded) throw httpError(409,'already_reviewed');
       const recordedAt=(await c.query(`SELECT clock_timestamp()::text AS time`)).rows[0].time;
       await c.query(`INSERT INTO admission_safety_reviews(tenant_id,id,project_id,employee_id,check_id,reviewer_user_id,actor_user_id,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,[a.tenantId,randomUUID(),row.projectId,e,check,a.userId,a.userId,b.requestId]);
       return completeCommand(c,a,b.requestId,201,{recorded:true,required:true,recordedAt});
@@ -247,27 +246,32 @@ export class PeopleService {
     }
   }
   private async safety(c:PoolClient,a:Actor) {
-    if(a.role!=='safety' || !(await c.query(`SELECT 1 FROM memberships WHERE user_id=$1 AND role='safety' AND status='active'`,[a.userId])).rowCount) throw httpError(403,'role_denied');
+    if(a.role!=='safety' || !(await c.query(`SELECT 1 FROM memberships WHERE user_id=$1 AND role='safety' AND status='active' FOR SHARE`,[a.userId])).rowCount) throw httpError(403,'role_denied');
   }
-  private async visibleCheck(c:PoolClient,a:Actor,e:string,check:string) {
+  private async visibleCheck(c:PoolClient,a:Actor,e:string,check:string,lock=false) {
     const row=(await c.query(`SELECT project_id AS "projectId",snapshot FROM employee_admission_checks WHERE employee_id=$1 AND id=$2`,[e,check])).rows[0];
     if(!row) throw httpError(404,'not_found');
+    if(lock) await c.query(`SELECT id FROM projects WHERE id=$1 FOR SHARE`,[row.projectId]);
     if(a.role==='director') await this.api.projectExists(c,a,row.projectId);
     else if(['master','pto','safety'].includes(a.role)) {
-      if(!(await c.query(`SELECT 1 FROM project_memberships WHERE project_id=$1 AND user_id=$2 AND status='active'`,[row.projectId,a.userId])).rowCount) throw httpError(404,'not_found');
+      if(!(await c.query(`SELECT 1 FROM project_memberships WHERE project_id=$1 AND user_id=$2 AND status='active' ${lock?'FOR SHARE':''}`,[row.projectId,a.userId])).rowCount) throw httpError(404,'not_found');
     } else throw httpError(403,'role_denied');
     return row;
   }
-  private async safetyReviewer(c:PoolClient,projectId:string) {
+  private async safetyReviewers(c:PoolClient,projectId:string): Promise<string[]> {
     const stored=(await c.query(`SELECT configuration FROM route_config_versions WHERE project_id=$1 ORDER BY version DESC LIMIT 1`,[projectId])).rows[0];
     const route=stored?.configuration?.routes?.find((item:{documentType?:string})=>item.documentType==='employee-admission');
-    const userId=route?.reviewers?.[0]?.userId;
-    return typeof userId==='string'?userId:null;
+    return (route?.reviewers ?? []).flatMap((item: { userId: string | null }) => item.userId ? [item.userId] : []);
+  }
+  private async safetyReviewStatus(c:PoolClient,checkId:string,reviewers:string[]) {
+    if(!reviewers.length) return {recorded:false,required:false,recordedAt:null};
+    const {count,recordedAt}=(await c.query(`SELECT count(*)::int AS count,max(recorded_at)::text AS "recordedAt" FROM admission_safety_reviews WHERE check_id=$1 AND reviewer_user_id=ANY($2::uuid[])`,[checkId,reviewers])).rows[0];
+    const recorded=count===reviewers.length;
+    return {recorded,required:true,recordedAt:recorded?recordedAt:null};
   }
   private async safetyReviewRequired(c:PoolClient,projectId:string,checkId:string) {
-    const reviewer=await this.safetyReviewer(c,projectId);
-    if(typeof reviewer!=='string') return false;
-    return !(await c.query(`SELECT 1 FROM admission_safety_reviews WHERE check_id=$1`,[checkId])).rowCount;
+    const status=await this.safetyReviewStatus(c,checkId,await this.safetyReviewers(c,projectId));
+    return status.required&&!status.recorded;
   }
   approval(a:Actor,e:string,check:string) {
     return this.with(a,async c=>{
@@ -283,8 +287,8 @@ export class PeopleService {
     const operation=`POST /employees/${e}/admission-checks/${check}/approval`;
     try { return await this.with(a,async c=>{
       await this.director(c,a);
-      const row=await this.visibleCheck(c,a,e,check);
       const {inserted,hash}=await reserveCommand(c,a,operation,b);
+      const row=await this.visibleCheck(c,a,e,check,true);
       await this.director(c,a);
       if(!inserted) return replayCommand(c,a,b.requestId,hash);
       if(!row.snapshot.passed) throw httpError(422,'check_not_passed');

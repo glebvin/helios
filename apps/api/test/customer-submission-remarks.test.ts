@@ -37,6 +37,8 @@ test('повтор внешней заявки ждёт закрытия зам�
   const again = await expect(f.call(root(1), f.command({ expectedVersion: 1 }), 'master'), 201);
   assert.equal(again.attemptNumber, 2);
   assert.equal(again.openRemarks, 0);
+  assert.equal(again.remarks[0].attemptNumber, 1);
+  assert.equal((await expect(f.call(root(1), f.command({ expectedVersion: 2 }), 'master'), 422)).error, 'remarks_required');
   assert.equal((await admin.query(`SELECT count(*)::int n FROM customer_submission_attempts WHERE accepted_part_id=$1`, [f.parts[1].partId])).rows[0].n, 2);
   assert.equal((await admin.query(`SELECT count(*)::int n FROM accepted_volume_parts WHERE id=$1`, [f.parts[1].partId])).rows[0].n, 1);
 });

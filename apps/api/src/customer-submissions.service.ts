@@ -9,7 +9,7 @@ import { executionScope, executionJoin } from './execution-read.js';
 import { reserveCommand, replayCommand, completeCommand } from './durable-command.js';
 
 type Part = { id: string; taskId: string; replacedBy: { id: string } | null };
-const remarkRow = `SELECT r.id, r.body, r.responsible_employee_id AS "responsibleEmployeeId", r.due_on::text AS "dueOn", r.closed_at AS "closedAt", t.id AS "taskId" FROM customer_submission_remarks r JOIN customer_remark_tasks t ON t.tenant_id=r.tenant_id AND t.remark_id=r.id`;
+const remarkRow = `SELECT r.id, r.body, r.attempt_number AS "attemptNumber", r.responsible_employee_id AS "responsibleEmployeeId", r.due_on::text AS "dueOn", r.closed_at AS "closedAt", t.id AS "taskId" FROM customer_submission_remarks r JOIN customer_remark_tasks t ON t.tenant_id=r.tenant_id AND t.remark_id=r.id`;
 function input(value: unknown) {
   const b = object(value, ['requestId', 'expectedVersion']);
   return { requestId: uuid(b.requestId).toLowerCase(), expectedVersion: integer(b.expectedVersion, 0) };
@@ -71,13 +71,13 @@ export class CustomerSubmissionsService {
       if ((current.attemptNumber ?? 0) !== b.expectedVersion) throw httpError(409, 'stale_version');
       const selfControl = (await c.query(`SELECT id, passed, blocks_next AS "blocksNext" FROM checklist_runs WHERE project_id=$1 AND task_id=$2 ORDER BY version DESC LIMIT 1`, [project, source.taskId])).rows[0] ?? null;
       if (!selfControl?.passed || selfControl.blocksNext) throw httpError(422, 'self_control_required');
-      if (!current.recorded && await this.requirement(c, project, source.taskId)) {
+      if (await this.requirement(c, project, source.taskId)) {
         const state = (await c.query(`SELECT to_state FROM internal_inspection_events WHERE accepted_part_id=$1 ORDER BY version DESC LIMIT 1`, [id])).rows[0]?.to_state ?? 'not_submitted';
         if (state !== 'accepted') throw httpError(422, 'internal_inspection_required');
       }
       const nextAttempt = (current.attemptNumber ?? 0) + 1;
       if (current.recorded) {
-        if (current.remarks.length === 0) throw httpError(422, 'remarks_required');
+        if (!current.remarks.some((r: { attemptNumber: number }) => r.attemptNumber === current.attemptNumber)) throw httpError(422, 'remarks_required');
         if (current.openRemarks > 0) throw httpError(422, 'remarks_open');
         await c.query(`UPDATE customer_submissions SET attempt_number=$3, checklist_run_id=$4, request_id=$5 WHERE accepted_part_id=$1 AND project_id=$2`, [id, project, nextAttempt, selfControl.id, b.requestId]);
       } else {
@@ -96,12 +96,13 @@ export class CustomerSubmissionsService {
       if (!(await c.query(`SELECT id FROM projects WHERE id=$1 FOR NO KEY UPDATE`, [project])).rowCount) throw httpError(404, 'not_found');
       await this.part(c, a, project, id);
       if (!receipt.inserted) return replayCommand(c, a, b.requestId, receipt.hash);
-      if (!(await c.query(`SELECT 1 FROM customer_submissions WHERE project_id=$1 AND accepted_part_id=$2`, [project, id])).rowCount) throw httpError(422, 'submission_required');
+      const submission = (await c.query(`SELECT attempt_number FROM customer_submissions WHERE project_id=$1 AND accepted_part_id=$2`, [project, id])).rows[0];
+      if (!submission) throw httpError(422, 'submission_required');
       const responsible = (await c.query(`SELECT e.id FROM employees e JOIN employee_project_assignments a ON a.tenant_id=e.tenant_id AND a.employee_id=e.id WHERE e.tenant_id=$1 AND e.id=$2 AND e.status='active' AND a.project_id=$3 AND a.status='active'`, [a.tenantId, b.responsibleEmployeeId, project])).rowCount;
       if (!responsible) throw httpError(422, 'responsible_not_assigned');
       const remarkId = randomUUID();
       const taskId = randomUUID();
-      await c.query(`INSERT INTO customer_submission_remarks(tenant_id,id,accepted_part_id,project_id,body,responsible_employee_id,due_on,actor_user_id,request_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, [a.tenantId, remarkId, id, project, b.body, b.responsibleEmployeeId, b.dueOn, a.userId, b.requestId]);
+      await c.query(`INSERT INTO customer_submission_remarks(tenant_id,id,accepted_part_id,project_id,body,responsible_employee_id,due_on,actor_user_id,request_id,attempt_number) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, [a.tenantId, remarkId, id, project, b.body, b.responsibleEmployeeId, b.dueOn, a.userId, b.requestId, submission.attempt_number]);
       await c.query(`INSERT INTO customer_remark_tasks(tenant_id,id,remark_id,project_id,assignee_employee_id,due_on) VALUES($1,$2,$3,$4,$5,$6)`, [a.tenantId, taskId, remarkId, project, b.responsibleEmployeeId, b.dueOn]);
       const saved = (await this.withPhotos(c, (await c.query(`${remarkRow} WHERE r.id=$1`, [remarkId])).rows))[0];
       await c.query(`INSERT INTO audit_log(tenant_id,actor_user_id,action,object_type,object_id,result,details) VALUES($1,$2,'quality.customer_remark','accepted_part',$3,'ok',$4)`, [a.tenantId, a.userId, id, JSON.stringify({ requestId: b.requestId, remarkId })]);
@@ -184,7 +185,9 @@ export class CustomerSubmissionsService {
   async download(a: Actor, project: string, id: string, remark: string, photo: string) {
     return withTenant(this.pool, a.tenantId, a.userId, async c => {
       await this.part(c, a, project, id);
-      const file = (await c.query(`SELECT filename, content_type AS "contentType", bytes FROM customer_remark_photos WHERE project_id=$1 AND remark_id=$2 AND id=$3`, [project, remark, photo])).rows[0];
+      const file = (await c.query(`SELECT f.filename, f.content_type AS "contentType", f.bytes FROM customer_remark_photos f
+        JOIN customer_submission_remarks r ON r.tenant_id=f.tenant_id AND r.id=f.remark_id
+        WHERE r.project_id=$1 AND r.accepted_part_id=$2 AND r.id=$3 AND f.id=$4`, [project, id, remark, photo])).rows[0];
       if (!file) throw httpError(404, 'not_found');
       return { filename: file.filename as string, contentType: file.contentType as string, bytes: file.bytes as Buffer };
     });

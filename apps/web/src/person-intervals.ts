@@ -1,4 +1,4 @@
-import { durationLabel } from "./worker-day";
+import { durationLabel } from "./worker-day.ts";
 
 type Day = { recorded: boolean; source: { totals: { breakMs: string; downtimeMs: string }; hasOpenIntervals: boolean } };
 
