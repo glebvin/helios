@@ -119,6 +119,7 @@ export function frontReason(reason: string, items: FrontItem[] = []) {
 
 export function frontError(status: number | null, code = "") {
   if (status === 401) return "Сессия закончилась. Войдите снова.";
+  if (status === 403 && code === "route_denied") return "Проверку фронта записывает назначенный мастер.";
   if (status === 403) return "Этой роли проверка фронта недоступна.";
   if (status === 404) return "Задание, объект или чек-лист недоступны этому входу.";
   if (status === 409 && code === "template_changed") return "Шаблон изменён. Прочитайте текущую версию и ответьте заново.";
