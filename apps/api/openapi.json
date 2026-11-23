@@ -21314,7 +21314,7 @@
       "CustomerSubmission": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["recorded", "attemptNumber", "acceptedPartId", "checklistRunId", "recordedAt", "quantity", "openRemarks", "remarks", "scans", "decision", "decisions"],
+        "required": ["recorded", "attemptNumber", "acceptedPartId", "checklistRunId", "recordedAt", "quantity", "openRemarks", "remarks", "scans", "decision", "decisions", "idDebt"],
         "properties": {
           "recorded": {"type": "boolean"},
           "attemptNumber": {"type": "integer", "minimum": 1, "nullable": true},
@@ -21326,7 +21326,8 @@
           "remarks": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerRemark"}},
           "scans": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerSubmissionScan"}},
           "decision": {"allOf": [{"$ref": "#/components/schemas/CustomerExternalDecision"}], "nullable": true},
-          "decisions": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerExternalDecision"}}
+          "decisions": {"type": "array", "items": {"$ref": "#/components/schemas/CustomerExternalDecision"}},
+          "idDebt": {"allOf": [{"$ref": "#/components/schemas/AcceptedPartIdDebt"}], "nullable": true}
         }
       },
       "CustomerRemark": {
@@ -21425,6 +21426,15 @@
         "additionalProperties": false,
         "required": ["requestId"],
         "properties": {"requestId": {"type": "string", "format": "uuid"}}
+      },
+      "AcceptedPartIdDebt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["version", "titles"],
+        "properties": {
+          "version": {"type": "integer", "minimum": 1},
+          "titles": {"type": "array", "minItems": 1, "items": {"type": "string"}}
+        }
       },
       "CustomerExternalDecision": {
         "type": "object",
