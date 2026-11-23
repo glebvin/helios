@@ -24,7 +24,7 @@ test.after(async()=>{await app?.close();try{if(fixture)await removeDailyFixture(
 test('master sends to the explicitly assigned RP; publication keeps route version separate from execution responsible',async()=>{
  let t=await newReadyDayTask(s);assert.ok((await route(t)).allowedActions.includes('submit'));
  for(const key of ['rp','rp2','master2','worker','pto','admin'])assert.equal((await dailyRequest(s,path(t)+'/submit',key,'POST',body(t,'submit'))).status,403,key);
- t=await dailyAction(s,t,'submit');const info=await route(t,'rp');assert.equal(info.route.holder.userId,user('rp').id);assert.equal(info.route.nextStep,'approve-or-return');assert.equal(info.route.dueAt,null);
+ t=await dailyAction(s,t,'submit');const info=await route(t,'rp');assert.equal(info.route.holder.userId,user('rp').id);assert.equal(info.route.nextStep,'approve-or-return');assert.equal(info.route.deadlineState,'scheduled');assert.equal(new Date(info.route.dueAt).toISOString(),new Date(t.plannedEnd).toISOString());
  assert.equal(info.route.attempt.configurationVersion,s.configurationVersion);assert.equal(t.responsibleUserId,user('master').id);
  for(const key of ['rp2','master','worker','pto','admin'])assert.equal((await dailyRequest(s,path(t)+'/publish',key,'POST',body(t,'publish'))).status,403,key);
  t=await dailyAction(s,t,'publish','rp');assert.equal(t.status,'published');assert.deepEqual(await counts(t),{attempts:1,events:2,publications:1});
@@ -97,6 +97,23 @@ test('legacy SQL without a route event fails closed, histories are immutable and
  assert.equal((await dailyRequest(s,path(t)+'/route','worker')).status,403);
  assert.equal((await dailyRequest(s,path(t)+'/route','rp','GET',undefined,fixture.foreignId)).status,403);
  assert.equal((await dailyRequest(s,`/projects/${fixture.otherProjectId}/tasks/${t.id}/route`,'master')).status,404);
+});
+test('просроченный план виден и не снимает запрет публикации',async()=>{
+ let t=await newReadyDayTask(s);
+ await admin.query(`UPDATE daily_tasks SET work_date=(timezone('Europe/Moscow',now()))::date, planned_start=date_trunc('day',timezone('Europe/Moscow',now())) AT TIME ZONE 'Europe/Moscow', planned_end=now()-interval '1 minute' WHERE tenant_id=$1 AND id=$2`,[fixture.tenantId,t.id]);
+ assert.equal((await route(t)).route.deadlineState,'overdue');
+ t=await dailyAction(s,t,'submit');
+ assert.equal((await route(t,'rp')).route.deadlineState,'overdue');
+ const changed=await dailyRequest(s,`/projects/${fixture.projectId}/work-types/${s.workType.id}`,'rp','PUT',{requestId:randomUUID(),expectedVersion:s.workType.version,name:s.workType.name,unit:s.workType.unit,status:'active',requiresRd:s.workType.requiresRd,requiresMaterialControl:s.workType.requiresMaterialControl,requiresPredecessorAcceptance:s.workType.requiresPredecessorAcceptance,requiresId:true});
+ assert.equal(changed.status,200);s.workType=changed.body;
+ let blocked=await newReadyDayTask(s);
+ await admin.query(`UPDATE daily_tasks SET work_date=(timezone('Europe/Moscow',now()))::date, planned_start=date_trunc('day',timezone('Europe/Moscow',now())) AT TIME ZONE 'Europe/Moscow', planned_end=now()-interval '1 minute' WHERE tenant_id=$1 AND id=$2`,[fixture.tenantId,blocked.id]);
+ blocked=await dailyAction(s,blocked,'submit');
+ assert.equal((await route(blocked,'rp')).route.deadlineState,'overdue');
+ assert.equal((await dailyRequest(s,path(blocked)+'/publish','rp','POST',body(blocked,'publish'))).status,422);
+ assert.deepEqual(await counts(blocked),{attempts:1,events:1,publications:0});
+ const reset=await dailyRequest(s,`/projects/${fixture.projectId}/work-types/${s.workType.id}`,'rp','PUT',{requestId:randomUUID(),expectedVersion:s.workType.version,name:s.workType.name,unit:s.workType.unit,status:'active',requiresRd:false,requiresMaterialControl:false,requiresPredecessorAcceptance:false,requiresId:false});
+ assert.equal(reset.status,200);s.workType=reset.body;
 });
 test('saving config while task locks a linked admin follows project-before-memberships and cannot deadlock',async()=>{
  await admin.query('UPDATE employees SET user_id=$1 WHERE tenant_id=$2 AND id=$3',[user('admin').id,fixture.tenantId,s.employee.id]);

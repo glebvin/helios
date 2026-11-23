@@ -14,7 +14,7 @@ export async function dailyRouteUi(browser,base,out,data,label,beforeBase){
  async function open(page){
   const project=page.getByLabel('Объект',{exact:true});await project.waitFor();if(await project.inputValue()!==f.projectId)await project.selectOption(f.projectId);
   await page.getByRole('button',{name:'Задания',exact:true}).click();await page.getByRole('button',{name:task.title,exact:true}).click();await page.getByRole('heading',{name:task.title,exact:true}).waitFor();
-  const panel=page.getByRole('region',{name:'Согласование',exact:true});await panel.getByText('Не настроен',{exact:true}).waitFor();return panel;
+  const panel=page.getByRole('region',{name:'Согласование',exact:true});await panel.getByText(/\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}/).waitFor();assert.equal(await panel.getByText('Не настроен',{exact:true}).count(),0);return panel;
  }
  const get=async(path)=>{const r=await fetch(state.base+'/api/v1'+path,{headers:{authorization:`Bearer ${state.tokens.rp}`,'x-tenant-id':f.tenantId}});assert.equal(r.status,200);return r.json();};
  const taskPath=`/projects/${f.projectId}/tasks/${task.id}`;
