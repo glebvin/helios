@@ -9,7 +9,7 @@ test("неполная страница решений не подменяет �
 test("без решения мастера подпись прежняя", () => {
   const map = masterDecisionMap([{ reportId: "a", totalAcceptedQuantity: null }], 1);
   assert.equal(boardVolumeLabel("18.000", "м2", map?.a), "18.000 м2 · не принято");
-  assert.equal(boardVolumeLabel("18.000", "м2", undefined, true), "Сообщено 18.000 м2. Не принято.");
+  assert.equal(boardVolumeLabel("18.000", "м2", undefined, true), "Сообщено 18.000 м2. Решение не прочитано.");
 });
 
 test("записанное мастером количество видно на карточке", () => {

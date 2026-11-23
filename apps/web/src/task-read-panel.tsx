@@ -63,6 +63,9 @@ export function TaskRead({ session, projectId, day, notice = "", compact = false
       try {
         const rows = await v1<Page>(session, taskListPath(projectId, day, offset));
         if (!live) return;
+        if (stamp !== scope) {
+          setReported(null); setDecisions(null); setVolumeNote(""); setDecisionNote("");
+        }
         setPage(rows); setError(""); setStamp(scope);
         if (offset && offset >= rows.total) setOffset(Math.max(0, Math.floor((rows.total - 1) / 25) * 25));
         const [people, zones, types] = await Promise.all([

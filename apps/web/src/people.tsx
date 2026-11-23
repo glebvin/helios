@@ -346,6 +346,8 @@ function Profile({
             <div className="person-column">
             <section className="panel">
               <h2>Сегодня</h2>
+              {intervals ? <div className="day-facts"><div><b>{todayShift ? clock(todayShift.started_at) || "—" : "—"}</b><span>Начало</span></div></div> : null}
+              {intervals && todayShift?.clock_requires_review ? <p className="quiet person-note">Отметка ждёт проверки. Учтённое время подтверждается после неё.</p> : null}
               {intervals ?? <>
               <div className="day-facts">
                 <div><b>{todayShift ? clock(todayShift.started_at) || "—" : "—"}</b><span>Начало</span></div>

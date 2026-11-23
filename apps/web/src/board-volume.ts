@@ -4,6 +4,7 @@ export function masterDecisionMap(items: { reportId: string; totalAcceptedQuanti
 }
 
 export function boardVolumeLabel(submitted: string, unit: string, accepted: string | null | undefined, list = false) {
-  if (typeof accepted !== "string") return list ? `Сообщено ${submitted} ${unit}. Не принято.` : `${submitted} ${unit} · не принято`;
+  if (accepted === undefined) return list ? `Сообщено ${submitted} ${unit}. Решение не прочитано.` : `${submitted} ${unit} · решение не прочитано`;
+  if (accepted === null) return list ? `Сообщено ${submitted} ${unit}. Не принято.` : `${submitted} ${unit} · не принято`;
   return list ? `Сообщено ${submitted} ${unit}. Принято мастером ${accepted}.` : `${submitted} ${unit} · принято мастером ${accepted}`;
 }
